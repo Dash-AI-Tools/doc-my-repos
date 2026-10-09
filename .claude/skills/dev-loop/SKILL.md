@@ -11,8 +11,20 @@ Arguments (any order):
 - `unattended`: nobody is watching. Never ask the user anything and never stop for a human. Park problem tasks and keep going (see Unattended mode).
 - `headless`: the driver is the shell script, not `/loop`. Never call `ScheduleWakeup`; just write the status file and exit.
 - `max=N`: stop after N iterations in total (default 40 when unattended).
+- `normal`: turn off caveman style (see Output style).
 
 Without `unattended`, follow Attended mode.
+
+## Output style: caveman ultra
+
+Unless `normal` is given, run the whole loop in caveman ultra. At the very start of every run, invoke the `caveman` skill with args `ultra`.
+
+- Applies to: your messages, the per-run report, `log.md` entries, and what the subagents report back. Tell both subagents in their prompt: "Report in caveman ultra: terse fragments, no filler. Code, file contents, specs, docs, test names and commit messages stay in normal prose."
+- Does NOT apply to: anything written into the repo (code, comments, docs, specs, README, tests), commit messages, or quoted error output.
+
+## Model routing
+
+Before spawning `task-implementer` or `spec-reviewer`, use the `model-router` skill to get `model` and `effort` for the task, role, and attempt number. Pass them as the `model` and `effort` parameters of the Agent call. Default effort is medium, the cap is high. Each failed attempt moves one rung up the router's ladder.
 
 ## State files (unattended)
 
@@ -37,7 +49,7 @@ These need a real external system or a person: 6.5, 13.3, 14.1, 14.2, and any ta
 
 ## 3. Implement
 
-Spawn `task-implementer` with the task id and full task text. Do not implement in the main thread.
+Spawn `task-implementer` with the task id and full task text, with the `model` and `effort` from `model-router` (role `implementer`, attempt number). Do not implement in the main thread.
 
 - `STATUS: done` -> step 4.
 - `STATUS: failed` -> retry once with the failure output in the prompt. Still failing: Attended: stop and report. Unattended: park it.
@@ -45,7 +57,7 @@ Spawn `task-implementer` with the task id and full task text. Do not implement i
 
 ## 4. Independent review
 
-Spawn `spec-reviewer` (a different agent, not a continuation) with the task id, text, and the `FILES:` list. Do not pass the implementer's opinion of its own quality.
+Spawn `spec-reviewer` (a different agent, not a continuation) with the task id, text, and the `FILES:` list, with the `model` and `effort` from `model-router` (role `reviewer`). Do not pass the implementer's opinion of its own quality.
 
 - `VERDICT: pass` -> step 5.
 - `VERDICT: fail` -> send `FINDINGS` and `MISSING TESTS` to a new `task-implementer` run, then review again. Max 2 fix rounds. Then: Attended: stop and report. Unattended: park it.
