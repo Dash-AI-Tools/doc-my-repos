@@ -1,6 +1,6 @@
 ## 1. Project scaffold
 
-- [ ] 1.1 The repo is already initialized by the maintainer (do not run `git init`, add remotes, or push); add `.gitignore` (including `.env`, `.env.*` except `.env.example`, `node_modules/`, `.next/`, `*.pem`, `.claude/dev-loop/`), `.editorconfig`, and `LICENSE` (MIT), and verify `git status` is clean after committing them
+- [x] 1.1 The repo is already initialized by the maintainer (do not run `git init`, add remotes, or push); add `.gitignore` (including `.env`, `.env.*` except `.env.example`, `node_modules/`, `.next/`, `*.pem`, `.claude/dev-loop/`), `.editorconfig`, and `LICENSE` (MIT), and verify `git status` is clean after committing them
 - [ ] 1.2 Scaffold Next.js (App Router, TypeScript strict, pnpm, `src/` layout) and verify `pnpm dev` serves a placeholder page
 - [ ] 1.3 Add Tailwind v4 and base layout (header, container, footer) and verify styles apply on the placeholder page
 - [ ] 1.4 Add ESLint, Prettier, and `pnpm typecheck`/`lint`/`format:check` scripts and verify all pass on a clean tree

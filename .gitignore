@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Secrets (keep the example file)
+.env
+.env.*
+!.env.example
+*.pem
+
+# Build and test output
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Local tooling
+.claude/dev-loop/
+.vercel/
+
+# OS
+.DS_Store
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
