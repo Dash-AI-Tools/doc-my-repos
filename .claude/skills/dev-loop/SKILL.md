@@ -55,8 +55,9 @@ Spawn `spec-reviewer` (a different agent, not a continuation) with the task id, 
 - Run the repo checks yourself once: `pnpm typecheck && pnpm lint && pnpm test` (skip any that do not exist yet; task 1.x creates them). If a check fails, treat it like a failed review round.
 - All pass: tick the checkbox in `tasks.md` (`- [ ]` -> `- [x]`). Only the main thread ticks. Never tick a task whose verification did not pass.
 - If the task changed behavior vs. a spec, never edit the spec silently. Attended: stop and ask the user to run `/opsx:update`. Unattended: keep the change only if the spec still holds; otherwise park the task and log the needed spec change under `## Needs human`.
-- Commits: Attended: only if the user said the loop may commit. Unattended: always commit, one per task, message `<id>: <short task summary>`, no Claude/Anthropic attribution or co-author lines. Never push. Stage with `git add -A -- . ':!.claude/dev-loop'`.
-  - The maintainer creates the repo, so `.git` already exists. Before the first commit, make sure planning files are committed on `main` by the maintainer; if the tree has uncommitted changes you did not make, trip the circuit breaker. Work on branch `loop/docmyrepos-mvp` (create it once if the current branch is `main`/`master`).
+- Commit (attended and unattended): after the tick, make exactly one commit per closed task, so the tick is in the same commit and `git status` is clean afterwards. Message `<id>: <short task summary>` (for example `5.4: tree fetch with tree-SHA short-circuit`), no Claude/Anthropic attribution, co-author, or "Generated with" lines. Never push, never amend, never force. Stage with `git add -A -- . ':!.claude/dev-loop'`, then confirm `git status --short` prints nothing.
+  - Do not commit a task that is parked, failed review, or only partly built (human-gated tasks stay uncommitted-as-done: commit the artifact with message `<id> (partial): <summary>`, box unticked).
+  - The maintainer creates the repo, so `.git` already exists. Before the first iteration, if the tree has uncommitted changes you did not make, stop (attended: tell the user; unattended: circuit breaker). Work on branch `loop/docmyrepos-mvp`: create it once from `main` if the current branch is `main`/`master`, and stay on it. The maintainer merges or pushes it.
 
 ## Unattended mode
 
