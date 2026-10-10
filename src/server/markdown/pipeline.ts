@@ -61,6 +61,10 @@ export type { LinkContext } from "./links";
 /** Rendered body cap, equal to the stored-document cap (`DEFAULT_MAX_FILE_BYTES`). */
 export const MAX_RENDER_CHARS = 256 * 1024;
 
+/** Warning texts callers (pages) match on: the pipeline fell back to plain text / cut the body. */
+export const RENDER_FAILED_WARNING = "rendering failed; showing plain text";
+export const RENDER_TRUNCATED_WARNING = "document is longer than the render limit and was cut";
+
 /** Plugin slots. Each runs in the order listed in the phase comment above. */
 export interface RenderSlots {
   /** Remark plugins on the mdast tree, after heading slugs are fixed. */
@@ -269,7 +273,7 @@ function prepare(source: string, warnings: string[]): string {
       0,
       last >= 0xd800 && last <= 0xdbff ? MAX_RENDER_CHARS - 1 : MAX_RENDER_CHARS,
     );
-    warnings.push("document is longer than the render limit and was cut");
+    warnings.push(RENDER_TRUNCATED_WARNING);
   }
   return limitNesting(body);
 }
@@ -299,7 +303,7 @@ export async function renderMarkdown(
       warnings,
     };
   } catch {
-    warnings.push("rendering failed; showing plain text");
+    warnings.push(RENDER_FAILED_WARNING);
     return { html: `<pre>${escapeHtml(body)}</pre>`, headings: [], warnings };
   }
 }

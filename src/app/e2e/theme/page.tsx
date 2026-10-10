@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 
@@ -104,8 +105,11 @@ export default async function Page() {
           Components
         </h2>
         <p>
-          Body text, <a href="/e2e/theme">a link</a>, and{" "}
-          <span className="text-muted-foreground">muted text</span>.
+          Body text,{" "}
+          <Link href="/e2e/theme" prefetch={false}>
+            a link
+          </Link>
+          , and <span className="text-muted-foreground">muted text</span>.
         </p>
 
         <div className="flex flex-wrap gap-2" data-testid="badges">
@@ -168,7 +172,9 @@ export default async function Page() {
             <h3 className="font-semibold">Card</h3>
             <p className="mt-1 text-sm text-muted-foreground">Card with muted secondary text.</p>
             <p className="mt-2 text-sm">
-              <a href="/e2e/theme">Card link</a>
+              <Link href="/e2e/theme" prefetch={false}>
+                Card link
+              </Link>
             </p>
           </div>
           <div className="rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-md">

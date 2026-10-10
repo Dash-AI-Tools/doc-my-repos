@@ -113,3 +113,29 @@ export function docPathCandidates(
   const stem = `${folder}/${segments.join("/")}`;
   return [`${stem}.md`, `${stem}.mdx`];
 }
+
+/**
+ * First URL segments the app owns, so `/<owner>/<repo>` must never be looked up for them (task
+ * 9.3). Next.js already prefers a static route (`/search`, `/api/sync`, `/e2e/theme`) to the
+ * dynamic `[owner]` segment, but a path below one that has no route of its own (`/search/x`,
+ * `/api/nothing`) would otherwise be read as a repository of an owner called `search`. Such a
+ * request is a plain 404 without a database query. Compared case-insensitively. The cost: a
+ * GitHub account with one of these logins has no repository space; add names here when a later
+ * task adds a top-level route. Names with a dot or a leading underscore (`favicon.ico`, `_next`)
+ * are not valid GitHub logins and are rejected by the owner check anyway; they are listed to make
+ * the intent explicit.
+ */
+export const RESERVED_OWNERS: ReadonlySet<string> = new Set([
+  "api",
+  "e2e",
+  "search",
+  "_next",
+  "favicon.ico",
+  "robots.txt",
+  "sitemap.xml",
+  "manifest.webmanifest",
+]);
+
+export function isReservedOwner(owner: string): boolean {
+  return RESERVED_OWNERS.has(owner.toLowerCase());
+}

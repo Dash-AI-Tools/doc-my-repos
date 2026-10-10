@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
 import { THEME_TOKENS, contrastRatio, type ThemeName } from "../src/lib/theme-tokens";
+import { stubAssets } from "./support/assets";
 import { SKIP_DB, SKIP_DB_REASON, stackUrl, type StackName } from "./support/stack";
 
 /**
@@ -30,6 +31,8 @@ interface PageCase {
    * playwright baseURL). `seeded` and `empty` need Postgres and skip under `E2E_SKIP_DB=1`.
    */
   readonly stack?: StackName;
+  /** Runs before the navigation (route stubs). */
+  readonly prepare?: (page: Page) => Promise<void>;
   /** Wait until the page is fully rendered. */
   readonly ready: (page: Page) => Promise<void>;
 }
@@ -60,6 +63,86 @@ const PAGES: readonly PageCase[] = [
     stack: "unreachable",
     ready: async (page) => {
       await expect(page.getByTestId("load-error")).toBeVisible();
+    },
+  },
+  {
+    name: "repo page, full (seeded)",
+    path: "/acme/api-service",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("repo-header").getByRole("heading", { level: 1 })).toHaveText(
+        "acme/api-service",
+      );
+      await expect(page.getByTestId("readme-body")).toBeVisible();
+      await expect(page.getByTestId("owner-group").first()).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "Documentation" })).toBeVisible();
+    },
+  },
+  {
+    name: "repo page, README with code, diagram and image (seeded)",
+    path: "/acme/rich-readme",
+    stack: "seeded",
+    // The image goes through /api/asset, which would contact GitHub.
+    prepare: async (page) => {
+      await stubAssets(page);
+    },
+    ready: async (page) => {
+      await expect(page.locator("pre.shiki").first()).toBeVisible();
+      await expect(page.locator(".dmr-mermaid-diagram svg").first()).toBeVisible({
+        timeout: 30_000,
+      });
+    },
+  },
+  {
+    name: "repo page, missing README and many code owners (seeded)",
+    path: "/acme/no-readme",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("readme-empty")).toBeVisible();
+      await expect(page.getByTestId("owner-more-patterns")).toBeVisible();
+    },
+  },
+  {
+    name: "repo page, no code owners (seeded)",
+    path: "/acme/no-codeowners",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("code-owners-empty")).toBeVisible();
+      await expect(page.getByTestId("readme-body")).toBeVisible();
+    },
+  },
+  {
+    name: "repo page, last sync failed (seeded)",
+    path: "/acme/flaky-service",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("repo-sync-error")).toBeVisible();
+      await expect(page.getByTestId("readme-body")).toBeVisible();
+    },
+  },
+  {
+    name: "repo page, private and OKF (seeded)",
+    path: "/globex/handbook",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("private-badge")).toBeVisible();
+      await expect(page.getByTestId("okf-badge")).toBeVisible();
+    },
+  },
+  {
+    name: "repo page, waiting for the first sync (seeded)",
+    path: "/acme/brand-new",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("repo-pending")).toBeVisible();
+    },
+  },
+  {
+    name: "repo page, not found (seeded)",
+    path: "/acme/does-not-exist",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("repo-not-found")).toBeVisible();
     },
   },
   {
@@ -107,6 +190,7 @@ async function open(page: Page, theme: ThemeName, entry: PageCase): Promise<void
     ([key, value]) => localStorage.setItem(key as string, value as string),
     [KEY, theme],
   );
+  await entry.prepare?.(page);
   await page.goto(entry.stack === undefined ? entry.path : `${stackUrl(entry.stack)}${entry.path}`);
   await expect(page.locator("html")).toHaveClass(theme === "dark" ? /\bdark\b/ : /^(?!.*\bdark\b)/);
   await entry.ready(page);

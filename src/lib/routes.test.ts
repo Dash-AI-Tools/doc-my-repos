@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { repoUrl } from "@/lib/routes";
+import { RESERVED_OWNERS, isReservedOwner, repoUrl } from "@/lib/routes";
 
 describe("repoUrl", () => {
   it("builds /<owner>/<repo>", () => {
@@ -9,5 +9,23 @@ describe("repoUrl", () => {
 
   it("percent-encodes each segment so a name cannot change the path", () => {
     expect(repoUrl("a/b", "c d?#")).toBe("/a%2Fb/c%20d%3F%23");
+  });
+});
+
+describe("isReservedOwner", () => {
+  it("reserves the segments the app owns, in any case", () => {
+    for (const name of ["api", "API", "search", "Search", "e2e", "_next", "favicon.ico"]) {
+      expect(isReservedOwner(name), name).toBe(true);
+    }
+  });
+
+  it("does not reserve ordinary owners", () => {
+    for (const name of ["acme", "searcher", "api-team", "docs"]) {
+      expect(isReservedOwner(name), name).toBe(false);
+    }
+  });
+
+  it("holds only lower-case names (lookups lower-case the input)", () => {
+    for (const name of RESERVED_OWNERS) expect(name).toBe(name.toLowerCase());
   });
 });

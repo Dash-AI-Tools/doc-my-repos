@@ -14,6 +14,11 @@
  *   acme/knowledge-base    public, OKF (okf_version 0.2), typed concepts, index.md and log.md
  *   acme/long-description  public, 700-character description and a very long name
  *   globex/handbook        private and OKF (typed docs, no okf_version)
+ *   acme/no-readme         public, NO README; CODEOWNERS with many patterns, case variants, an
+ *                          email owner and an unowned pattern; 1 doc            (task 9.3 to 9.5)
+ *   acme/no-codeowners     public, README, NO CODEOWNERS, 1 doc                  (task 9.3 to 9.5)
+ *   acme/rich-readme       public, README with a mermaid diagram, code blocks, a link to a synced
+ *                          doc, a broken link and an image; 1 doc                (task 9.4)
  */
 
 export interface SeedDoc {
@@ -48,6 +53,32 @@ const LONG_WORD =
 const LONG_DESCRIPTION =
   `${"A deliberately long description that keeps going to check the three line clamp. ".repeat(8)}` +
   `${LONG_WORD} <img src=x onerror=alert(1)> and <b>markup</b> shown as plain text.`;
+
+const RICH_README = [
+  "# rich-readme",
+  "",
+  "A README with every feature the pipeline supports.",
+  "",
+  "## Architecture",
+  "",
+  "```mermaid",
+  "graph TD",
+  "  A[Client] --> B{Gateway}",
+  "  B --> C[Service]",
+  "```",
+  "",
+  "![Architecture overview](docs/assets/architecture.png)",
+  "",
+  "## Usage",
+  "",
+  "```ts",
+  "export const answer: number = 42;",
+  "```",
+  "",
+  "Read the [guide](docs/guide.md), the [missing page](docs/does-not-exist.md) or the",
+  "[source file](src/index.ts).",
+  "",
+].join("\n");
 
 export const SEED_REPOS: readonly SeedRepo[] = [
   {
@@ -170,6 +201,50 @@ export const SEED_REPOS: readonly SeedRepo[] = [
       },
     ],
   },
+  {
+    githubId: 1008,
+    owner: "acme",
+    name: "no-readme",
+    description: "A repository without a README.",
+    visibility: "public",
+    state: "synced",
+    lastSyncedAt: "2026-03-01T10:00:00.000Z",
+    codeowners: [
+      "# Default owners",
+      "* @bob @Acme/Platform",
+      "/docs/ @Bob",
+      "/SECURITY.md security@acme.example",
+      "# Un-owned: no owners on the line",
+      "/vendor/",
+      ...Array.from({ length: 10 }, (_, i) => `/services/service-${i + 1}/ @carol`),
+      "/a/very/long/path/with/many/segments/that/should/wrap/instead/of/stretching/the/panel/**/*.generated.ts @carol",
+      "",
+    ].join("\n"),
+    docs: [{ path: "docs/overview.md", text: "# Overview\n\nA repository with no README.\n" }],
+  },
+  {
+    githubId: 1009,
+    owner: "acme",
+    name: "no-codeowners",
+    description: "A repository without a CODEOWNERS file.",
+    visibility: "public",
+    state: "synced",
+    lastSyncedAt: "2026-03-02T11:30:00.000Z",
+    readme: "# no-codeowners\n\nThis repository has a README but no CODEOWNERS file.\n",
+    docs: [{ path: "docs/guide.md", text: "# Guide\n\nA guide.\n" }],
+  },
+  {
+    githubId: 1010,
+    owner: "acme",
+    name: "rich-readme",
+    description: "A README that uses everything the Markdown pipeline supports.",
+    visibility: "public",
+    state: "synced",
+    lastSyncedAt: "2026-03-03T08:00:00.000Z",
+    codeowners: "* @alice\n",
+    readme: RICH_README,
+    docs: [{ path: "docs/guide.md", text: "# Guide\n\nThe guide the README links to.\n" }],
+  },
 ];
 
 /** Names used by specs. */
@@ -181,6 +256,9 @@ export const SEEDED = {
   okf: { owner: "acme", name: "knowledge-base" },
   long: { owner: "acme", name: "a-repository-with-a-really-long-name-for-layout-testing" },
   privateOkf: { owner: "globex", name: "handbook" },
+  noReadme: { owner: "acme", name: "no-readme" },
+  noCodeowners: { owner: "acme", name: "no-codeowners" },
+  richReadme: { owner: "acme", name: "rich-readme" },
 } as const;
 
 /** `owner/name` of every private seeded repository. */
