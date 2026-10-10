@@ -68,7 +68,7 @@
 
 ## 9. Repo space UI (repo-space)
 
-- [ ] 9.1 Implement data queries (repo list, repo by owner/name, docs tree, document by path) behind one shared visibility filter used by every repo, document, search, facet, and asset read, and verify integration tests including a test that flipping the filter to hide private repos hides them everywhere
+- [x] 9.1 Implement data queries (repo list, repo by owner/name, docs tree, document by path) behind one shared visibility filter used by every repo, document, search, facet, and asset read, and verify integration tests including a test that flipping the filter to hide private repos hides them everywhere
 - [ ] 9.2 Build the home page repo grid with search bar, private badge, empty state, and error state, and verify a Playwright test with seeded public and private data
 - [ ] 9.3 Build the repo page shell with header (GitHub link, last synced) and not-found handling, and verify a Playwright test for known and unknown repos
 - [ ] 9.4 Render the README section (using the pipeline) with an empty state, and verify a test for present and missing README

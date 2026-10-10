@@ -17,9 +17,9 @@ import { repos } from "../db/schema";
  * `allowAllRepos`. Queries take the filter as an option only so tests can swap it (for example
  * `publicReposOnly`) and prove that every read honours it (task 9.1).
  *
- * Task 9.1 builds the rest of the query layer (repo list, repo by owner/name, docs tree,
- * document by path, then search and facets in 10.x) on `visibleRepos` and `QueryOptions` from
- * here; `findAssetRepo` (`assets.ts`) is the first user.
+ * Every query of the layer is registered in `QUERY_FUNCTIONS` (`index.ts`); `queries.test.ts`
+ * runs each one with this filter flipped, and `enforcement.test.ts` statically forbids reading
+ * the tables from anywhere else. Search and facets (10.x) join here the same way.
  */
 
 /** A condition on the `repos` table that is true for the rows the current reader may see. */
