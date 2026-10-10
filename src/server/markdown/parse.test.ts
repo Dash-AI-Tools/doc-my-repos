@@ -93,7 +93,9 @@ describe("block-level cutting", () => {
     const filler = "A paragraph of ordinary prose that fills the space.\n\n".repeat(400);
     const body = `See [the docs][d].\n\n${filler}[d]: https://example.com/docs\n`;
     const { html } = await renderMarkdown(body);
-    expect(html).toContain('<a href="https://example.com/docs">the docs</a>');
+    expect(html).toContain(
+      '<a href="https://example.com/docs" rel="nofollow noopener noreferrer">the docs</a>',
+    );
   });
 
   it("keeps one long loose list in one list", async () => {

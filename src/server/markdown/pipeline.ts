@@ -2,7 +2,6 @@ import GithubSlugger from "github-slugger";
 import type { Element, Root as HastRoot } from "hast";
 import type { Nodes, Root as MdastRoot } from "mdast";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema, type Options as SanitizeSchema } from "rehype-sanitize";
 import rehypeStringify from "rehype-stringify";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -21,6 +20,9 @@ import {
 } from "../docs/extract";
 import { parseFrontmatter, stripNul, toWellFormed } from "../docs/frontmatter";
 import { parseBody } from "./parse";
+import { HEADING_ANCHOR_CLASS, rehypeSafeHtml } from "./sanitize";
+
+export { HEADING_ANCHOR_CLASS } from "./sanitize";
 
 /**
  * Markdown to safe HTML, at read time, from the stored body. Output is an HTML string (design
@@ -36,11 +38,13 @@ import { parseBody } from "./parse";
  *   4. afterParse    SLOT (remark, mdast)
  *   5. toHast        remark-rehype with raw HTML kept as `raw` nodes, then heading anchors,
  *                    then rehype-raw parses that HTML (still untrusted)
- *   6. linkRewrite   SLOT (rehype, task 7.4)
+ *   6. linkRewrite   SLOT (rehype, tasks 7.4 and 7.5)
  *   7. highlight     SLOT (rehype, task 7.3)
- *   8. mermaid       SLOT (rehype, task 7.5)
- *   9. sanitize      rehype-sanitize (task 7.2 refines the schema). Always last of the tree
- *                    transforms; nothing that touches the tree runs after it.
+ *   8. mermaid       SLOT (rehype, task 7.6)
+ *   9. sanitize      `rehypeSafeHtml` (sanitize.ts): rehype-sanitize with the fixed allow-list,
+ *                    then a fixed hardening pass. Always the last tree transform; the
+ *                    processor is frozen, so nothing can be added after it. Slot output is
+ *                    untrusted like the document and must fit the contract in sanitize.ts.
  *  10. stringify     rehype-stringify
  *
  * `.mdx` files are plain Markdown here. `import`/`export` lines and JSX are ordinary text or raw
@@ -49,8 +53,6 @@ import { parseBody } from "./parse";
 
 /** Rendered body cap, equal to the stored-document cap (`DEFAULT_MAX_FILE_BYTES`). */
 export const MAX_RENDER_CHARS = 256 * 1024;
-
-export const HEADING_ANCHOR_CLASS = "heading-anchor";
 
 /** Plugin slots. Each runs in the order listed in the phase comment above. */
 export interface RenderSlots {
@@ -66,8 +68,6 @@ export interface RenderSlots {
 
 export interface ProcessorOptions {
   readonly slots?: RenderSlots;
-  /** Replaces `DEFAULT_SANITIZE_SCHEMA`. Task 7.2 supplies the final allow-list here. */
-  readonly sanitizeSchema?: SanitizeSchema;
 }
 
 export interface RenderOptions extends ProcessorOptions {
@@ -82,48 +82,6 @@ export interface RenderResult {
   /** Fixed-text diagnostics; never quote the document. */
   readonly warnings: readonly string[];
 }
-
-const FOOTNOTE_ID = /^user-content-fn(?:ref)?-/;
-const HEADINGS = ["h1", "h2", "h3", "h4", "h5", "h6"] as const;
-
-type AttributeList = NonNullable<NonNullable<SanitizeSchema["attributes"]>[string]>;
-
-function withClassValue(list: AttributeList | undefined, value: string): AttributeList {
-  const out: AttributeList = [];
-  let merged = false;
-  for (const entry of list ?? []) {
-    if (Array.isArray(entry) && entry[0] === "className") {
-      out.push(["className", ...entry.slice(1), value] as AttributeList[number]);
-      merged = true;
-    } else {
-      out.push(entry);
-    }
-  }
-  if (!merged) out.push(["className", value]);
-  return out;
-}
-
-/**
- * Conservative default: the library allow-list plus what GFM output needs. Differences from
- * `defaultSchema`:
- *  - `id` and `name` are not allowed everywhere. `id` is allowed on headings (anchors), and on
- *    footnote references and definitions; nowhere else, so author HTML cannot
- *    plant ids that shadow page elements or DOM globals (DOM clobbering).
- *  - No clobber prefix: heading ids must equal the stored `headings.slug` so `#slug` links and
- *    the "on this page" list work. Footnote ids already carry `user-content-` from remark-rehype.
- *  - The heading anchor link keeps its class.
- */
-export const DEFAULT_SANITIZE_SCHEMA: SanitizeSchema = (() => {
-  const base = defaultSchema.attributes ?? {};
-  const star = (base["*"] ?? []).filter((a) => a !== "id" && a !== "name");
-  const attributes: NonNullable<SanitizeSchema["attributes"]> = { ...base, "*": star };
-  for (const tag of HEADINGS) {
-    attributes[tag] = [...(base[tag] ?? []), "id"];
-  }
-  attributes.li = [...(base.li ?? []), ["id", FOOTNOTE_ID]];
-  attributes.a = [...withClassValue(base.a, HEADING_ANCHOR_CLASS), ["id", FOOTNOTE_ID]];
-  return { ...defaultSchema, attributes, clobberPrefix: "", clobber: [] };
-})();
 
 /** Heading text exactly as `extractMetadata` derives it before slugging. */
 function headingTextOf(node: Extract<Nodes, { type: "heading" }>): string {
@@ -241,7 +199,11 @@ function rehypeRawWhenNeeded() {
   return (tree: HastRoot, file: VFile) => (hasRawHtml(tree) ? parseRaw(tree, file) : tree);
 }
 
-/** Builds the full chain. The sanitizer is always present and always after every transform. */
+/**
+ * Builds the full chain. The sanitizer is always present, has a fixed schema that callers
+ * cannot replace, and runs after every transform. The returned processor is frozen: calling
+ * `.use()` on it throws, so no plugin can be added after the sanitizer.
+ */
 export function createProcessor(options: ProcessorOptions = {}) {
   const slots = options.slots ?? {};
   return unified()
@@ -255,8 +217,9 @@ export function createProcessor(options: ProcessorOptions = {}) {
     .use(slots.linkRewrite ?? [])
     .use(slots.highlight ?? [])
     .use(slots.mermaid ?? [])
-    .use(rehypeSanitize, options.sanitizeSchema ?? DEFAULT_SANITIZE_SCHEMA)
-    .use(rehypeStringify);
+    .use(rehypeSafeHtml)
+    .use(rehypeStringify)
+    .freeze();
 }
 
 const ESCAPES: Readonly<Record<string, string>> = {

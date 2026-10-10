@@ -6,12 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import { extractMetadata } from "../docs/extract";
 import { parseFrontmatter } from "../docs/frontmatter";
-import {
-  createProcessor,
-  DEFAULT_SANITIZE_SCHEMA,
-  MAX_RENDER_CHARS,
-  renderMarkdown,
-} from "./pipeline";
+import { createProcessor, MAX_RENDER_CHARS, renderMarkdown } from "./pipeline";
+import { rehypeSafeHtml, SANITIZE_SCHEMA } from "./sanitize";
 
 async function html(source: string): Promise<string> {
   return (await renderMarkdown(source)).html;
@@ -55,8 +51,12 @@ describe("GFM", () => {
 
   it("links autolink literals", async () => {
     const out = await html("see https://example.com and www.example.org and me@example.com");
-    expect(out).toContain('<a href="https://example.com">https://example.com</a>');
-    expect(out).toContain('<a href="http://www.example.org">www.example.org</a>');
+    expect(out).toContain(
+      '<a href="https://example.com" rel="nofollow noopener noreferrer">https://example.com</a>',
+    );
+    expect(out).toContain(
+      '<a href="http://www.example.org" rel="nofollow noopener noreferrer">www.example.org</a>',
+    );
     expect(out).toContain('<a href="mailto:me@example.com">me@example.com</a>');
   });
 
@@ -131,7 +131,9 @@ describe("heading anchors", () => {
       { depth: 2, text: "code and a link em", slug: "code-and-a-link-em" },
     ]);
     expect(result.html).toContain('id="code-and-a-link-em"');
-    expect(result.html).toContain('<a href="http://x.y">a link</a>');
+    expect(result.html).toContain(
+      '<a href="http://x.y" rel="nofollow noopener noreferrer">a link</a>',
+    );
   });
 
   it("slugs setext headings and headings inside lists and quotes", async () => {
@@ -171,13 +173,13 @@ describe("heading anchors", () => {
   });
 });
 
-describe("untrusted content (basic; the full XSS suite is task 7.2)", () => {
+describe("untrusted content (basic; the full XSS suite is in sanitize.test.ts and xss.test.ts)", () => {
   it("strips script elements and event handlers", async () => {
     const out = await html('<script>alert(1)</script>\n\n<img src="x" onerror="alert(1)">\n');
     expect(out).not.toContain("<script");
     expect(out).not.toContain("alert");
     expect(out).not.toContain("onerror");
-    expect(out).toContain('<img src="x">');
+    expect(out).toContain('<img src="x" loading="lazy">');
   });
 
   it("does not render a javascript: link as a link", async () => {
@@ -209,9 +211,10 @@ describe("untrusted content (basic; the full XSS suite is task 7.2)", () => {
     expect(out).not.toContain("evil");
   });
 
-  it("always applies the sanitizer, even when no schema is given", async () => {
-    expect(createProcessor().attachers.length).toBeGreaterThan(0);
-    expect(DEFAULT_SANITIZE_SCHEMA.clobberPrefix).toBe("");
+  it("always applies the sanitizer, last before stringify, with no clobber prefix", async () => {
+    const attachers = createProcessor().attachers.map(([plugin]) => plugin);
+    expect(attachers.at(-2)).toBe(rehypeSafeHtml);
+    expect(SANITIZE_SCHEMA.clobberPrefix).toBe("");
   });
 });
 
