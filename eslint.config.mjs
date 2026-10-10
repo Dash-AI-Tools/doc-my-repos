@@ -18,6 +18,7 @@ export default defineConfig([
     "next-env.d.ts",
     "openspec/**",
     ".claude/**",
+    "drizzle/**",
   ]),
   ...nextCoreWebVitals,
   ...nextTypescript,
