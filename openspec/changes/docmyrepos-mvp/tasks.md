@@ -54,7 +54,7 @@
 - [x] 7.1 Build the unified pipeline (GFM, frontmatter stripping, heading slugs + anchors) and verify unit tests for tables, task lists, footnotes, anchors
 - [x] 7.2 Add `rehype-sanitize` with an extended allow-list after all transforms, and verify XSS tests (`<script>`, `onerror`, `javascript:` links)
 - [x] 7.3 Add server-side Shiki highlighting with dual themes plus copy button, and verify tests for known and unknown languages
-- [ ] 7.4 Implement the link rewriting plugin (relative, bundle-root-absolute, GitHub blob fallback, broken links) and verify unit tests for each case
+- [x] 7.4 Implement the link rewriting plugin (relative, bundle-root-absolute, GitHub blob fallback, broken links) and verify unit tests for each case
 - [ ] 7.5 Implement image rewriting and `/api/asset/[owner]/[repo]/[...path]` (configured repos only, image content types, cache headers), and verify tests for path traversal, non-image, and token non-leakage
 - [ ] 7.6 Tag ` ```mermaid ` blocks in the pipeline and build the client `MermaidDiagram` component (lazy import, strict security level), and verify a component test renders an SVG
 - [ ] 7.7 Make Mermaid theme-aware (re-render on theme change) and add error fallback showing source + message, and verify a component test for each

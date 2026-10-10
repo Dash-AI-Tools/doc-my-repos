@@ -19,10 +19,12 @@ import {
   MAX_SLUG_CHARS,
 } from "../docs/extract";
 import { parseFrontmatter, stripNul, toWellFormed } from "../docs/frontmatter";
+import { type LinkContext, rehypeRewriteLinks } from "./links";
 import { parseBody } from "./parse";
 import { HEADING_ANCHOR_CLASS, rehypeSafeHtml } from "./sanitize";
 
 export { HEADING_ANCHOR_CLASS } from "./sanitize";
+export type { LinkContext } from "./links";
 
 /**
  * Markdown to safe HTML, at read time, from the stored body. Output is an HTML string (design
@@ -68,10 +70,15 @@ export interface RenderSlots {
 
 export interface ProcessorOptions {
   readonly slots?: RenderSlots;
+  /**
+   * Where the document lives, for link rewriting (links.ts). Without it links are left as
+   * written and the sanitizer alone decides what survives.
+   */
+  readonly links?: LinkContext;
 }
 
 export interface RenderOptions extends ProcessorOptions {
-  /** Used by link rewriting later; not read here. */
+  /** Not read. The path link rewriting resolves against is `links.path`. */
   readonly path?: string;
 }
 
@@ -214,6 +221,7 @@ export function createProcessor(options: ProcessorOptions = {}) {
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeHeadingAnchors)
     .use(rehypeRawWhenNeeded)
+    .use(options.links ? [[rehypeRewriteLinks, options.links]] : [])
     .use(slots.linkRewrite ?? [])
     .use(slots.highlight ?? [])
     .use(slots.mermaid ?? [])
