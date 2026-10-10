@@ -19,16 +19,21 @@
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "drizzle-orm": "^0.45.4",
+    "github-slugger": "^2.0.0",
     "next": "^16.4.0",
     "pg": "^8.23.1",
     "postcss": "^8.5.29",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
     "tailwindcss": "^4.3.3",
+    "unified": "^11.0.5",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@types/mdast": "^4.0.4",
     "@types/node": "^26.6.4",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",

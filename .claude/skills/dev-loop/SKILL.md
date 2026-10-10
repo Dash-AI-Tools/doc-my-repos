@@ -55,20 +55,22 @@ Spawn `task-implementer` with the task id and full task text, with the `model` a
 - `STATUS: failed` -> retry once with the failure output in the prompt. Still failing: Attended: stop and report. Unattended: park it.
 - `STATUS: blocked` (open question, missing decision, spec conflict, missing prerequisite): Attended: stop and report. Unattended: park it, with the question in the reason.
 
-## 4. Independent review
+## 4. Independent review (per epic, lean)
 
-Spawn `spec-reviewer` (a different agent, not a continuation) with the task id, text, and the `FILES:` list, with the `model` and `effort` from `model-router` (role `reviewer`). Do not pass the implementer's opinion of its own quality.
+Review is per epic (a numbered task group in `tasks.md`), not per task, and never repeated.
 
-- `VERDICT: pass` -> step 5.
-- `VERDICT: fail` -> send `FINDINGS` and `MISSING TESTS` to a new `task-implementer` run, then review again. Max 2 fix rounds. Then: Attended: stop and report. Unattended: park it.
+- Per task: no reviewer. Go straight to step 5 after `STATUS: done`; the main-thread checks are the gate.
+- When the last task of an epic closes (or the epic hits a human-gated task), spawn ONE `spec-reviewer` over the whole epic: pass the epic's task ids and texts and the union of `FILES:` lists (or the epic's commit range). Model and effort from `model-router` (role `reviewer`, the highest class in the epic). Timebox it in the prompt: one pass, read the code and run the existing tests/typecheck/lint, check the specs and `CLAUDE.md` rules, no mutation testing and no fuzzing, report only blocking issues (spec violations, security, data corruption, hangs) plus a short non-blocking list. Do not pass the implementer's opinion of its own quality.
+- Never trigger a re-review. If the epic review finds blocking issues, send them to one `task-implementer` fix run, re-run the checks yourself, commit as `<epic>: review fixes`, and move on. Non-blocking findings go to `log.md` under `## Decisions`, not into fix rounds.
+- Security-critical tasks (the `critical` class in `model-router`) may still get their own single review right after the task, on the same lean terms.
 
 ## 5. Close the task
 
-- Run the repo checks yourself once: `pnpm typecheck && pnpm lint && pnpm test` (skip any that do not exist yet; task 1.x creates them). If a check fails, treat it like a failed review round.
+- Run the repo checks yourself once: `pnpm typecheck && pnpm lint && pnpm test` (skip any that do not exist yet; task 1.x creates them). If a check fails, send the failure output to one `task-implementer` fix run and re-run the checks; a second failure parks or stops as in step 3.
 - All pass: tick the checkbox in `tasks.md` (`- [ ]` -> `- [x]`). Only the main thread ticks. Never tick a task whose verification did not pass.
 - If the task changed behavior vs. a spec, never edit the spec silently. Attended: stop and ask the user to run `/opsx:update`. Unattended: keep the change only if the spec still holds; otherwise park the task and log the needed spec change under `## Needs human`.
 - Commit (attended and unattended): after the tick, make exactly one commit per closed task, so the tick is in the same commit and `git status` is clean afterwards. Message `<id>: <short task summary>` (for example `5.4: tree fetch with tree-SHA short-circuit`), no Claude/Anthropic attribution, co-author, or "Generated with" lines. Never push, never amend, never force. Stage with `git add -A -- . ':!.claude/dev-loop'`, then confirm `git status --short` prints nothing.
-  - Do not commit a task that is parked, failed review, or only partly built (human-gated tasks stay uncommitted-as-done: commit the artifact with message `<id> (partial): <summary>`, box unticked).
+  - Do not commit a task that is parked, failed its checks, or only partly built (human-gated tasks stay uncommitted-as-done: commit the artifact with message `<id> (partial): <summary>`, box unticked).
   - The maintainer creates the repo, so `.git` already exists. Before the first iteration, if the tree has uncommitted changes you did not make, stop (attended: tell the user; unattended: circuit breaker). Work on branch `loop/docmyrepos-mvp`: create it once from `main` if the current branch is `main`/`master`, and stay on it. The maintainer merges or pushes it.
 
 ## Unattended mode
