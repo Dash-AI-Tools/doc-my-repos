@@ -70,6 +70,27 @@ export interface DiscoveryConfig {
   readonly exclude?: readonly string[];
 }
 
+/** Where a repository name falls in the config narrowing (archived state is checked separately). */
+export type NameSelection = "selected" | "excluded" | "not_listed";
+
+/**
+ * The config narrowing for one repository name, matched case-insensitively exactly as
+ * `discoverRepositories` does: under an explicit `repos` list an unlisted name is `not_listed`;
+ * a name in `exclude` is `excluded`; otherwise `selected`. Archived repos are skipped by the
+ * caller, as discovery does.
+ */
+export function repoNameSelection(config: DiscoveryConfig, name: string): NameSelection {
+  const key = name.toLowerCase();
+  if (
+    config.repos !== undefined &&
+    !config.repos.some((e) => (typeof e === "string" ? e : e.name).toLowerCase() === key)
+  ) {
+    return "not_listed";
+  }
+  if ((config.exclude ?? []).some((n) => n.toLowerCase() === key)) return "excluded";
+  return "selected";
+}
+
 export async function discoverRepositories(
   client: DiscoveryClient,
   config: DiscoveryConfig,

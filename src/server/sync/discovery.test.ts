@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { GitHubError, type RepoInfo } from "../github/client";
 import { configSchema } from "../config/schema";
-import { discoverRepositories, type DiscoveryClient } from "./discovery";
+import { discoverRepositories, repoNameSelection, type DiscoveryClient } from "./discovery";
 
 function repo(id: number, name: string, extra: Partial<RepoInfo> = {}): RepoInfo {
   return {
@@ -168,5 +168,33 @@ describe("discoverRepositories", () => {
       cfg(),
     );
     expect(r.repos.map((x) => x.visibility)).toEqual(["private", "public"]);
+  });
+});
+
+describe("repoNameSelection", () => {
+  it("selects every name when the config narrows nothing", () => {
+    expect(repoNameSelection(cfg(), "anything")).toBe("selected");
+  });
+
+  it("matches an explicit list case-insensitively", () => {
+    const config = cfg({ repos: ["Handbook", { name: "metrics", docsPath: "kb" }] });
+    expect(repoNameSelection(config, "handbook")).toBe("selected");
+    expect(repoNameSelection(config, "METRICS")).toBe("selected");
+    expect(repoNameSelection(config, "sandbox")).toBe("not_listed");
+  });
+
+  it("matches exclusions case-insensitively", () => {
+    const config = cfg({ exclude: ["Sandbox"] });
+    expect(repoNameSelection(config, "sandbox")).toBe("excluded");
+    expect(repoNameSelection(config, "handbook")).toBe("selected");
+  });
+
+  it("agrees with discoverRepositories on which names are synced", async () => {
+    const listing = [repo(1, "a"), repo(2, "B"), repo(3, "c")];
+    for (const config of [cfg(), cfg({ repos: ["a", "b"] }), cfg({ exclude: ["C"] })]) {
+      const r = await discoverRepositories(clientOf(listing), config);
+      const selected = listing.filter((x) => repoNameSelection(config, x.name) === "selected");
+      expect(names(r)).toEqual(selected.map((x) => x.name));
+    }
   });
 });

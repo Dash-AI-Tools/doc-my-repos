@@ -45,7 +45,7 @@
 
 - [x] 6.1 Implement `POST /api/sync` guarded by the sync secret (all or one repo) and verify tests for authorized, unauthorized, and per-repo requests
 - [x] 6.2 Implement `POST /api/webhooks/github` with raw-body signature verification using the App webhook secret, and verify tests for valid, invalid, and missing signatures
-- [ ] 6.3 Route events: `push` (default branch only), `repository` (renamed/deleted/archived/visibility), `installation_repositories` (add/remove repos), and `installation` (deleted/suspended -> error state, content kept); ignore unknown repos and branches; verify unit tests per event
+- [x] 6.3 Route events: `push` (default branch only), `repository` (renamed/deleted/archived/visibility), `installation_repositories` (add/remove repos), and `installation` (deleted/suspended -> error state, content kept); ignore unknown repos and branches; verify unit tests per event
 - [ ] 6.4 Make processing idempotent and coalesce concurrent syncs per repo, and verify duplicate-delivery and concurrent-request tests
 - [ ] 6.5 Write the GitHub App setup guide in `docs/` (read-only permissions for contents and metadata, subscribed events, webhook URL and secret, App manifest, obtaining App id, private key and installation id, local tunnel) and verify the steps by registering and installing a test App
 
