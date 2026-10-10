@@ -20,6 +20,8 @@ export default defineConfig([
     "openspec/**",
     ".claude/**",
     "drizzle/**",
+    "playwright-report/**",
+    "test-results/**",
   ]),
   ...nextCoreWebVitals,
   ...nextTypescript,

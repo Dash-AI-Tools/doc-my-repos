@@ -58,7 +58,7 @@
 - [x] 7.5 Implement image rewriting and `/api/asset/[owner]/[repo]/[...path]` (configured repos only, image content types, cache headers), and verify tests for path traversal, non-image, and token non-leakage
 - [x] 7.6 Tag ` ```mermaid ` blocks in the pipeline and build the client `MermaidDiagram` component (lazy import, strict security level), and verify a component test renders an SVG
 - [x] 7.7 Make Mermaid theme-aware (re-render on theme change) and add error fallback showing source + message, and verify a component test for each
-- [ ] 7.8 Add the enlarge/pan view with keyboard close, and verify a Playwright test opens and closes it with Esc
+- [x] 7.8 Add the enlarge/pan view with keyboard close, and verify a Playwright test opens and closes it with Esc
 
 ## 8. Theming (theming)
 

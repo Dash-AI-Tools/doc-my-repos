@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
+import { MermaidViewer } from "./mermaid-viewer";
 import { useMermaidTheme } from "./use-mermaid-theme";
 
 /**
@@ -40,11 +41,12 @@ import { useMermaidTheme } from "./use-mermaid-theme";
  *  - The source is empty (nothing is rendered) or longer than `MAX_TEXT_SIZE` (mermaid is not
  *    called).
  *
- * Contract for the enlarge view (task 7.8)
- *  - The ready state is `div.dmr-mermaid-diagram[role="img"]`; its `innerHTML` is the one SVG
- *    string (strict-mode output). The enlarge dialog can read it from there, or call the exported
- *    `renderDiagram(source, id, theme)` for its own copy. Wrap the element in a button; do not
- *    change the SVG.
+ * Enlarge view (task 7.8)
+ *  - The ready state is `div.dmr-mermaid-viewer > div.dmr-mermaid-diagram[role="img"]` plus the
+ *    "Enlarge diagram" button (`MermaidViewer`). The `role="img"` element and its SVG are exactly
+ *    as before. The dialog renders its own copy with `renderDiagram(source, id, theme)` for the
+ *    current theme, so the inline diagram stays and element ids stay unique. Loading and error
+ *    states have no enlarge button.
  */
 
 export type MermaidTheme = "light" | "dark";
@@ -229,6 +231,10 @@ export function MermaidDiagram({
     value: { status: "loading" },
   });
   const key = `${theme}\n${source}`;
+  const renderForViewer = useCallback(
+    (viewerId: string) => renderDiagram(source, viewerId, theme),
+    [source, theme],
+  );
   const empty = source.trim() === "";
   const tooLarge = source.length > MAX_TEXT_SIZE;
 
@@ -267,13 +273,15 @@ export function MermaidDiagram({
 
   if (current.status === "ready") {
     return (
-      <div
-        role="img"
-        aria-label="Mermaid diagram"
-        className="dmr-mermaid-diagram my-4 overflow-x-auto"
-        // Strict-mode SVG returned by mermaid.render; see the header comment.
-        dangerouslySetInnerHTML={{ __html: current.svg }}
-      />
+      <MermaidViewer render={renderForViewer}>
+        <div
+          role="img"
+          aria-label="Mermaid diagram"
+          className="dmr-mermaid-diagram my-4 overflow-x-auto"
+          // Strict-mode SVG returned by mermaid.render; see the header comment.
+          dangerouslySetInnerHTML={{ __html: current.svg }}
+        />
+      </MermaidViewer>
     );
   }
 

@@ -41,3 +41,14 @@ pre:has(> .dmr-copy-host) {
   top: 0.5rem;
   right: 0.5rem;
 }
+
+/*
+ * Enlarged Mermaid diagram (src/components/mermaid-viewer.tsx). Mermaid sets a max-width in
+ * `style` on the svg, so the overrides need !important; the svg then fits the panel and the
+ * pan/zoom transform scales it from there.
+ */
+.dmr-mermaid-stage-content > svg {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+}

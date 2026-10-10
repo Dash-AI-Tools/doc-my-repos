@@ -5,3 +5,5 @@ pnpm-lock.yaml
 openspec
 .claude
 drizzle
+playwright-report
+test-results
