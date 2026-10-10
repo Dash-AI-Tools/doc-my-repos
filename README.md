@@ -66,7 +66,7 @@ defaults:
 | `GITHUB_APP_ID`              | ID of your GitHub App                                                     |
 | `GITHUB_APP_PRIVATE_KEY`     | App private key (PEM). Or set `GITHUB_APP_PRIVATE_KEY_PATH` to a key file |
 | `GITHUB_APP_INSTALLATION_ID` | ID of the App's installation on your organization                         |
-| `GITHUB_WEBHOOK_SECRET`      | Webhook secret of the GitHub App, used to verify signatures               |
+| `GITHUB_WEBHOOK_SECRET`      | Webhook secret (16+ characters) of the GitHub App, verifies signatures    |
 | `SYNC_SECRET`                | Secret (16+ characters) that protects the manual `/api/sync` endpoint     |
 
 ### GitHub App

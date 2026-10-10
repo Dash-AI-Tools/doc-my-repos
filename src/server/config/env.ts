@@ -90,7 +90,7 @@ const envSchema = z.object({
   DATABASE_URL: databaseUrlSchema,
   GITHUB_APP_ID: numericId(),
   GITHUB_APP_INSTALLATION_ID: numericId(),
-  GITHUB_WEBHOOK_SECRET: requiredString(),
+  GITHUB_WEBHOOK_SECRET: sharedSecret(),
   SYNC_SECRET: sharedSecret(),
 });
 
@@ -101,6 +101,19 @@ const envSchema = z.object({
  */
 export function readSyncSecret(env: EnvSource): Secret<string> | null {
   const parsed = envSchema.shape.SYNC_SECRET.safeParse(env.SYNC_SECRET, { reportInput: false });
+  return parsed.success ? new Secret(parsed.data) : null;
+}
+
+/**
+ * The GitHub App webhook secret from `env`, validated like `parseEnv` does (trimmed, not blank, at
+ * least `MIN_SECRET_LENGTH` characters), or `null` when it is unusable. Lets
+ * `POST /api/webhooks/github` verify a signature before it loads the rest of the configuration or
+ * touches the database. Never throws and never reports the value.
+ */
+export function readWebhookSecret(env: EnvSource): Secret<string> | null {
+  const parsed = envSchema.shape.GITHUB_WEBHOOK_SECRET.safeParse(env.GITHUB_WEBHOOK_SECRET, {
+    reportInput: false,
+  });
   return parsed.success ? new Secret(parsed.data) : null;
 }
 

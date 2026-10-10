@@ -45,6 +45,10 @@ The system SHALL validate the config file and required environment variables (da
 - **WHEN** the GitHub App id, private key, or installation id is not set
 - **THEN** startup fails with an error that names the missing variable and does not print any secret value
 
+#### Scenario: Weak shared secret
+- **WHEN** the webhook secret or the sync secret is shorter than 16 characters after trimming whitespace
+- **THEN** startup fails with an error that names the variable and does not print the value
+
 #### Scenario: Unreadable private key
 - **WHEN** the private key is not a valid PEM key or the key file path cannot be read
 - **THEN** startup fails with an error that identifies the variable and never prints the key

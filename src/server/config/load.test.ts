@@ -112,7 +112,7 @@ function validEnv(overrides: Record<string, string | undefined> = {}): EnvSource
     GITHUB_APP_PRIVATE_KEY: RSA_PEM,
     GITHUB_APP_PRIVATE_KEY_PATH: "",
     GITHUB_APP_INSTALLATION_ID: "67890",
-    GITHUB_WEBHOOK_SECRET: "webhook-secret",
+    GITHUB_WEBHOOK_SECRET: "webhook-secret-0123",
     SYNC_SECRET: "sync-secret-0123456",
     ...overrides,
   };
@@ -182,7 +182,7 @@ describe("loadConfig with a valid setup", () => {
       "postgres://docmyrepos:db-password@127.0.0.1:5432/docmyrepos",
     );
     expect(loaded.env.githubAppPrivateKey.reveal()).toBe(RSA_PEM);
-    expect(loaded.env.githubWebhookSecret.reveal()).toBe("webhook-secret");
+    expect(loaded.env.githubWebhookSecret.reveal()).toBe("webhook-secret-0123");
     expect(loaded.env.syncSecret.reveal()).toBe("sync-secret-0123456");
   });
 
@@ -828,6 +828,20 @@ describe("ConfigError", () => {
     const tooShort = "SHORTsecret-15c";
     const error = catchConfigError(() => load(validEnv({ SYNC_SECRET: `  ${tooShort}\n` })));
     expect(error.problems).toEqual(["SYNC_SECRET: must be at least 16 characters"]);
+    expect(`${error.message}${inspect(error)}`).not.toContain(tooShort);
+  });
+
+  it("rejects a GITHUB_WEBHOOK_SECRET shorter than 16 characters without echoing it", () => {
+    const short = "SHORTwebhook-16c";
+    expect(short.length).toBe(16);
+    expect(load(validEnv({ GITHUB_WEBHOOK_SECRET: short })).env.githubWebhookSecret.reveal()).toBe(
+      short,
+    );
+    const tooShort = "SHORTwebhook-15";
+    const error = catchConfigError(() =>
+      load(validEnv({ GITHUB_WEBHOOK_SECRET: `  ${tooShort}\n` })),
+    );
+    expect(error.problems).toEqual(["GITHUB_WEBHOOK_SECRET: must be at least 16 characters"]);
     expect(`${error.message}${inspect(error)}`).not.toContain(tooShort);
   });
 

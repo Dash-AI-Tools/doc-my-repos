@@ -205,7 +205,7 @@ describe("logging a database handle", () => {
     vi.stubEnv("GITHUB_APP_INSTALLATION_ID", "2");
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY_PATH", "");
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "w");
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "webhook-secret-0123");
     vi.stubEnv("SYNC_SECRET", "sync-secret-0123456");
     vi.stubEnv("DATABASE_URL", SENTINEL_URL);
     const handle = getDb();
@@ -297,7 +297,7 @@ describe("getDb", () => {
     vi.stubEnv("GITHUB_APP_INSTALLATION_ID", "2");
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
     vi.stubEnv("GITHUB_APP_PRIVATE_KEY_PATH", "");
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "w");
+    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "webhook-secret-0123");
     vi.stubEnv("SYNC_SECRET", "sync-secret-0123456");
     vi.stubEnv("DATABASE_URL", databaseUrl);
   };
