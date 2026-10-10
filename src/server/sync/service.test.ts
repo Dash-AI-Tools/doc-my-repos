@@ -254,7 +254,7 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
     expect((await call(post())).response.status).toBe(200);
   });
 
-  it("answers 409 while another sync holds the repository, and 200 when only one is held", async () => {
+  it("answers 409 for a never-synced repository whose lock is held elsewhere (nothing recorded)", async () => {
     const held = await withRepoSyncLock(h.pool, { githubId: HANDBOOK_ID }, async () => ({
       one: await call(post('{"repo":"handbook"}')),
       all: await call(post()),
@@ -262,10 +262,7 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
     expect(held.acquired).toBe(true);
     if (!held.acquired) return;
     expect(held.value.one.response.status).toBe(409);
-    expect(held.value.one.json).toMatchObject({
-      ok: false,
-      repositories: [{ repo: "acme/handbook", status: "skipped" }],
-    });
+    expect(held.value.one.json).toMatchObject({ ok: false, error: "repository_busy" });
     expect(held.value.all.response.status).toBe(200);
     expect(
       held.value.all.json.repositories.map((r: { repo: string; status: string }) => [
@@ -276,6 +273,44 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
       ["acme/handbook", "skipped"],
       ["acme/metrics", "ok"],
     ]);
+  });
+
+  it("answers 202 coalesced while another sync holds a stored repository, and the request survives", async () => {
+    await call(post());
+    const requested = async () =>
+      (
+        await h.db.execute<{ github_id: string }>(
+          sql`select github_id from repos where sync_requested_at is not null order by github_id`,
+        )
+      ).rows.map((r) => Number(r.github_id));
+
+    const held = await withRepoSyncLock(h.pool, { githubId: HANDBOOK_ID }, async () => {
+      const one = await call(post('{"repo":"handbook"}'));
+      const marked = await requested();
+      const all = await call(post());
+      return { one, marked, all };
+    });
+    expect(held.acquired).toBe(true);
+    if (!held.acquired) return;
+    expect(held.value.one.response.status).toBe(202);
+    expect(held.value.one.json).toMatchObject({ ok: true, status: "coalesced" });
+    expect(held.value.marked).toEqual([HANDBOOK_ID]);
+    // Only one repository busy: 200, the busy one skipped, its request still recorded.
+    expect(held.value.all.response.status).toBe(200);
+    expect(
+      held.value.all.json.repositories.map((r: { repo: string; status: string }) => [
+        r.repo,
+        r.status,
+      ]),
+    ).toEqual([
+      ["acme/handbook", "skipped"],
+      ["acme/metrics", "unchanged"],
+    ]);
+    expect(await requested()).toEqual([HANDBOOK_ID]);
+
+    // The next full sync covers it and clears the marker.
+    expect((await call(post())).response.status).toBe(200);
+    expect(await requested()).toEqual([]);
   });
 
   it("answers 503 when the installation is unavailable and keeps stored content", async () => {

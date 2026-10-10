@@ -22,14 +22,26 @@ import {
   type RemovalOutcome,
 } from "./removal";
 import {
+  clearSyncRequest,
+  databaseInstant,
+  isSyncRequested,
+  listSyncRequests,
+  markSyncRequested,
+  writtenSince,
+  type DbInstant,
+} from "./requests";
+import {
   INSTALLATION_WIDE_KINDS,
   RepoSyncError,
+  RepoSyncSkipped,
   describeSyncError,
   failureEntry,
   reapStaleRuns,
   recordRepoOutcome,
   runRepos,
+  underRepoLock,
   withRun,
+  type HeldRepoLock,
   type RepoWorkResult,
   type RunLedger,
   type RunRepo,
@@ -49,9 +61,14 @@ import { planTree, type StoredTreeState, type TreePlan } from "./tree";
  *   repositories narrowed by config, syncs each one, then removes stored repos the complete
  *   listing no longer selects (task 5.9, `removal.ts`): dropped from config, excluded, archived,
  *   or gone from the installation. Nothing is removed when the listing failed.
- * - `syncOne`: a single-repo run for `POST /api/sync` and webhooks (6.x). The repo must be in the
- *   installation listing and pass the config narrowing; otherwise a typed `not_found` or
- *   `not_configured` result is returned and no run is recorded.
+ * - `syncOne`: one single-repo run (one pass). The repo must be in the installation listing and
+ *   pass the config narrowing; otherwise a typed `not_found` or `not_configured` result is
+ *   returned and no run is recorded.
+ * - `requestSync` (task 6.4): what `POST /api/sync` and webhooks call for one repo. It records a
+ *   rerun marker, then runs `syncOne` passes under the repo lock until no request is waiting, or
+ *   reports `coalesced` when another sync holds the repo (that holder runs again for it). See
+ *   `requests.ts` for the protocol. `drainSyncRequests` runs every waiting request; `syncAll` calls
+ *   it at the end.
  *
  * Inputs are injected through a `SyncContext` (database, pool, GitHub client, validated config);
  * nothing here reads the environment or files. `src/server/runtime.ts` builds the context.
@@ -362,10 +379,18 @@ interface StoredRepoRow extends RunRepo {
   name: string;
 }
 
-/** Flags one stored row `error` under its repo lock (content kept). A busy repo is left alone. */
-async function markStoredError(ctx: SyncContext, row: RunRepo, message: string): Promise<void> {
+/**
+ * Flags one stored row `error` under its repo lock (content kept), or under `held` when that is the
+ * row's lock. A busy repo is left alone.
+ */
+async function markStoredError(
+  ctx: SyncContext,
+  row: RunRepo,
+  message: string,
+  held?: HeldRepoLock,
+): Promise<void> {
   try {
-    await withRepoSyncLock(ctx.pool, { githubId: row.githubId }, () =>
+    await underRepoLock(ctx.pool, row.githubId, held, () =>
       recordRepoOutcome(ctx.db, row, { status: "error", message }),
     );
   } catch {
@@ -384,6 +409,7 @@ async function recordDiscoveryFailure(
   ledger: RunLedger,
   error: GitHubError,
   scope: "all" | number | null,
+  held?: HeldRepoLock,
 ): Promise<SyncErrorInfo> {
   const described = describeSyncError(listingError(error), ctx.now());
   if (ledger.fatal === null) ledger.fatal = described;
@@ -395,7 +421,7 @@ async function recordDiscoveryFailure(
     ? query.orderBy(repos.id)
     : query.where(eq(repos.githubId, scope)));
   for (const row of rows) {
-    await markStoredError(ctx, row, described.message);
+    await markStoredError(ctx, row, described.message, held);
     ledger.results.push(failureEntry(row, described, "skipped"));
   }
   return described;
@@ -449,9 +475,29 @@ async function recordInaccessible(
   }
 }
 
-function worker(ctx: SyncContext) {
-  return (repo: DiscoveredRepo, { signal }: { signal: AbortSignal }) =>
-    syncRepo(ctx, repo, { signal });
+/**
+ * The `runRepos` worker: one pass over one repo, under its lock. `since` is the database instant
+ * taken before the run's listing.
+ *
+ * - When another sync wrote the repo after `since`, this run's listing is older than what is
+ *   stored (for example `public` from before a `privatized` event that a newer sync already
+ *   applied), so the repo is skipped (`RepoSyncSkipped`) rather than written back with stale
+ *   metadata. Its rerun marker is left alone.
+ * - Otherwise the repo is synced, and then the requests the pass covers (marker <= `since`) are
+ *   cleared, whether the pass succeeded or failed: a failed repo is in `error` and is retried by
+ *   the next request or full sync, not in a loop. An aborted pass or a lost lock clears nothing.
+ */
+function worker(ctx: SyncContext, since: DbInstant) {
+  return async (repo: DiscoveredRepo, { signal }: { signal: AbortSignal }) => {
+    if (await writtenSince(ctx.db, repo.githubId, since)) throw new RepoSyncSkipped();
+    try {
+      return await syncRepo(ctx, repo, { signal });
+    } finally {
+      if (!signal.aborted) {
+        await clearSyncRequest(ctx.db, repo.githubId, since).catch(() => false);
+      }
+    }
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -460,6 +506,8 @@ function worker(ctx: SyncContext) {
 export interface SyncAllOptions {
   trigger: RunTrigger;
   signal?: AbortSignal;
+  /** Passed to the drain's `requestSync` calls (see `RequestSyncOptions.rearm`). */
+  rearm?(task: Promise<void>): void;
 }
 
 export interface SyncAllResult {
@@ -474,6 +522,12 @@ export interface SyncAllResult {
   discoveredGithubIds: number[];
   /** What the removal step did per planned repo (task 5.9); empty when it did not run. */
   removals: RemovalOutcome[];
+  /**
+   * Waiting sync requests run after the run (task 6.4, `drainSyncRequests`): requests that arrived
+   * while this run held a repo, repos this run found busy, markers left by a crashed process.
+   * Empty when the run did not finish cleanly.
+   */
+  drained: DrainedRequest[];
   /** The error that stopped the run (failed listing, rate limit, ...), or null. Fixed messages only. */
   fatal: SyncErrorInfo | null;
 }
@@ -497,6 +551,11 @@ function removalAllowed(ledger: RunLedger, signal: AbortSignal): boolean {
  * complete listing no longer selects (`planRemovals`/`executeRemovals`, recorded as `removed`
  * entries), and reports config-listed repos the installation cannot access. A failed listing
  * fails the run and deletes nothing.
+ *
+ * Coalescing (task 6.4): a repo whose lock is busy is not lost. Its rerun marker is set, and after
+ * the run every waiting request is drained (`drainSyncRequests`): the drain's own try-lock comes
+ * after the marker, so either it syncs the repo or the holder still holds the lock and reruns
+ * when it lets go. The drain is skipped after a fatal error or an abort.
  */
 export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promise<SyncAllResult> {
   await reapStaleRuns(ctx.db, ctx.pool);
@@ -508,22 +567,29 @@ export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promis
     ctx.pool,
     { trigger: options.trigger, scope: null, signal: options.signal },
     async ({ signal, ledger }) => {
-      // Taken before the listing: rows a concurrent sync writes after it are not removed.
+      // Taken before the listing: rows a concurrent sync writes after it are not removed, and
+      // requests newer than it are not consumed by this run.
       const listedAt = await databaseNow(ctx.db);
+      const since = await databaseInstant(ctx.db);
       discovery = await discoverRepositories(ctx.github, ctx.config, { signal });
       if (!discovery.complete) {
         await recordDiscoveryFailure(ctx, ledger, discovery.error, "all");
         fatal = ledger.fatal;
         return [...ledger.results];
       }
-      ledger.add(
-        await runRepos(ctx.db, ctx.pool, discovery.repos, worker(ctx), {
-          signal,
-          concurrency: ctx.tuning.repoConcurrency,
-          lockWaitMs: ctx.tuning.lockWaitMs,
-          now: ctx.now,
-        }),
-      );
+      const synced = await runRepos(ctx.db, ctx.pool, discovery.repos, worker(ctx, since), {
+        signal,
+        concurrency: ctx.tuning.repoConcurrency,
+        lockWaitMs: ctx.tuning.lockWaitMs,
+        now: ctx.now,
+      });
+      // A busy repo is held by another sync: record the request so it is synced after that one.
+      for (const entry of synced.results) {
+        if (entry.status === "skipped" && entry.errorKind === "busy") {
+          await markSyncRequested(ctx.db, entry.githubId).catch(() => false);
+        }
+      }
+      ledger.add(synced);
       const handled: { outcome: RemovalOutcome; entry: SyncRepoResult }[] = [];
       if (removalAllowed(ledger, signal)) {
         const planned = planRemovals({
@@ -548,11 +614,20 @@ export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promis
     },
   );
   const found = discovery as DiscoveryResult | null;
+  const drained =
+    run.ran && fatal === null && options.signal?.aborted !== true
+      ? await drainSyncRequests(ctx, {
+          trigger: options.trigger,
+          signal: options.signal,
+          rearm: options.rearm,
+        })
+      : [];
   return {
     run,
     discovery: found,
     discoveredGithubIds: found?.complete ? found.repos.map((r) => r.githubId) : [],
     removals,
+    drained,
     fatal,
   };
 }
@@ -569,6 +644,11 @@ export type SyncOneTarget = { owner?: string; name: string } | { githubId: numbe
 export interface SyncOneOptions {
   trigger: RunTrigger;
   signal?: AbortSignal;
+  /**
+   * The caller already holds this repo's sync lock (`requestSync`). Only with a `{ githubId }`
+   * target of the same id; the run then syncs under that lock instead of taking it.
+   */
+  heldLock?: HeldRepoLock;
 }
 
 export type SyncOneResult =
@@ -639,55 +719,18 @@ export async function syncOne(
   options: SyncOneOptions,
 ): Promise<SyncOneResult> {
   validateTarget(target);
+  const held = options.heldLock;
+  if (held !== undefined && !("githubId" in target && target.githubId === held.githubId)) {
+    throw new TypeError("heldLock needs a { githubId } target of the same repository");
+  }
   await reapStaleRuns(ctx.db, ctx.pool);
+  const since = await databaseInstant(ctx.db);
   const discovery = await discoverRepositories(ctx.github, ctx.config, { signal: options.signal });
+  if (!discovery.complete) return listingFailed(ctx, target, discovery, options);
 
-  if (!discovery.complete) {
-    const stored = await findStoredRow(ctx, target);
-    const scope =
-      "githubId" in target
-        ? stored
-          ? `${stored.owner}/${stored.name}`
-          : `github:${target.githubId}`
-        : stored
-          ? `${stored.owner}/${stored.name}`
-          : target.owner === undefined
-            ? target.name
-            : `${target.owner}/${target.name}`;
-    let error: SyncErrorInfo = describeSyncError(listingError(discovery.error), ctx.now());
-    const run = await withRun(
-      ctx.db,
-      ctx.pool,
-      { trigger: options.trigger, scope, signal: options.signal },
-      async ({ ledger }) => {
-        error = await recordDiscoveryFailure(
-          ctx,
-          ledger,
-          discovery.error,
-          stored?.githubId ?? null,
-        );
-        return [...ledger.results];
-      },
-    );
-    return { status: "discovery_failed", run, error, discovery };
-  }
-
-  const repo = discovery.repos.find((r) => matches(target, r));
-  if (repo === undefined) {
-    const skipped = discovery.skipped.find((r) => matches(target, r));
-    if (skipped !== undefined)
-      return { status: "not_configured", reason: skipped.reason, discovery };
-    if (ctx.config.repos !== undefined) {
-      const name = "githubId" in target ? (await findStoredRow(ctx, target))?.name : target.name;
-      const listed = ctx.config.repos.some((e) =>
-        sameName(typeof e === "string" ? e : e.name, name ?? ""),
-      );
-      if (name !== undefined && !listed) {
-        return { status: "not_configured", reason: "not_listed", discovery };
-      }
-    }
-    return { status: "not_found", discovery };
-  }
+  const found = await resolveListed(ctx, target, discovery);
+  if (!("repo" in found)) return found;
+  const { repo } = found;
 
   const run = await withRun(
     ctx.db,
@@ -695,10 +738,11 @@ export async function syncOne(
     { trigger: options.trigger, scope: `${repo.owner}/${repo.name}`, signal: options.signal },
     async ({ signal, ledger }) => {
       ledger.add(
-        await runRepos(ctx.db, ctx.pool, [repo], worker(ctx), {
+        await runRepos(ctx.db, ctx.pool, [repo], worker(ctx, since), {
           signal,
           lockWaitMs: ctx.tuning.lockWaitMs,
           now: ctx.now,
+          heldLock: held,
         }),
       );
       return [...ledger.results];
@@ -706,6 +750,71 @@ export async function syncOne(
   );
   const result = run.ran ? (run.value[0] ?? null) : null;
   return { status: "synced", run, repo, result, discovery };
+}
+
+/** The target in a complete listing, or why it is not synced (`not_found`, `not_configured`). */
+async function resolveListed(
+  ctx: SyncContext,
+  target: SyncOneTarget,
+  discovery: Extract<DiscoveryResult, { complete: true }>,
+): Promise<
+  { repo: DiscoveredRepo } | Extract<SyncOneResult, { status: "not_found" | "not_configured" }>
+> {
+  const repo = discovery.repos.find((r) => matches(target, r));
+  if (repo !== undefined) return { repo };
+  const skipped = discovery.skipped.find((r) => matches(target, r));
+  if (skipped !== undefined) return { status: "not_configured", reason: skipped.reason, discovery };
+  if (ctx.config.repos !== undefined) {
+    const name = "githubId" in target ? (await findStoredRow(ctx, target))?.name : target.name;
+    const listed = ctx.config.repos.some((e) =>
+      sameName(typeof e === "string" ? e : e.name, name ?? ""),
+    );
+    if (name !== undefined && !listed) {
+      return { status: "not_configured", reason: "not_listed", discovery };
+    }
+  }
+  return { status: "not_found", discovery };
+}
+
+/**
+ * A failed listing for a single-repo sync: records a failed run (scope: the target's
+ * `owner/name` when known, else `github:<id>`) and, for installation-wide kinds, marks the
+ * target's stored row `error`. Deletes nothing.
+ */
+async function listingFailed(
+  ctx: SyncContext,
+  target: SyncOneTarget,
+  discovery: Extract<DiscoveryResult, { complete: false }>,
+  options: SyncOneOptions,
+): Promise<SyncOneResult> {
+  const stored = await findStoredRow(ctx, target);
+  const scope =
+    "githubId" in target
+      ? stored
+        ? `${stored.owner}/${stored.name}`
+        : `github:${target.githubId}`
+      : stored
+        ? `${stored.owner}/${stored.name}`
+        : target.owner === undefined
+          ? target.name
+          : `${target.owner}/${target.name}`;
+  let error: SyncErrorInfo = describeSyncError(listingError(discovery.error), ctx.now());
+  const run = await withRun(
+    ctx.db,
+    ctx.pool,
+    { trigger: options.trigger, scope, signal: options.signal },
+    async ({ ledger }) => {
+      error = await recordDiscoveryFailure(
+        ctx,
+        ledger,
+        discovery.error,
+        stored?.githubId ?? null,
+        options.heldLock,
+      );
+      return [...ledger.results];
+    },
+  );
+  return { status: "discovery_failed", run, error, discovery };
 }
 
 async function findStoredRow(
@@ -724,4 +833,244 @@ async function findStoredRow(
     .where(where)
     .limit(1);
   return row;
+}
+
+// ---------------------------------------------------------------------------------------------
+// requestSync: coalesced single-repo syncs (task 6.4)
+
+/** Passes one `requestSync` call runs before it hands a still-waiting request to `rearm`. */
+export const DEFAULT_MAX_PASSES = 5;
+/** How long a request for a repo with no stored row keeps retrying a busy lock (see below). */
+export const DEFAULT_QUEUE_WAIT_MS = 10 * 60_000;
+const QUEUE_FIRST_DELAY_MS = 50;
+const QUEUE_MAX_DELAY_MS = 1_000;
+
+/** Test seams: each runs at one point of the protocol and may pause it. */
+export interface RequestSyncHooks {
+  /** After the marker write (`marked` false: no stored row), before the lock is tried. */
+  afterMark?(state: { githubId: number; marked: boolean }): void | Promise<void>;
+  /** Under the lock, after the pass's start instant was taken, before it reads GitHub. */
+  passStart?(pass: number): void | Promise<void>;
+  /** Under the lock, after the pass finished and cleared what it covered, before unlocking. */
+  beforeUnlock?(pass: number): void | Promise<void>;
+  /** After the lock was released, before the marker is rechecked. */
+  afterUnlock?(pass: number): void | Promise<void>;
+  /** Sleep between queue attempts. */
+  sleep?(ms: number, signal?: AbortSignal): Promise<void>;
+}
+
+export interface RequestSyncOptions {
+  trigger: RunTrigger;
+  signal?: AbortSignal;
+  /** Default `DEFAULT_MAX_PASSES`. */
+  maxPasses?: number;
+  /**
+   * A repo with no stored row cannot hold a marker, so a request for it that finds the lock busy
+   * keeps retrying (re-marking each time, since the holder's first sync may create the row) for
+   * up to this long, then reports `busy`. Default `DEFAULT_QUEUE_WAIT_MS`; 0 reports `busy` at once.
+   */
+  queueWaitMs?: number;
+  /**
+   * Takes the follow-up call started when `maxPasses` passes ran and a request is still waiting.
+   * The task never rejects. Default: run it unawaited.
+   */
+  rearm?(task: Promise<void>): void;
+  hooks?: RequestSyncHooks;
+}
+
+export type RequestSyncResult =
+  | {
+      /**
+       * This call ran `passes` passes (0 when a name target was not found, not configured, or the
+       * listing failed). `result` is the last pass's. `handedOff`: a request is still waiting and
+       * belongs to another holder of the lock or to the `rearm` task.
+       */
+      status: "done";
+      passes: number;
+      result: SyncOneResult;
+      handedOff: boolean;
+    }
+  /** Another sync holds the repo. The request is recorded; that holder runs again for it. */
+  | { status: "coalesced"; passes: 0 }
+  /** The repo has no stored row and its lock stayed busy for `queueWaitMs`: nothing recorded. */
+  | { status: "busy"; passes: 0 }
+  /** The caller's signal aborted. Any waiting request stays recorded. */
+  | { status: "aborted"; passes: number; result: SyncOneResult | null };
+
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    }
+    signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
+/**
+ * Requests a sync of one repository and coalesces it with any sync already running for it
+ * (webhooks spec, "Idempotent processing"; design decision 4, "Busy is not a no-op").
+ *
+ * 1. The request is recorded first: the repo's marker is set (`markSyncRequested`).
+ * 2. The repo lock is tried once. Busy: the result is `coalesced`; the holder will see the marker.
+ * 3. Acquired: one pass runs under the lock: a start instant, then `syncOne` under the held lock
+ *    (fresh listing, tree, blobs, persist), then the marker is cleared if it is not newer than
+ *    the start instant. The lock is released, and only then the marker is rechecked: when it is
+ *    set (a request arrived during the pass), another pass runs (back to the try-lock).
+ *
+ * Why nothing is lost: a requester's try-lock fails only while some holder holds the lock, and the
+ * requester's marker was written before that attempt, so it is in place before that holder
+ * unlocks and rechecks. A request that arrived during a pass is newer than the pass's start
+ * instant and survives the clear. Passes of one repo never overlap (the lock), and passes of
+ * different repos run in parallel (different locks).
+ *
+ * A pass that fails still clears the requests it covered (the repo shows `error`; the next
+ * request or full sync retries, not a loop). An aborted pass or a lost lock clears nothing. A
+ * crashed process leaves its marker; `drainSyncRequests` (end of `syncAll`) picks it up.
+ *
+ * At most `maxPasses` passes run per call, so a repo that keeps receiving pushes cannot hold one
+ * caller forever; a request still waiting then goes to `rearm` as a fresh call.
+ *
+ * A name target is first resolved through the installation listing (an unknown, unconfigured, or
+ * failed-listing target is returned as `done` with no pass); each pass lists again under the lock.
+ */
+export async function requestSync(
+  ctx: SyncContext,
+  target: SyncOneTarget,
+  options: RequestSyncOptions,
+): Promise<RequestSyncResult> {
+  validateTarget(target);
+  const maxPasses = positiveInt(options.maxPasses ?? DEFAULT_MAX_PASSES, "maxPasses");
+  const queueWaitMs = options.queueWaitMs ?? DEFAULT_QUEUE_WAIT_MS;
+  if (typeof queueWaitMs !== "number" || Number.isNaN(queueWaitMs) || queueWaitMs < 0) {
+    throw new TypeError("queueWaitMs must be a number >= 0");
+  }
+  const { signal, trigger } = options;
+  const hooks = options.hooks ?? {};
+  const sleep = hooks.sleep ?? abortableSleep;
+
+  let githubId: number;
+  if ("githubId" in target) {
+    githubId = target.githubId;
+  } else {
+    await reapStaleRuns(ctx.db, ctx.pool);
+    const discovery = await discoverRepositories(ctx.github, ctx.config, { signal });
+    const outcome = discovery.complete
+      ? await resolveListed(ctx, target, discovery)
+      : await listingFailed(ctx, target, discovery, options);
+    if (!("repo" in outcome))
+      return { status: "done", passes: 0, result: outcome, handedOff: false };
+    githubId = outcome.repo.githubId;
+  }
+
+  const deadline = ctx.now() + queueWaitMs;
+  let delay = QUEUE_FIRST_DELAY_MS;
+  let passes = 0;
+  let last: SyncOneResult | null = null;
+  let marked = await markSyncRequested(ctx.db, githubId);
+  await hooks.afterMark?.({ githubId, marked });
+
+  for (;;) {
+    const pass = passes + 1;
+    const lock = await withRepoSyncLock(
+      ctx.pool,
+      { githubId },
+      async (held) => {
+        const since = await databaseInstant(ctx.db);
+        await hooks.passStart?.(pass);
+        const result = await syncOne(
+          ctx,
+          { githubId },
+          { trigger, signal, heldLock: { githubId, signal: held.signal } },
+        );
+        if (!held.signal.aborted) {
+          await clearSyncRequest(ctx.db, githubId, since).catch(() => false);
+        }
+        await hooks.beforeUnlock?.(pass);
+        return result;
+      },
+      { signal },
+    );
+
+    if (!lock.acquired) {
+      if (lock.reason !== "busy") return { status: "aborted", passes, result: last };
+      if (last !== null) return { status: "done", passes, result: last, handedOff: true };
+      if (marked) return { status: "coalesced", passes: 0 };
+      // No stored row, so no marker the holder could see: wait for the lock (queued), re-marking
+      // each time in case the holder's first sync created the row meanwhile.
+      if (ctx.now() >= deadline) return { status: "busy", passes: 0 };
+      await sleep(delay, signal);
+      if (signal?.aborted) return { status: "aborted", passes, result: last };
+      delay = Math.min(delay * 2, QUEUE_MAX_DELAY_MS);
+      marked = await markSyncRequested(ctx.db, githubId);
+      continue;
+    }
+
+    passes = pass;
+    last = lock.value;
+    if (signal?.aborted) return { status: "aborted", passes, result: last };
+    await hooks.afterUnlock?.(pass);
+    if (!(await isSyncRequested(ctx.db, githubId))) {
+      return { status: "done", passes, result: last, handedOff: false };
+    }
+    if (passes >= maxPasses) {
+      const follow = Promise.resolve()
+        .then(() => requestSync(ctx, { githubId }, options))
+        .then(
+          () => undefined,
+          () => undefined,
+        );
+      try {
+        if (options.rearm) options.rearm(follow);
+      } catch {
+        // The follow-up runs regardless; a broken scheduler only loses tracking.
+      }
+      return { status: "done", passes, result: last, handedOff: true };
+    }
+    marked = true;
+  }
+}
+
+/** One drained request: the repo and what `requestSync` did. */
+export interface DrainedRequest {
+  githubId: number;
+  status: RequestSyncResult["status"];
+  passes: number;
+}
+
+export interface DrainOptions {
+  trigger: RunTrigger;
+  signal?: AbortSignal;
+  /** Passed to each `requestSync`. */
+  rearm?(task: Promise<void>): void;
+}
+
+/**
+ * Runs every waiting sync request (repos whose marker is set), one repo at a time, oldest request
+ * first, each through `requestSync` (so a busy repo is left to its holder). `syncAll` calls it at
+ * the end; a startup or periodic drain (tasks 12.x) can call it to pick up markers a crashed
+ * process left. A failure on one repo is reported and the drain goes on.
+ */
+export async function drainSyncRequests(
+  ctx: SyncContext,
+  options: DrainOptions,
+): Promise<DrainedRequest[]> {
+  const out: DrainedRequest[] = [];
+  for (const githubId of await listSyncRequests(ctx.db)) {
+    if (options.signal?.aborted) break;
+    try {
+      const result = await requestSync(
+        ctx,
+        { githubId },
+        { trigger: options.trigger, signal: options.signal, queueWaitMs: 0, rearm: options.rearm },
+      );
+      out.push({ githubId, status: result.status, passes: result.passes });
+    } catch {
+      out.push({ githubId, status: "aborted", passes: 0 });
+    }
+  }
+  return out;
 }

@@ -62,7 +62,8 @@ export interface WebhookRouterDeps {
   narrow(name: string): NameSelection;
   /**
    * Syncs one repository by GitHub id with trigger `webhook`, resolving to a fixed status word
-   * (`synced`, `not_found`, ...). Task 6.4 adds coalescing behind this seam.
+   * (`ok`, `coalesced`, `not_found`, ...). Coalesced with a running sync of the same repo
+   * (task 6.4, `requestSync`).
    */
   syncRepo(githubId: number): Promise<string>;
   /** A full sync with trigger `webhook`, resolving to a fixed status word. */

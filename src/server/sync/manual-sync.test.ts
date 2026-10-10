@@ -5,9 +5,11 @@ import type { SyncRepoResult } from "../db/schema";
 import type { SyncAllResult, SyncOneResult, SyncOneTarget } from "./engine";
 import {
   MAX_BODY_BYTES,
+  fromRequestSync,
   handleManualSync,
   methodNotAllowed,
   type ManualSyncDeps,
+  type ManualSyncOneResult,
   type ManualSyncService,
 } from "./manual-sync";
 import { REPO_BUSY_MESSAGE, type RunStats, type SyncErrorInfo } from "./runs";
@@ -67,6 +69,7 @@ function allResult(
     discovery: null,
     discoveredGithubIds: [],
     removals: [],
+    drained: [],
     fatal,
   };
 }
@@ -98,7 +101,9 @@ function info(over: Partial<SyncErrorInfo> = {}): SyncErrorInfo {
 // ---------------------------------------------------------------------------------------------
 // Harness
 
-function harness(over: { all?: SyncAllResult; one?: SyncOneResult; secret?: string | null } = {}) {
+function harness(
+  over: { all?: SyncAllResult; one?: ManualSyncOneResult; secret?: string | null } = {},
+) {
   const service = {
     syncAll: vi.fn<ManualSyncService["syncAll"]>(async () => over.all ?? allResult("success", [])),
     syncOne: vi.fn<ManualSyncService["syncOne"]>(
@@ -378,15 +383,39 @@ describe("invalid bodies (after authentication)", () => {
 });
 
 describe("outcome mapping", () => {
-  it("answers 409 when the repository is already being synced", async () => {
-    const busy = entry({ status: "skipped", error: REPO_BUSY_MESSAGE, added: 0 });
-    const one = harness({ one: oneResult("success", busy) });
+  it("answers 202 when the request was coalesced into a running sync (task 6.4)", async () => {
+    const one = harness({ one: { status: "coalesced" } });
     const a = await call(one, post('{"repo":"handbook"}'));
-    expect(a.response.status).toBe(409);
-    expect(a.json).toMatchObject({ ok: false, repositories: [{ status: "skipped" }] });
+    expect(a.response.status).toBe(202);
+    expect(a.json).toEqual({
+      ok: true,
+      scope: "repo",
+      status: "coalesced",
+      message: "A sync is already running; it will sync again to include this request.",
+    });
 
+    // Every repository busy in a full sync: each was marked and its holder reruns.
+    const busy = entry({ status: "skipped", error: REPO_BUSY_MESSAGE, added: 0 });
     const all = harness({ all: allResult("success", [busy, { ...busy, githubId: 2 }]) });
-    expect((await call(all, post())).response.status).toBe(409);
+    const b = await call(all, post());
+    expect(b.response.status).toBe(202);
+    expect(b.json).toMatchObject({
+      ok: true,
+      status: "coalesced",
+      repositories: [{ status: "skipped" }, { status: "skipped" }],
+    });
+  });
+
+  it("answers 409 when a never-synced repository could not take the request", async () => {
+    const one = harness({ one: { status: "busy" } });
+    const a = await call(one, post('{"githubId":7}'));
+    expect(a.response.status).toBe(409);
+    expect(a.json).toMatchObject({ ok: false, error: "repository_busy" });
+
+    // A busy entry from a single run (no longer produced by requestSync) still maps to 409.
+    const busy = entry({ status: "skipped", error: REPO_BUSY_MESSAGE, added: 0 });
+    const legacy = harness({ one: oneResult("success", busy) });
+    expect((await call(legacy, post('{"repo":"handbook"}'))).response.status).toBe(409);
   });
 
   it("keeps 200 when only some repositories were busy", async () => {
@@ -591,5 +620,20 @@ describe("methodNotAllowed", () => {
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST");
     expect(await response.json()).toEqual({ error: "method_not_allowed" });
+  });
+});
+
+describe("fromRequestSync", () => {
+  it("maps requestSync results to what the handler answers", () => {
+    const last = oneResult("success", entry());
+    expect(fromRequestSync({ status: "done", passes: 2, result: last, handedOff: false })).toBe(
+      last,
+    );
+    expect(fromRequestSync({ status: "coalesced", passes: 0 })).toEqual({ status: "coalesced" });
+    expect(fromRequestSync({ status: "busy", passes: 0 })).toEqual({ status: "busy" });
+    expect(fromRequestSync({ status: "aborted", passes: 1, result: last })).toBe(last);
+    expect(fromRequestSync({ status: "aborted", passes: 0, result: null })).toEqual({
+      status: "busy",
+    });
   });
 });

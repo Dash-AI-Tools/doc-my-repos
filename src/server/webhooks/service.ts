@@ -3,7 +3,7 @@ import "server-only";
 import { readWebhookSecret, type EnvSource } from "../config/env";
 import { getRuntime } from "../runtime";
 import { repoNameSelection } from "../sync/discovery";
-import { syncAll, syncOne, type SyncContext } from "../sync/engine";
+import { requestSync, syncAll, type RequestSyncResult, type SyncContext } from "../sync/engine";
 import { removeRepo } from "../sync/removal";
 import type { WebhookDispatch } from "./endpoint";
 import { createBackgroundTasks, createWebhookRouter, type BackgroundTasks } from "./router";
@@ -33,18 +33,43 @@ export interface WebhookWiring {
   removalLockWaitMs?: number;
 }
 
-/** The event router over the real sync engine. Background work is tracked in `wiring.tasks`. */
+/**
+ * The status word logged for a webhook sync request: the last pass's repo status (`ok`,
+ * `unchanged`, `error`, `skipped`) or `not_found` / `not_configured` / `discovery_failed`;
+ * `coalesced` when another sync held the repo (it reruns for this delivery); `busy` when a
+ * never-synced repo stayed locked past the queue wait; `aborted`.
+ */
+export function requestSyncStatus(result: RequestSyncResult): string {
+  switch (result.status) {
+    case "done": {
+      const last = result.result;
+      return last.status === "synced" ? (last.result?.status ?? "skipped") : last.status;
+    }
+    default:
+      return result.status;
+  }
+}
+
+/**
+ * The event router over the real sync engine. Background work is tracked in `wiring.tasks`.
+ *
+ * Repeated and concurrent deliveries (task 6.4): every repo sync goes through `requestSync`, so a
+ * delivery that arrives while the repo is syncing is coalesced into a rerun of that sync rather
+ * than run in parallel or dropped, and a duplicate delivery re-runs an idempotent sync (an
+ * unchanged tree short-circuits after one branch request). Deliveries are not deduplicated by
+ * `X-GitHub-Delivery`: correctness does not depend on it, and GitHub's "Redeliver" reuses the id,
+ * so an operator's manual redelivery must still sync.
+ */
 export function createWebhookDispatch(wiring: WebhookWiring): WebhookDispatch {
   const { sync } = wiring;
+  const rearm = (task: Promise<void>) => wiring.tasks.detach(task);
   return createWebhookRouter({
     installationId: wiring.installationId,
     narrow: (name) => repoNameSelection(sync.config, name),
-    syncRepo: async (githubId) => {
-      const result = await syncOne(sync, { githubId }, { trigger: "webhook" });
-      return result.status === "synced" ? (result.result?.status ?? "skipped") : result.status;
-    },
+    syncRepo: async (githubId) =>
+      requestSyncStatus(await requestSync(sync, { githubId }, { trigger: "webhook", rearm })),
     syncAll: async () => {
-      const result = await syncAll(sync, { trigger: "webhook" });
+      const result = await syncAll(sync, { trigger: "webhook", rearm });
       return result.run.ran ? (result.fatal === null ? "done" : "failed") : "not_run";
     },
     removeRepo: async (githubId, reason) =>

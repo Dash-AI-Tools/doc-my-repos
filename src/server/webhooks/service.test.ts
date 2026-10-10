@@ -307,6 +307,120 @@ describeDb("webhook router wired to the sync engine", () => {
     expect(lastRun).toMatchObject({ trigger: "webhook", scope: null });
   });
 
+  // Task 6.4: repeated and concurrent deliveries.
+
+  /** Stored rows that a sync writes, without ids and timestamps. */
+  async function stored() {
+    const repoRows = await h.db
+      .select({
+        githubId: repos.githubId,
+        visibility: repos.visibility,
+        treeSha: repos.treeSha,
+        headEtag: repos.headEtag,
+        readmeSha: repos.readmeSha,
+        syncStatus: repos.syncStatus,
+        syncError: repos.syncError,
+        syncRequestedAt: repos.syncRequestedAt,
+      })
+      .from(repos)
+      .orderBy(asc(repos.githubId));
+    const docRows = await h.db
+      .select({
+        githubId: repos.githubId,
+        path: documents.path,
+        blobSha: documents.blobSha,
+        title: documents.title,
+        body: documents.body,
+        frontmatter: documents.frontmatter,
+      })
+      .from(documents)
+      .innerJoin(repos, eq(repos.id, documents.repoId))
+      .orderBy(asc(repos.githubId), asc(documents.path));
+    return { repoRows, docRows };
+  }
+
+  const BLOBS = /^\/repos\/acme\/handbook\/git\/blobs\//;
+  const TREES = /^\/repos\/acme\/handbook\/git\/trees\//;
+
+  it("a duplicate push delivery stores the same result as one delivery and refetches nothing", async () => {
+    fake.setFile(HANDBOOK_ID, "docs/start.md", "# Start\n\nPushed once.\n");
+    const push = pushPayload(HANDBOOK_ID, "handbook");
+    fake.clearRequests();
+    await send("push", push);
+    const once = await stored();
+    expect(fake.requestsTo(BLOBS)).toHaveLength(1);
+
+    await send("push", push); // the same delivery again
+    expect(await stored()).toEqual(once);
+    expect(fake.requestsTo(BLOBS)).toHaveLength(1);
+    expect(fake.requestsTo(TREES)).toHaveLength(1);
+  });
+
+  it("the same delivery twice at once runs no overlapping syncs and stores the same result", async () => {
+    fake.setFile(HANDBOOK_ID, "docs/start.md", "# Start\n\nPushed once.\n");
+    const push = pushPayload(HANDBOOK_ID, "handbook");
+    await send("push", push);
+    const once = await stored();
+
+    // Same starting point, then two deliveries dispatched before either finishes.
+    fake.setFile(HANDBOOK_ID, "docs/start.md", "# Start\n\nHello.\n");
+    await send("push", push);
+    fake.setFile(HANDBOOK_ID, "docs/start.md", "# Start\n\nPushed once.\n");
+    fake.clearRequests();
+    await Promise.all([
+      dispatch("push", push, "delivery-dup"),
+      dispatch("push", push, "delivery-dup"),
+    ]);
+    await tasks.idle();
+    expect(await stored()).toEqual(once);
+    expect(fake.requestsTo(BLOBS)).toHaveLength(1);
+    expect(fake.requestsTo(TREES)).toHaveLength(1);
+    // Each run of the repo held its lock alone: no two single-repo runs overlapped in time.
+    const runs = (await h.db.select().from(syncRuns).orderBy(asc(syncRuns.id))).filter(
+      (r) => r.scope === "acme/handbook",
+    );
+    for (let i = 1; i < runs.length; i++) {
+      expect(runs[i]!.startedAt.getTime()).toBeGreaterThanOrEqual(
+        runs[i - 1]!.finishedAt!.getTime(),
+      );
+    }
+  });
+
+  it("a push that arrives while its repository is syncing is coalesced and synced right after", async () => {
+    fake.setFile(HANDBOOK_ID, "docs/start.md", "# Start\n\nFirst push.\n");
+    let reached!: () => void;
+    const atBlob = new Promise<void>((resolve) => (reached = resolve));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let paused = false;
+    fake.onRequest = async (request) => {
+      if (paused || !BLOBS.test(request.path)) return;
+      paused = true;
+      reached();
+      await gate;
+    };
+    await dispatch("push", pushPayload(HANDBOOK_ID, "handbook"), "delivery-a");
+    await atBlob; // the first sync already has the first push's tree
+
+    fake.setFile(HANDBOOK_ID, "docs/start.md", "# Start\n\nSecond push.\n");
+    await dispatch("push", pushPayload(HANDBOOK_ID, "handbook"), "delivery-b");
+    // Let the second delivery's background task run to its answer while the first is paused.
+    for (let i = 0; i < 50 && !logged.some((l) => l.includes("delivery=delivery-b status=")); i++) {
+      await new Promise((resolve) => setImmediate(resolve));
+      await h.db.execute(sql`select 1`);
+    }
+    expect(logged).toContain(
+      "webhook: sync finished event=push action=- delivery=delivery-b status=coalesced",
+    );
+    release();
+    await tasks.idle();
+
+    expect((await docsOf(HANDBOOK_ID)).find((d) => d.path === "docs/start.md")?.body).toContain(
+      "Second push.",
+    );
+    expect((await repoRow(HANDBOOK_ID))?.syncRequestedAt).toBeNull();
+  });
+
   it("ignores an installation event for another installation", async () => {
     await send("installation", { action: "deleted", installation: { id: INSTALLATION + 1 } });
     for (const row of await h.db.select().from(repos)) expect(row.syncStatus).toBe("ok");

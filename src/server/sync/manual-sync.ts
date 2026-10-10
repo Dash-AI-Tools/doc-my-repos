@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { SyncRepoResult } from "../db/schema";
 import { verifySyncSecret } from "./auth";
-import type { SyncAllResult, SyncOneResult, SyncOneTarget } from "./engine";
+import type { RequestSyncResult, SyncAllResult, SyncOneResult, SyncOneTarget } from "./engine";
 import { REPO_BUSY_MESSAGE, describeSyncError, type RunStats, type SyncErrorInfo } from "./runs";
 
 /**
@@ -20,10 +20,12 @@ import { REPO_BUSY_MESSAGE, describeSyncError, type RunStats, type SyncErrorInfo
  *
  * Status codes:
  *   200  run finished with status success or partial (repositories lists every outcome)
+ *   202  coalesced (task 6.4): the repository (or, for a full sync, every repository) is being
+ *        synced by another run; the request is recorded and that run syncs again to include it
  *   400  invalid JSON or body            413  body over 4 KiB
  *   401  missing or wrong secret         404  repository unknown to the installation or not selected
- *   409  the repository is being synced by another run; nothing was done, retry shortly
- *        (task 6.4 will coalesce such requests and may answer 202 instead)
+ *   409  the repository has never been synced and its first sync is running elsewhere, so the
+ *        request could not be recorded; nothing was done, retry shortly
  *   500  server misconfigured or unexpected failure
  *   502  the run failed and a retry will not help by itself (credentials, repository errors)
  *   503  the run failed or could not start but is retryable; `Retry-After` is set when known
@@ -32,9 +34,33 @@ import { REPO_BUSY_MESSAGE, describeSyncError, type RunStats, type SyncErrorInfo
 export const MAX_BODY_BYTES = 4096;
 const MAX_RETRY_AFTER_SECONDS = 3600;
 
+/**
+ * A single-repo manual sync: the engine's `SyncOneResult` for the last pass that ran, `coalesced`
+ * when another sync held the repo (the request is recorded and that sync reruns), or `busy` when
+ * the request could not be recorded (no stored row yet and its first sync is running).
+ */
+export type ManualSyncOneResult = SyncOneResult | { status: "coalesced" } | { status: "busy" };
+
+/**
+ * Maps a `requestSync` result to what the handler answers. An aborted request (the handler passes
+ * no signal, so only a lost lock or shutdown) reports the last pass when one ran, else `busy`.
+ */
+export function fromRequestSync(result: RequestSyncResult): ManualSyncOneResult {
+  switch (result.status) {
+    case "done":
+      return result.result;
+    case "coalesced":
+      return { status: "coalesced" };
+    case "busy":
+      return { status: "busy" };
+    case "aborted":
+      return result.result ?? { status: "busy" };
+  }
+}
+
 export interface ManualSyncService {
   syncAll(options: { trigger: "manual" }): Promise<SyncAllResult>;
-  syncOne(target: SyncOneTarget, options: { trigger: "manual" }): Promise<SyncOneResult>;
+  syncOne(target: SyncOneTarget, options: { trigger: "manual" }): Promise<ManualSyncOneResult>;
 }
 
 export interface ManualSyncDeps {
@@ -251,12 +277,31 @@ function mapAll(result: SyncAllResult, now: number): Response {
   };
   const body = runBody(summary, entries, extra);
   if (run.status === "failed") return failureResponse(body, entries, fatal, now);
-  if (entries.length > 0 && entries.every(isBusy)) return json(409, { ...body, ok: false });
+  // Busy repos were marked and drained (task 6.4): their holders sync again for this request.
+  if (entries.length > 0 && entries.every(isBusy)) {
+    return json(202, { ...body, status: "coalesced", message: COALESCED_MESSAGE });
+  }
   return json(200, body);
 }
 
-function mapOne(result: SyncOneResult, now: number): Response {
+const COALESCED_MESSAGE = "A sync is already running; it will sync again to include this request.";
+
+function mapOne(result: ManualSyncOneResult, now: number): Response {
   switch (result.status) {
+    case "coalesced":
+      return json(202, {
+        ok: true,
+        scope: "repo",
+        status: "coalesced",
+        message: COALESCED_MESSAGE,
+      });
+    case "busy":
+      return json(409, {
+        ok: false,
+        scope: "repo",
+        error: "repository_busy",
+        message: "The repository's first sync is running; retry shortly.",
+      });
     case "not_found":
       return json(404, {
         ok: false,

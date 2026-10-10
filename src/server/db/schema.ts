@@ -131,6 +131,10 @@ export const repos = pgTable(
     syncStatus: repoSyncStatus("sync_status").notNull().default("pending"),
     syncError: text("sync_error"),
     lastSyncedAt: timestamptz("last_synced_at"),
+    // Rerun marker (task 6.4, `src/server/sync/requests.ts`): when a sync of this repo was last
+    // requested and not yet covered by a finished pass. Survives across processes and crashes.
+    // Never a portal field and never a `sync_runs` status.
+    syncRequestedAt: timestamptz("sync_requested_at"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },

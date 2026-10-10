@@ -61,6 +61,9 @@ export const REAPED_RUN_ERROR = "sync run abandoned: the process stopped before 
 export const RUN_LOCK_ERROR = "sync run could not take its run lock (database connection problem)";
 export const RUN_ABORTED_ERROR = "sync aborted";
 export const REPO_BUSY_MESSAGE = "another sync of this repository is running";
+/** A pass skipped because a newer sync wrote the repository after this pass's listing (task 6.4). */
+export const SUPERSEDED_MESSAGE =
+  "skipped: a newer sync of this repository finished after this run listed it";
 export const LOCK_LOST_MESSAGE =
   "lost the repository sync lock (database connection problem); retried on the next sync";
 
@@ -81,6 +84,18 @@ export type RepoSyncErrorKind =
   | "too_many_files"
   /** Listed in config but not accessible to the installation (task 5.3). */
   | "not_accessible";
+
+/**
+ * Thrown by a worker that decides not to sync a repo at all (task 6.4: its listing is older than a
+ * write by a newer sync). `runRepos` reports the repo `skipped` and records no status.
+ */
+export class RepoSyncSkipped extends Error {
+  override name = "RepoSyncSkipped";
+  readonly kind = "superseded";
+  constructor() {
+    super(SUPERSEDED_MESSAGE);
+  }
+}
 
 /** A typed per-repo failure the worker can throw for outcomes that are not exceptions upstream. */
 export class RepoSyncError extends Error {
@@ -429,10 +444,39 @@ export interface RunReposOptions {
    * For callers that know the error is not installation-wide; off by default.
    */
   continueOnFatal?: boolean;
-  /** Passed to `withRepoSyncLock`. Default 0: a busy repo is skipped (6.4 adds coalescing). */
+  /** Passed to `withRepoSyncLock`. Default 0: a busy repo is skipped (the caller marks it, 6.4). */
   lockWaitMs?: number;
+  /**
+   * The caller already holds the sync lock of the one repo in `items` (task 6.4, `requestSync`):
+   * the worker runs under that lock instead of taking it again (locks are not re-entrant, a second
+   * acquire would be busy). `signal` is the held lock's signal (aborts when its connection is lost).
+   */
+  heldLock?: HeldRepoLock;
   /** Clock for rate-limit retry times. */
   now?: () => number;
+}
+
+/** A repo sync lock the caller holds: the repo's GitHub id and the lock's signal. */
+export interface HeldRepoLock {
+  readonly githubId: number;
+  readonly signal: AbortSignal;
+}
+
+/**
+ * Runs `fn` under the repo's sync lock: directly when `held` is that repo's lock, else through
+ * `withRepoSyncLock` in try mode (a busy lock skips `fn`). For short status writes.
+ */
+export async function underRepoLock(
+  pool: Pool,
+  githubId: number,
+  held: HeldRepoLock | undefined,
+  fn: () => Promise<unknown>,
+): Promise<void> {
+  if (held !== undefined && held.githubId === githubId) {
+    await fn();
+    return;
+  }
+  await withRepoSyncLock(pool, { githubId }, fn);
 }
 
 export interface RunReposResult {
@@ -469,6 +513,10 @@ export async function runRepos<T extends RunRepo>(
     throw new TypeError("concurrency must be a positive integer");
   }
   const now = options.now ?? Date.now;
+  const held = options.heldLock;
+  if (held !== undefined && items.some((item) => item.githubId !== held.githubId)) {
+    throw new TypeError("heldLock covers only the repo it was taken for");
+  }
   const results: (SyncRepoResult | undefined)[] = new Array(items.length);
   let fatal: SyncErrorInfo | null = null;
   // Aborted on a fatal error so in-flight repos stop early.
@@ -484,52 +532,60 @@ export async function runRepos<T extends RunRepo>(
   const runOne = async (index: number, repo: T): Promise<void> => {
     let entry: SyncRepoResult | undefined;
     let lock;
+    const locked = async ({ signal }: { signal: AbortSignal }): Promise<void> => {
+      let outcome: SyncRepoResult;
+      let status: RepoStatusOutcome;
+      try {
+        const work = await worker(repo, { signal });
+        outcome = successEntry(repo, work);
+        status =
+          outcome.status === "error"
+            ? { status: "error", message: outcome.error ?? "", visibility: repo.visibility }
+            : { status: "ok" };
+      } catch (error) {
+        if (error instanceof RepoSyncSkipped) {
+          entry = failureEntry(repo, info(error.kind, SUPERSEDED_MESSAGE, false), "skipped");
+          return;
+        }
+        let described = describeSyncError(error, now());
+        if (described.kind === "aborted" && signal.aborted && !runSignal.aborted) {
+          // Only this repo's lock connection was lost: a per-repo failure, not a run abort.
+          described = info("lock_lost", LOCK_LOST_MESSAGE, true);
+        }
+        if (described.fatal && fatal !== null && described.kind === "aborted") {
+          // Stopped because another repo hit a fatal error: not this repo's failure.
+          entry = failureEntry(repo, fatal, "skipped");
+          return;
+        }
+        if (described.fatal && (described.kind === "aborted" || !options.continueOnFatal)) {
+          setFatal(described);
+        }
+        if (described.kind === "aborted") {
+          entry = failureEntry(repo, described, "skipped");
+          return;
+        }
+        outcome = failureEntry(repo, described);
+        status = { status: "error", message: described.message, visibility: repo.visibility };
+      }
+      entry = outcome;
+      // A lost lock means another sync may own the repo now: do not write its status.
+      if (signal.aborted && !runSignal.aborted) return;
+      try {
+        await recordRepoOutcome(db, repo, status);
+      } catch {
+        // The entry still reports the outcome; the next sync records the status.
+      }
+    };
     try {
-      lock = await withRepoSyncLock(
-        pool,
-        { githubId: repo.githubId },
-        async ({ signal }) => {
-          let outcome: SyncRepoResult;
-          let status: RepoStatusOutcome;
-          try {
-            const work = await worker(repo, { signal });
-            outcome = successEntry(repo, work);
-            status =
-              outcome.status === "error"
-                ? { status: "error", message: outcome.error ?? "", visibility: repo.visibility }
-                : { status: "ok" };
-          } catch (error) {
-            let described = describeSyncError(error, now());
-            if (described.kind === "aborted" && signal.aborted && !runSignal.aborted) {
-              // Only this repo's lock connection was lost: a per-repo failure, not a run abort.
-              described = info("lock_lost", LOCK_LOST_MESSAGE, true);
-            }
-            if (described.fatal && fatal !== null && described.kind === "aborted") {
-              // Stopped because another repo hit a fatal error: not this repo's failure.
-              entry = failureEntry(repo, fatal, "skipped");
-              return;
-            }
-            if (described.fatal && (described.kind === "aborted" || !options.continueOnFatal)) {
-              setFatal(described);
-            }
-            if (described.kind === "aborted") {
-              entry = failureEntry(repo, described, "skipped");
-              return;
-            }
-            outcome = failureEntry(repo, described);
-            status = { status: "error", message: described.message, visibility: repo.visibility };
-          }
-          entry = outcome;
-          // A lost lock means another sync may own the repo now: do not write its status.
-          if (signal.aborted && !runSignal.aborted) return;
-          try {
-            await recordRepoOutcome(db, repo, status);
-          } catch {
-            // The entry still reports the outcome; the next sync records the status.
-          }
-        },
-        { signal: runSignal, waitMs: options.lockWaitMs ?? 0 },
-      );
+      if (held !== undefined) {
+        await locked({ signal: AbortSignal.any([held.signal, runSignal]) });
+        lock = { acquired: true as const, value: undefined };
+      } else {
+        lock = await withRepoSyncLock(pool, { githubId: repo.githubId }, locked, {
+          signal: runSignal,
+          waitMs: options.lockWaitMs ?? 0,
+        });
+      }
     } catch (error) {
       entry = failureEntry(repo, describeSyncError(error, now()));
     }
@@ -565,7 +621,7 @@ export async function runRepos<T extends RunRepo>(
     if (INSTALLATION_WIDE_KINDS.has(reason.kind)) {
       // Same outage for every repo: flag the row (content kept), under its lock.
       try {
-        await withRepoSyncLock(pool, { githubId: repo.githubId }, () =>
+        await underRepoLock(pool, repo.githubId, held, () =>
           recordRepoOutcome(db, repo, {
             status: "error",
             message: reason.message,
