@@ -69,6 +69,28 @@ function doc(
   };
 }
 
+/** Markdown and HTML around the words a snippet must keep and the ones it must drop. */
+const MARKUP_BODY = [
+  "---",
+  "title: Markup heavy",
+  "---",
+  '# Heading with [quarkword guide](https://example.com/docs/quarkword-url "tooltip")',
+  "",
+  "| Column | Notes |",
+  "|--------|-------|",
+  '| **quarkword** | <span class="note" data-x="ledgerword">see `ledgerword` &amp; more</span> |',
+  "",
+  "> **Note**",
+  "> The ~~old~~ quarkword is covered in the [reference][ref]. ![diagram](img/quarkword.png)",
+  "",
+  "```ts",
+  'const x = "ledgerword"; // quarkword in code',
+  "```",
+  "",
+  '[ref]: https://example.com/ref "Ref title"',
+  "Footnote[^1] with &#x27;quotes&#x27; and &lt;T&gt; generics.",
+].join("\n");
+
 const BIG_DOCS = 2000;
 const LONG_DOCS = 20;
 const LONG_BODY_CHARS = 200_000;
@@ -161,6 +183,10 @@ async function seed(db: Db): Promise<Seed> {
     // Snippets.
     doc(api, "docs/xss.md", "Unsafe content", {
       body: `Intro <script>alert("snippetword")</script> and <mark>fake</mark> ${HIGHLIGHT_START}fake${HIGHLIGHT_END} then the snippetword appears <img src=x onerror=alert(1)> **bold** [link](http://x).`,
+    }),
+    doc(api, "docs/markup.md", "Markup heavy", { body: MARKUP_BODY }),
+    doc(api, "docs/script-only.md", "Script only", {
+      body: 'Visible words. <script>alert("scriptleak")</script> <!-- commentleak --> More visible words.',
     }),
     doc(api, "docs/title-only.md", "Titleonlyword page", {
       description: "A described page",
@@ -424,9 +450,60 @@ describeDb("search on a real database", () => {
       const starts = [...hit!.snippet].filter((c) => c === HIGHLIGHT_START).length;
       const ends = [...hit!.snippet].filter((c) => c === HIGHLIGHT_END).length;
       expect(starts).toBe(ends);
-      // ts_headline drops what its parser sees as tags; the rest is plain text for 10.2 to clean.
+      // The tags and the script content are gone: cleanSnippet removed them (task 10.2).
       expect(hit!.snippet).not.toContain("<script");
       expect(hit!.snippet).not.toContain("<mark");
+    });
+
+    it("strips Markdown and HTML from the snippet and keeps the highlights on the right word", async () => {
+      const r = await search({ q: "quarkword" });
+      const hit = r.hits.find((h) => h.doc.path === "docs/markup.md");
+      expect(hit).toBeDefined();
+      const snippet = hit!.snippet;
+      // No Markdown or HTML syntax is left; entities are decoded.
+      for (const syntax of [
+        "**",
+        "~~",
+        "`",
+        "](",
+        "[^",
+        "|",
+        "<span",
+        "</",
+        "<!--",
+        "&amp;",
+        "&#x27;",
+      ]) {
+        expect(snippet, syntax).not.toContain(syntax);
+      }
+      expect(snippet).not.toMatch(/https?:\/\/|example\.com|tooltip|Ref title|data-x|class=/);
+      // The words around the matches survive; matches inside links, tables, quotes, code are marked.
+      expect(snippet).toContain("Heading with ");
+      expect(snippet).toContain("Notes ");
+      expect(snippet).toContain("The old ");
+      expect(snippet).toContain("see ledgerword & more");
+      // Markers: balanced, only around the matched word (never around markup or other words).
+      const starts = [...snippet].filter((c) => c === HIGHLIGHT_START).length;
+      const ends = [...snippet].filter((c) => c === HIGHLIGHT_END).length;
+      expect(starts).toBe(ends);
+      const marked = splitHighlights(snippet).filter((p) => p.highlighted);
+      expect(marked.length).toBeGreaterThanOrEqual(3);
+      for (const part of marked) expect(part.text).toBe("quarkword");
+      expect(snippet).toContain(`Heading with ${HIGHLIGHT_START}quarkword${HIGHLIGHT_END} guide`);
+      expect(snippet).toContain(`The old ${HIGHLIGHT_START}quarkword${HIGHLIGHT_END} is covered`);
+      // Text that only the fence or the table contained is plain text, not highlighted.
+      expect(snippet).not.toContain(`${HIGHLIGHT_START}ledgerword`);
+    });
+
+    it("never shows script or comment content, which ts_headline alone would show", async () => {
+      // The Postgres parser keeps `<script>...</script>` out of the search vector, but a headline
+      // over the raw text would print its content; the query layer hides the tags from it.
+      const r = await search({ q: "visible" });
+      const hit = r.hits.find((h) => h.doc.path === "docs/script-only.md");
+      expect(hit).toBeDefined();
+      expect(hit!.snippet).toBe(
+        `${HIGHLIGHT_START}Visible${HIGHLIGHT_END} words. More ${HIGHLIGHT_START}visible${HIGHLIGHT_END} words`,
+      );
     });
 
     it("falls back to the description, then the body start, when the body does not match", async () => {

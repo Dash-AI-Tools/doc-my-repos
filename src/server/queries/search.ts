@@ -4,6 +4,7 @@ import { and, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import {
   cleanSnippet,
+  HEADLINE_ANGLE,
   HIGHLIGHT_END,
   HIGHLIGHT_START,
   MAX_SEARCH_OFFSET,
@@ -32,7 +33,9 @@ import { visibleRepos, type QueryOptions } from "./visibility";
  *   document whose title matches. Ties order by repository (case-insensitive, byte order) then
  *   path, so pages are stable.
  * - Snippets come from `ts_headline` with the private-use markers of `@/lib/search` around matched
- *   terms (no HTML), run only on the rows of the returned page, then go through `cleanSnippet`.
+ *   terms (no HTML), run only on the rows of the returned page, then go through `cleanSnippet`
+ *   (task 10.2), which strips the Markdown and HTML out of the fragment and keeps only balanced
+ *   markers: the snippet is plain text, rendered with `splitHighlights`.
  * - Filters: OR within a kind (any of the selected repos, types, tags, statuses), AND across
  *   kinds. Facet counts are disjunctive: each kind is counted over the matches narrowed by the
  *   other kinds' filters, not its own, so selecting a type still shows the other types' counts.
@@ -52,14 +55,17 @@ export const MAX_FACET_VALUES = { repos: 200, types: 100, tags: 50, statuses: 50
 
 /**
  * `ts_headline` options: constant, built here, never from input. Markers are private-use code
- * points (see `HIGHLIGHT_START`), so a highlighted snippet carries no HTML.
+ * points (see `HIGHLIGHT_START`), so a highlighted snippet carries no HTML. The fragment is cut
+ * from raw Markdown, and `cleanSnippet` (task 10.2) then removes the syntax in it (URLs, table
+ * rules, fence lines, attributes), which can be most of its words; hence the wider word range
+ * than a plain-text snippet needs. `cleanSnippet` caps what is shown.
  */
 const HEADLINE_OPTIONS = [
   `StartSel="${HIGHLIGHT_START}"`,
   `StopSel="${HIGHLIGHT_END}"`,
   "MaxFragments=2",
-  "MaxWords=24",
-  "MinWords=8",
+  "MaxWords=32",
+  "MinWords=14",
   "ShortWord=2",
   'FragmentDelimiter=" … "',
 ].join(", ");
@@ -113,8 +119,10 @@ export interface SearchHit {
   };
   readonly rank: number;
   /**
-   * Plain text with matched terms between `HIGHLIGHT_START` and `HIGHLIGHT_END`; render with
-   * `splitHighlights`, never as HTML. From the body, else the description, else the body start.
+   * Plain text (no Markdown or HTML syntax, whitespace collapsed, at most `SNIPPET_MAX_CHARS`
+   * characters) with matched terms between `HIGHLIGHT_START` and `HIGHLIGHT_END`, always in
+   * balanced pairs; render with `splitHighlights`, never as HTML. From the body, else the
+   * description, else the body start. May be empty when the document has no text.
    */
   readonly snippet: string;
   readonly heading: SearchHeading | null;
@@ -274,12 +282,17 @@ function toHeading(value: unknown): SearchHeading | null {
   return { depth, text, slug };
 }
 
-/** The first snippet candidate with a highlight, else the description, else the body start. */
+/**
+ * The first cleaned candidate that still has a highlight (the body, then the description), else
+ * the first non-empty one (the description, then the body start). A match can be cleaned away
+ * (it was inside a link URL or a tag), so highlights are checked after cleaning.
+ */
 function pickSnippet(body: string | null, description: string | null): string {
-  for (const candidate of [body, description]) {
-    if (candidate !== null && candidate.includes(HIGHLIGHT_START)) return cleanSnippet(candidate);
-  }
-  return cleanSnippet(description ?? body ?? "");
+  const cleanedBody = body === null ? "" : cleanSnippet(body);
+  if (cleanedBody.includes(HIGHLIGHT_START)) return cleanedBody;
+  const cleanedDescription = description === null ? "" : cleanSnippet(description);
+  if (cleanedDescription.includes(HIGHLIGHT_START)) return cleanedDescription;
+  return cleanedDescription !== "" ? cleanedDescription : cleanedBody;
 }
 
 /**
@@ -301,7 +314,10 @@ export async function searchDocuments(
   };
   if (p.query === "" || p.offset > MAX_SEARCH_OFFSET) return empty;
 
-  const markers = sql.param(`${HIGHLIGHT_START}${HIGHLIGHT_END}`);
+  // `translate` swaps `<` for HEADLINE_ANGLE (ts_headline would swallow tags) and deletes any
+  // marker already in the source.
+  const translateFrom = sql.param(`<${HIGHLIGHT_START}${HIGHLIGHT_END}`);
+  const translateTo = sql.param(HEADLINE_ANGLE);
   const headlineOptions = sql.param(HEADLINE_OPTIONS);
   // Query lexemes, to rank headings by how many terms they contain. Negated terms cannot occur in
   // a matching document, so counting them is harmless.
@@ -321,10 +337,10 @@ export async function searchDocuments(
       ${documents.tags} as "tags", ${documents.status} as "status",
       ${documents.reserved} as "reserved",
       ts_headline(${searchConfig},
-        translate(left(${documents.body}, ${MAX_HEADLINE_SOURCE_CHARS}), ${markers}, ''),
+        translate(left(${documents.body}, ${MAX_HEADLINE_SOURCE_CHARS}), ${translateFrom}, ${translateTo}),
         ${p.tsQuery}, ${headlineOptions}) as "body_snippet",
       case when ${documents.description} is null then null else
-        ts_headline(${searchConfig}, translate(${documents.description}, ${markers}, ''),
+        ts_headline(${searchConfig}, translate(${documents.description}, ${translateFrom}, ${translateTo}),
           ${p.tsQuery}, ${headlineOptions}) end as "description_snippet",
       best_heading."value" as "heading"
     from (

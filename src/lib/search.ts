@@ -8,14 +8,16 @@
  * helpers only bound its size and remove characters Postgres cannot take (NUL, lone surrogates).
  */
 
-/**
- * Snippet highlight markers. `ts_headline` wraps every matched term in these two private-use
- * code points instead of HTML, so document text can never inject markup: the UI renders the
- * snippet as text and turns each START...END span into a `<mark>` (see `splitHighlights`).
- * Both are removed from the source before `ts_headline` runs and from the query text.
- */
-export const HIGHLIGHT_START = "";
-export const HIGHLIGHT_END = "";
+import { HIGHLIGHT_END, HIGHLIGHT_START } from "./snippet";
+
+// The snippet contract lives in `./snippet`; re-exported so imports of `@/lib/search` keep working.
+export {
+  cleanSnippet,
+  HEADLINE_ANGLE,
+  HIGHLIGHT_END,
+  HIGHLIGHT_START,
+  SNIPPET_MAX_CHARS,
+} from "./snippet";
 
 /** Longest query, in code points, sent to Postgres. Longer input is cut at a code point. */
 export const MAX_QUERY_CHARS = 256;
@@ -150,15 +152,6 @@ export function searchLimit(value: unknown): number {
 export function searchOffset(value: unknown): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) return 0;
   return value;
-}
-
-/**
- * Turns a raw `ts_headline` fragment into display text. Task 10.2 replaces the body with the
- * real cleaning (strip Markdown and HTML markup, decode entities, keep the highlight markers).
- * Until then it only collapses whitespace. Pure; must never add markup.
- */
-export function cleanSnippet(raw: string): string {
-  return raw.replace(/\s+/gu, " ").trim();
 }
 
 /** A run of snippet text, highlighted or not. */
