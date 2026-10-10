@@ -1,3 +1,15 @@
+---
+type: Guide
+title: GitHub App setup
+description: Register a read-only GitHub App, subscribe it to the right events, configure the webhook and find the App id, private key and installation id. Not yet tested against a real App.
+tags: [guides, setup, github-app]
+status: draft
+sources:
+  - src/server/webhooks/router.ts
+  - src/server/config/env.ts
+generated: 2026-10-10
+---
+
 # GitHub App setup
 
 > **Not yet tested end to end.** The steps below were written from the code and from GitHub's documentation. Nobody has registered and installed a test App by following them yet. See [Verification still required by a human](#verification-still-required-by-a-human) at the end.
