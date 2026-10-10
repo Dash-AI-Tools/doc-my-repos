@@ -22,7 +22,7 @@
 
 ## 4. Parsing utilities (github-sync, okf-support)
 
-- [ ] 4.1 Implement frontmatter parsing preserving unknown keys and tolerating malformed YAML, and verify unit tests (valid, missing, malformed, only `type`)
+- [x] 4.1 Implement frontmatter parsing preserving unknown keys and tolerating malformed YAML, and verify unit tests (valid, missing, malformed, only `type`)
 - [ ] 4.2 Implement title/description/heading extraction with the fallback order (frontmatter → first H1 → filename), and verify unit tests for each fallback
 - [ ] 4.3 Implement CODEOWNERS parser (comments, blank lines, multiple owners, teams, emails, escaped patterns) and verify unit tests including ordering
 - [ ] 4.4 Implement CODEOWNERS location precedence (`.github/` → root → `docs/`) and verify unit tests
