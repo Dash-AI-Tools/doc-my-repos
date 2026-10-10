@@ -1,0 +1,34 @@
+# Sample DocMyRepos config. Copy it to docmyrepos.config.yml and edit the copy.
+#
+# This file only narrows the repositories that the GitHub App installation can
+# access. It never grants access. With neither `repos` nor `exclude`, every
+# accessible repository is synced and shown.
+#
+# Secrets never go in this file. They come from environment variables; see
+# .env.example for the names and placeholders.
+
+# Only these repositories are synced and shown. Use bare names (no owner prefix).
+# An entry can also be an object with a `docsPath` that overrides the docs folder
+# for that repository. `repos` and `exclude` cannot both be set, so `exclude` is
+# commented out below. To use it, comment out this whole `repos` block and
+# uncomment the `exclude` block.
+repos:
+  - api-service
+  - name: web-app
+    docsPath: user-guide
+  - handbook
+
+# Docs folder candidates, tried in order and matched case-insensitively, for every
+# repository that has no `docsPath` of its own.
+defaults:
+  docsPaths:
+    - docs
+    - doc
+    - documentation
+
+# Alternative to `repos`: every accessible repository except the listed ones.
+# BEGIN alternative: exclude
+# exclude:
+#   - sandbox
+#   - legacy-wiki
+# END alternative: exclude
