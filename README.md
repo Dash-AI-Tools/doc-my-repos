@@ -51,29 +51,29 @@ Then open <http://localhost:3000>.
 Everything is optional. With no config, DocMyRepos shows every repository the GitHub App installation can access.
 
 ```yaml
-repos:                     # optional: only these repos (must be accessible to the App)
+repos: # optional: only these repos (must be accessible to the App)
   - name: api-service
   - name: web-app
-    docsPath: documentation   # override the default docs folder
-exclude: [sandbox]         # optional: skip these repos
+    docsPath: documentation # override the default docs folder
+exclude: [sandbox] # optional: skip these repos
 defaults:
-  docsPaths: [docs, doc, documentation]   # first match wins, case-insensitive
+  docsPaths: [docs, doc, documentation] # first match wins, case-insensitive
 ```
 
-| Environment variable    | Purpose                                                   |
-| ----------------------- | --------------------------------------------------------- |
-| `DATABASE_URL`          | Postgres connection string                                |
-| `GITHUB_APP_ID`         | ID of your GitHub App                                     |
-| `GITHUB_APP_PRIVATE_KEY` | App private key (PEM). Or set `GITHUB_APP_PRIVATE_KEY_PATH` to a key file |
-| `GITHUB_APP_INSTALLATION_ID` | ID of the App's installation on your organization    |
-| `GITHUB_WEBHOOK_SECRET` | Webhook secret of the GitHub App, used to verify signatures |
-| `SYNC_SECRET`           | Secret that protects the manual `/api/sync` endpoint      |
+| Environment variable         | Purpose                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------- |
+| `DATABASE_URL`               | Postgres connection string                                                |
+| `GITHUB_APP_ID`              | ID of your GitHub App                                                     |
+| `GITHUB_APP_PRIVATE_KEY`     | App private key (PEM). Or set `GITHUB_APP_PRIVATE_KEY_PATH` to a key file |
+| `GITHUB_APP_INSTALLATION_ID` | ID of the App's installation on your organization                         |
+| `GITHUB_WEBHOOK_SECRET`      | Webhook secret of the GitHub App, used to verify signatures               |
+| `SYNC_SECRET`                | Secret that protects the manual `/api/sync` endpoint                      |
 
 ### GitHub App
 
 DocMyRepos authenticates as a GitHub App, not with a personal access token:
 
-1. Register a GitHub App on your organization with **read-only** permissions for *Contents* and *Metadata*.
+1. Register a GitHub App on your organization with **read-only** permissions for _Contents_ and _Metadata_.
 2. Set its webhook URL to `https://<your-host>/api/webhooks/github`, choose a webhook secret, and subscribe to the `push`, `repository`, `installation_repositories` and `installation` events.
 3. Generate a private key and install the App on your organization, on all repositories or a selection.
 4. Copy the App id, the private key and the installation id into your environment.
