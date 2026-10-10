@@ -49,11 +49,40 @@ const defaults = z
   })
   .prefault({});
 
+/**
+ * Per-repository sync limits (task 12.3). Defaults match the sync engine's code defaults
+ * (`src/server/sync/tree.ts`). The file-size cap cannot go above 256 KB: a document's search vector
+ * must stay well below Postgres's 1 MB tsvector limit (design, "Search column caveats").
+ */
+export const DEFAULT_MAX_DOCS_PER_REPO = 2000;
+export const MAX_DOCS_PER_REPO_LIMIT = 10_000;
+export const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
+export const MIN_FILE_BYTES_LIMIT = 1024;
+
+const limits = z
+  .strictObject({
+    maxDocsPerRepo: z
+      .int("maxDocsPerRepo must be a whole number")
+      .min(1, "maxDocsPerRepo must be at least 1")
+      .max(MAX_DOCS_PER_REPO_LIMIT, `maxDocsPerRepo must be at most ${MAX_DOCS_PER_REPO_LIMIT}`)
+      .default(DEFAULT_MAX_DOCS_PER_REPO),
+    maxFileBytes: z
+      .int("maxFileBytes must be a whole number of bytes")
+      .min(MIN_FILE_BYTES_LIMIT, `maxFileBytes must be at least ${MIN_FILE_BYTES_LIMIT}`)
+      .max(
+        DEFAULT_MAX_FILE_BYTES,
+        `maxFileBytes must be at most ${DEFAULT_MAX_FILE_BYTES} (256 KB)`,
+      )
+      .default(DEFAULT_MAX_FILE_BYTES),
+  })
+  .prefault({});
+
 export const configSchema = z
   .strictObject({
     repos: z.array(repoEntry).min(1, "repos must list at least one repository").optional(),
     exclude: z.array(repoName).min(1, "exclude must list at least one repository").optional(),
     defaults,
+    limits,
   })
   .superRefine((cfg, ctx) => {
     if (cfg.repos && cfg.exclude) {

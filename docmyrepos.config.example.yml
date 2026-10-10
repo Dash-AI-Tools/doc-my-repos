@@ -26,6 +26,15 @@ defaults:
     - doc
     - documentation
 
+# Per-repository sync limits. Both are optional; the values below are the
+# defaults. A repository with more documentation files than `maxDocsPerRepo`
+# shows only the first ones in path order, and files larger than
+# `maxFileBytes` (at most 262144, 256 KB) are not synced. Both cases are shown
+# as a warning on the repository page and on /status.
+limits:
+  maxDocsPerRepo: 2000
+  maxFileBytes: 262144
+
 # Alternative to `repos`: every accessible repository except the listed ones.
 # BEGIN alternative: exclude
 # exclude:

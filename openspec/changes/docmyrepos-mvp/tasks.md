@@ -95,8 +95,8 @@
 ## 12. Hardening
 
 - [x] 12.1 Add security headers including a Content-Security-Policy compatible with Mermaid and Shiki, and verify with a header test and no console violations in Playwright
-- [ ] 12.2 Add sync status visibility (last run, errors) to the repo header and a small admin-free status route, and verify a test showing an errored repo
-- [ ] 12.3 Add per-repo document-count and file-size caps with visible warnings, and verify a test that exceeding them is capped and warned
+- [x] 12.2 Add sync status visibility (last run, errors) to the repo header and a small admin-free status route, and verify a test showing an errored repo
+- [x] 12.3 Add per-repo document-count and file-size caps with visible warnings, and verify a test that exceeding them is capped and warned
 - [ ] 12.4 Add structured logging (no secrets) for sync and webhook paths, and verify tokens never appear in logs via a test
 
 ## 13. Deployment and open-source packaging (deployment-and-oss)

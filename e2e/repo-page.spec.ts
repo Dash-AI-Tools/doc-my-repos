@@ -79,7 +79,7 @@ test.describe("repository page, seeded database", () => {
       const github = header.getByRole("link", { name: "View on GitHub" });
       await expect(github).toHaveAttribute("href", "https://github.com/acme/api-service");
       await expect(github).toHaveAttribute("rel", "noopener noreferrer");
-      const time = header.locator("time");
+      const time = header.getByTestId("repo-last-synced").locator("time");
       await expect(time).toHaveAttribute("datetime", "2026-03-14T09:30:00.000Z");
       await expect(time).toHaveAttribute("title", "14 Mar 2026, 09:30 UTC");
       await expect(time).toContainText(/ago|yesterday|last (month|year)/);
@@ -411,10 +411,9 @@ test.describe("repository page, seeded database", () => {
         page.getByTestId("readme-body").getByRole("heading", { name: "flaky-service" }),
       ).toBeVisible();
       await expect(page.getByTestId("docs-nav")).toContainText("2 documents");
-      await expect(page.getByTestId("repo-header").locator("time")).toHaveAttribute(
-        "datetime",
-        "2026-02-01T08:15:00.000Z",
-      );
+      await expect(
+        page.getByTestId("repo-header").getByTestId("repo-last-synced").locator("time"),
+      ).toHaveAttribute("datetime", "2026-02-01T08:15:00.000Z");
     });
 
     test("a repository that was never synced explains that, without claiming it has no README", async ({

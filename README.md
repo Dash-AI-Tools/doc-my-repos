@@ -58,7 +58,16 @@ repos: # optional: only these repos (must be accessible to the App)
 exclude: [sandbox] # optional: skip these repos
 defaults:
   docsPaths: [docs, doc, documentation] # first match wins, case-insensitive
+limits:
+  maxDocsPerRepo: 2000 # more docs: only the first 2000 in path order are synced
+  maxFileBytes: 262144 # larger files are skipped; 256 KB is also the maximum
 ```
+
+Files left out by these limits are listed as a warning in the repository header and on `/status`.
+
+### Sync status
+
+`/status` shows the last sync run and every repository's sync state, errors and warnings. The same data is served as JSON at `GET /api/status` (no authentication, never cached, no secrets; it shows what the portal pages show). Use it for health checks: `200` means the app and its database answer, `503 {"error":"unavailable"}` means they do not. A failed repository sync does not change the status code; read `summary.error` or `lastRun.status` for that.
 
 | Environment variable         | Purpose                                                                   |
 | ---------------------------- | ------------------------------------------------------------------------- |

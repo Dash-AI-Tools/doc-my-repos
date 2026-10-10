@@ -50,7 +50,14 @@ import {
   type SyncErrorInfo,
   type WithRunResult,
 } from "./runs";
-import { planTree, type StoredTreeState, type TreePlan } from "./tree";
+import {
+  DEFAULT_MAX_FILE_BYTES,
+  DEFAULT_MAX_FILES,
+  planTree,
+  type StoredTreeState,
+  type TreePlan,
+} from "./tree";
+import { cappedRunWarning } from "./warnings";
 
 /**
  * The sync engine (task 5.8): wires discovery (5.3), tree planning (5.4), blob fetching (5.5),
@@ -87,6 +94,19 @@ import { planTree, type StoredTreeState, type TreePlan } from "./tree";
 /** The validated config the engine needs; the frozen `loadConfig().config` fits as is. */
 export interface SyncConfig extends DiscoveryConfig {
   readonly defaults: { readonly docsPaths: readonly string[] };
+  /**
+   * Per-repository caps (task 12.3, config `limits`). Absent: the code defaults (2000 documents,
+   * 256 KB per file). Both feed the selection fingerprint, so a change re-plans every repo.
+   */
+  readonly limits?: { readonly maxDocsPerRepo: number; readonly maxFileBytes: number };
+}
+
+/** The effective caps of a context's config. */
+export function syncLimits(config: SyncConfig): { maxFiles: number; maxFileBytes: number } {
+  return {
+    maxFiles: config.limits?.maxDocsPerRepo ?? DEFAULT_MAX_FILES,
+    maxFileBytes: config.limits?.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
+  };
 }
 
 export type SyncGitHubClient = Pick<
@@ -142,6 +162,9 @@ export function createSyncContext(input: CreateSyncContextInput): SyncContext {
   if (!Array.isArray(input.config.defaults.docsPaths)) {
     throw new TypeError("config.defaults.docsPaths must be a list");
   }
+  const limits = syncLimits(input.config);
+  positiveInt(limits.maxFiles, "config.limits.maxDocsPerRepo");
+  positiveInt(limits.maxFileBytes, "config.limits.maxFileBytes");
   return Object.freeze(
     redactWhenLogged({
       db: input.db,
@@ -260,8 +283,9 @@ function persistRepoOf(repo: DiscoveredRepo): PersistRepo {
  * form) and pass that lock's signal.
  *
  * Throws for a failure, so the caller records it and keeps the stored content: a `GitHubError`
- * (fatal kinds are rethrown by `syncBlobs`), a `RepoSyncError` for a truncated tree or too many
- * docs files, or a `PersistError`. An `unchanged` plan the stored row no longer matches
+ * (fatal kinds are rethrown by `syncBlobs`), a `RepoSyncError` for a truncated tree, or a
+ * `PersistError`. More docs than `limits.maxDocsPerRepo` is not a failure: the first ones in path
+ * order are synced, the rest left out (stored ones removed), and the repo is warned (task 12.3). An `unchanged` plan the stored row no longer matches
  * (`stale_plan`) is re-planned once from the tree, ignoring the stored head state.
  */
 export async function syncRepo(
@@ -270,15 +294,18 @@ export async function syncRepo(
   options: SyncRepoOptions = {},
 ): Promise<RepoSyncOutcome> {
   const { signal, listedAt } = options;
+  const limits = syncLimits(ctx.config);
   let stored = await readStoredState(ctx.db, repo.githubId);
   for (let attempt = 0; ; attempt++) {
     const plan = await planTree(ctx.github, repo, attempt === 0 ? stored.tree : NO_TREE, {
       signal,
-      selection: { docsPaths: ctx.config.defaults.docsPaths },
+      selection: {
+        docsPaths: ctx.config.defaults.docsPaths,
+        maxFiles: limits.maxFiles,
+        maxFileBytes: limits.maxFileBytes,
+      },
     });
-    if (plan.outcome === "failed") {
-      throw new RepoSyncError(plan.reason, { count: plan.count, limit: plan.limit });
-    }
+    if (plan.outcome === "failed") throw new RepoSyncError(plan.reason);
 
     let persistPlan: PersistPlan;
     let warnings: SyncWarning[] = [];
@@ -302,9 +329,10 @@ export async function syncRepo(
             stored: { readmeSha: stored.readmeSha, codeownersSha: stored.codeownersSha },
           },
         },
-        { signal, concurrency: ctx.tuning.blobConcurrency },
+        { signal, concurrency: ctx.tuning.blobConcurrency, maxFileBytes: limits.maxFileBytes },
       );
       warnings = [
+        ...(plan.capped === null ? [] : [cappedRunWarning(plan.capped)]),
         ...blobs.failed.map((f) => fetchFailureWarning(f.path, f.kind)),
         ...repoLevelWarning(blobs.repoLevel.readme),
         ...repoLevelWarning(blobs.repoLevel.codeowners),
@@ -321,6 +349,7 @@ export async function syncRepo(
         failed: blobs.failed,
         readme: blobs.repoLevel.readme,
         codeowners: blobs.repoLevel.codeowners,
+        selection: { skipped: plan.skipped, capped: plan.capped },
       };
     }
 
@@ -328,7 +357,7 @@ export async function syncRepo(
       const persist = await persistRepoSync(
         ctx.db,
         { repo: persistRepoOf(repo), plan: persistPlan },
-        { signal, listedAt },
+        { signal, listedAt, maxDocumentBytes: limits.maxFileBytes },
       );
       return {
         persist,

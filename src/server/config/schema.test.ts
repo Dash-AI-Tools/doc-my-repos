@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_DOCS_PATHS, configSchema, formatConfigIssues } from "./schema";
+import {
+  DEFAULT_DOCS_PATHS,
+  DEFAULT_MAX_DOCS_PER_REPO,
+  DEFAULT_MAX_FILE_BYTES,
+  MAX_DOCS_PER_REPO_LIMIT,
+  MIN_FILE_BYTES_LIMIT,
+  configSchema,
+  formatConfigIssues,
+} from "./schema";
 
 function issues(input: unknown): string[] {
   const result = configSchema.safeParse(input);
@@ -154,5 +162,56 @@ describe("configSchema unknown fields", () => {
     expect(issues({ repos: [{ name: "web-app", docspath: "x" }] })).toEqual([
       "repos.0.docspath: unknown field",
     ]);
+  });
+});
+
+describe("configSchema limits (task 12.3)", () => {
+  it("defaults to 2000 documents per repository and 256 KB per file", () => {
+    expect(configSchema.parse({}).limits).toEqual({
+      maxDocsPerRepo: DEFAULT_MAX_DOCS_PER_REPO,
+      maxFileBytes: DEFAULT_MAX_FILE_BYTES,
+    });
+    expect(DEFAULT_MAX_DOCS_PER_REPO).toBe(2000);
+    expect(DEFAULT_MAX_FILE_BYTES).toBe(262144);
+    expect(configSchema.parse({ limits: {} }).limits.maxFileBytes).toBe(262144);
+    expect(configSchema.parse({ limits: { maxDocsPerRepo: 50 } }).limits).toEqual({
+      maxDocsPerRepo: 50,
+      maxFileBytes: 262144,
+    });
+  });
+
+  it("accepts the boundaries", () => {
+    expect(
+      configSchema.parse({ limits: { maxDocsPerRepo: 1, maxFileBytes: MIN_FILE_BYTES_LIMIT } })
+        .limits,
+    ).toEqual({ maxDocsPerRepo: 1, maxFileBytes: 1024 });
+    expect(
+      configSchema.parse({
+        limits: { maxDocsPerRepo: MAX_DOCS_PER_REPO_LIMIT, maxFileBytes: 262144 },
+      }).limits,
+    ).toEqual({ maxDocsPerRepo: 10_000, maxFileBytes: 262144 });
+  });
+
+  it("rejects values outside the bounds, non-integers and unknown keys, naming the field", () => {
+    expect(issues({ limits: { maxDocsPerRepo: 0 } })).toEqual([
+      "limits.maxDocsPerRepo: maxDocsPerRepo must be at least 1",
+    ]);
+    expect(issues({ limits: { maxDocsPerRepo: 10_001 } })).toEqual([
+      "limits.maxDocsPerRepo: maxDocsPerRepo must be at most 10000",
+    ]);
+    expect(issues({ limits: { maxDocsPerRepo: 2.5 } })).toEqual([
+      "limits.maxDocsPerRepo: maxDocsPerRepo must be a whole number",
+    ]);
+    expect(issues({ limits: { maxDocsPerRepo: "100" } })).toEqual([
+      "limits.maxDocsPerRepo: maxDocsPerRepo must be a whole number",
+    ]);
+    expect(issues({ limits: { maxFileBytes: 1023 } })).toEqual([
+      "limits.maxFileBytes: maxFileBytes must be at least 1024",
+    ]);
+    expect(issues({ limits: { maxFileBytes: 262145 } })).toEqual([
+      "limits.maxFileBytes: maxFileBytes must be at most 262144 (256 KB)",
+    ]);
+    expect(issues({ limits: { maxFiles: 5 } })).toEqual(["limits.maxFiles: unknown field"]);
+    expect(issues({ limits: null })).toEqual([expect.stringMatching(/^limits: /)]);
   });
 });

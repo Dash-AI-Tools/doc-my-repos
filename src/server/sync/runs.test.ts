@@ -165,9 +165,6 @@ describe("describeSyncError", () => {
     expect(describeSyncError(new PersistError("aborted", SECRET)).fatal).toBe(true);
     expect(describeSyncError(new PersistError("stale_plan", SECRET)).kind).toBe("stale_plan");
     expect(describeSyncError(new RepoSyncError("tree_truncated")).message).toContain("truncated");
-    expect(
-      describeSyncError(new RepoSyncError("too_many_files", { count: 2500, limit: 2000 })).message,
-    ).toBe("too many docs files (2500 found, limit 2000); docs not synced");
     expect(describeSyncError(new RepoSyncError("not_accessible")).message).toBe(
       "not accessible by the GitHub App",
     );

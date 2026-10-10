@@ -14,13 +14,20 @@ import {
   renderMarkdown,
   type RenderResult,
 } from "./markdown/pipeline";
-import { getDocsTree, getRepo, type RepoDetail } from "./queries";
+import {
+  getDocsTree,
+  getRepo,
+  getRepoSyncInfo,
+  type RepoDetail,
+  type RepoLastRun,
+} from "./queries";
 import { getRuntime } from "./runtime";
 import { loadToc } from "./toc-data";
 
 /**
  * Data for the repository page `/<owner>/<repo>` (tasks 9.3, 9.4 and 9.6). Reads only through the
- * shared query layer (`getRepo`, `getDocsTree`); never GitHub. The document rows give both the docs
+ * shared query layer (`getRepo`, `getDocsTree`, `getRepoSyncInfo` for the last sync run of the
+ * header, task 12.2); never GitHub. The document rows give both the docs
  * table of contents (`tree`) and the `docPaths` set the README's link resolver needs. The README is rendered here, on the
  * server, from the stored Markdown with the same options every document uses (link and image
  * rewriting for this repository, Shiki highlighting); the sanitizer is the last pipeline step.
@@ -60,6 +67,8 @@ export type RepoPageData =
       readonly tree: DocsTreeFolder;
       /** The filter controls' data; null for a repository that is not OKF (no OKF UI). */
       readonly toc: TocData | null;
+      /** The repository's latest recorded sync run (task 12.2); null when none is recorded. */
+      readonly lastRun: RepoLastRun | null;
       /** When the data was read; the page formats "x minutes ago" against this. */
       readonly loadedAt: Date;
     }
@@ -145,7 +154,16 @@ export async function loadRepoPage(
     const rows = await getDocsTree(handle, { id: repo.id });
     const { tree, toc } = await loadToc(handle, repo, rows, filters);
     const readme = await readmeView(repo, new Set(rows.map((r) => r.path)), render, log);
-    return { status: "ok", repo, readme, tree, toc, loadedAt: now() };
+    const sync = await getRepoSyncInfo(handle, { id: repo.id });
+    return {
+      status: "ok",
+      repo,
+      readme,
+      tree,
+      toc,
+      lastRun: sync?.lastRun ?? null,
+      loadedAt: now(),
+    };
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;

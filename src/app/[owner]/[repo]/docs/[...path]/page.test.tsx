@@ -53,6 +53,7 @@ const repo: RepoDetail = {
   readme: null,
   codeownersPath: null,
   codeOwners: [],
+  syncWarnings: [],
 };
 
 function docRow(path: string, title: string): DocsTreeRow {

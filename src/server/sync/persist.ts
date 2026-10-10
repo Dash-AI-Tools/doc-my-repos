@@ -9,6 +9,8 @@ import { detectOkf } from "../docs/okf";
 import type { RepoLevelResult, TextWarning } from "./blobs";
 import { buildDocumentRecord, toDbOwners, toDbText, type DocumentRecord } from "./document-record";
 import { visibilityWrite, type DbInstant } from "./requests";
+import { DEFAULT_MAX_FILE_BYTES } from "./tree";
+import { buildRepoSyncWarnings, type WarningSkip } from "./warnings";
 
 /**
  * Persistence: the write side of one repository sync (task 5.6), after `planTree` (5.4) and
@@ -47,6 +49,10 @@ import { visibilityWrite, type DbInstant } from "./requests";
  * - OKF: `is_okf` and `okf_version` from `detectOkf` over the documents stored after the writes
  *   (so unchanged documents count), read back inside the transaction. `docs_path` is the plan's
  *   docs folder.
+ * - Visible warnings (task 12.3): `sync_warnings` is rewritten by every `content` plan, complete or
+ *   not, from the tree selection's skips and cap (`plan.selection`) plus this call's own skips
+ *   (`buildRepoSyncWarnings`), and is empty when nothing was left out. An `unchanged` plan keeps
+ *   it (same tree, same selection), and a failed sync never reaches persist, so it keeps it too.
  *
  * Completeness rule. A sync is complete when no document, README or CODEOWNERS fetch failed.
  * - Complete: `tree_sha`, `selection_fingerprint`, `head_etag` and `commit_sha` are set from the
@@ -135,6 +141,14 @@ export type PersistPlan =
       failed: readonly { path: string }[];
       readme: RepoLevelResult;
       codeowners: RepoLevelResult;
+      /**
+       * What the tree selection left out (task 12.3), for `repos.sync_warnings`. Absent: no
+       * selection skips (handcrafted plans).
+       */
+      selection?: {
+        readonly skipped: readonly WarningSkip[];
+        readonly capped: { readonly found: number; readonly limit: number } | null;
+      };
     } & PersistHead);
 
 export interface PersistInput {
@@ -622,6 +636,11 @@ export async function persistRepoSync(
       result.complete = failed.length === 0;
 
       const owners = await writeCodeowners(tx, repoId, plan.codeowners, result.warnings);
+      const syncWarnings = buildRepoSyncWarnings({
+        skipped: [...(plan.selection?.skipped ?? []), ...result.skipped],
+        capped: plan.selection?.capped ?? null,
+        maxFileBytes: options.maxDocumentBytes ?? DEFAULT_MAX_FILE_BYTES,
+      });
       const okf = await detectStoredOkf(tx, repoId, plan.docsFolder);
       result.isOkf = okf.isOkf;
       result.okfVersion = okf.okfVersion;
@@ -635,6 +654,7 @@ export async function persistRepoSync(
           docsPath: plan.docsFolder === null ? null : toDbText(plan.docsFolder),
           isOkf: okf.isOkf,
           okfVersion: okf.okfVersion === null ? null : toDbText(okf.okfVersion),
+          syncWarnings,
           ...headColumns(plan, result.complete),
           ...(result.complete ? okStatus() : {}),
           updatedAt: sql`now()`,

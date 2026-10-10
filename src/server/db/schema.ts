@@ -49,6 +49,18 @@ export type Heading = { depth: number; text: string; slug: string };
 export type CodeOwnerRef = { handle: string; kind: (typeof codeOwnerKinds)[number] };
 export type SyncWarning = { path: string | null; message: string };
 /**
+ * Why some files of a repository are not shown (task 12.3, `src/server/sync/warnings.ts`), kept on
+ * `repos.sync_warnings` so pages can show it without reading `sync_runs`. `count` is the number of
+ * files concerned; `paths` lists at most the first 20 of them (repo-relative, in path order).
+ * Messages are fixed texts plus numbers, never file contents.
+ */
+export type RepoSyncWarning = {
+  code: "docs_capped" | "too_large" | "size_unknown" | "write_rejected" | "unsupported";
+  message: string;
+  count: number;
+  paths: string[];
+};
+/**
  * One repository's outcome in `sync_runs.results` (task 5.7, `src/server/sync/runs.ts`). Lists are
  * capped; the `*Total` fields keep the real counts. Messages are fixed texts, never raw errors.
  */
@@ -131,6 +143,12 @@ export const repos = pgTable(
     syncStatus: repoSyncStatus("sync_status").notNull().default("pending"),
     syncError: text("sync_error"),
     lastSyncedAt: timestamptz("last_synced_at"),
+    // Files the last content sync left out (document cap, size cap, rejected), task 12.3. Written
+    // by every content persist (empty when nothing was left out); a failed sync keeps it.
+    syncWarnings: jsonb("sync_warnings")
+      .$type<RepoSyncWarning[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Rerun marker (task 6.4, `src/server/sync/requests.ts`): when a sync of this repo was last
     // requested and not yet covered by a finished pass. Survives across processes and crashes.
     // Never a portal field and never a `sync_runs` status.

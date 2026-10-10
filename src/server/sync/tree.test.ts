@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { GitHubError, type TreeEntry } from "../github/client";
 import {
   DEFAULT_MAX_FILE_BYTES,
+  DEFAULT_MAX_FILES,
   planTree,
+  SELECTION_RULES_VERSION,
   selectDocFiles,
   selectionFingerprint,
   type PlanRepo,
@@ -159,15 +161,18 @@ describe("planTree failures and outcomes", () => {
     expect(plan).not.toHaveProperty("files");
   });
 
-  it("more docs than the cap is too_many_files", async () => {
+  it("more docs than the cap is a capped, successful plan (task 12.3)", async () => {
     const entries = [dir("docs"), ...Array.from({ length: 4 }, (_, i) => blob(`docs/${i}.md`))];
     const { client } = mockClient({ entries });
     const plan = await planTree(client, repo, firstSync, { selection: { maxFiles: 3 } });
-    expect(plan).toMatchObject({ outcome: "failed", reason: "too_many_files", count: 4, limit: 3 });
+    expect(plan).toMatchObject({ outcome: "changed", capped: { found: 4, limit: 3 } });
+    if (plan.outcome !== "changed") throw new Error("expected a changed plan");
+    expect(plan.files.map((f) => f.path)).toEqual(["docs/0.md", "docs/1.md", "docs/2.md"]);
+    expect(plan.skipped).toEqual([{ path: "docs/3.md", reason: "over_limit" }]);
     const ok = await planTree(mockClient({ entries }).client, repo, firstSync, {
       selection: { maxFiles: 4 },
     });
-    expect(ok.outcome).toBe("changed");
+    expect(ok).toMatchObject({ outcome: "changed", capped: null });
   });
 
   it("no docs folder is a successful no_docs plan that keeps README and CODEOWNERS", async () => {
@@ -360,11 +365,119 @@ describe("selectDocFiles", () => {
       files: [],
       skipped: [],
       repoLevelFiles: { readme: null, codeowners: null },
+      capped: null,
     });
   });
 });
 
+describe("document cap (task 12.3)", () => {
+  const docs = (n: number) =>
+    Array.from({ length: n }, (_, i) => blob(`docs/p${String(i).padStart(3, "0")}.md`));
+
+  it("keeps exactly N files at the cap and caps at N + 1", () => {
+    const atCap = selectDocFiles([dir("docs"), ...docs(5)], { maxFiles: 5 });
+    expect(atCap.files).toHaveLength(5);
+    expect(atCap.capped).toBeNull();
+    expect(atCap.skipped).toEqual([]);
+
+    const over = selectDocFiles([dir("docs"), ...docs(6)], { maxFiles: 5 });
+    expect(over.files.map((f) => f.path)).toEqual([
+      "docs/p000.md",
+      "docs/p001.md",
+      "docs/p002.md",
+      "docs/p003.md",
+      "docs/p004.md",
+    ]);
+    expect(over.capped).toEqual({ found: 6, limit: 5 });
+    expect(over.skipped).toEqual([{ path: "docs/p005.md", reason: "over_limit" }]);
+  });
+
+  it("keeps the same files whatever the tree order (path order, code units)", () => {
+    const entries = [
+      dir("docs"),
+      blob("docs/b.md"),
+      blob("docs/A.md"),
+      blob("docs/a/z.md"),
+      blob("docs/a.md"),
+      blob("docs/Z.md"),
+    ];
+    const forward = selectDocFiles(entries, { maxFiles: 3 });
+    const backward = selectDocFiles([...entries].reverse(), { maxFiles: 3 });
+    expect(forward.files.map((f) => f.path)).toEqual(["docs/A.md", "docs/Z.md", "docs/a.md"]);
+    expect(backward.files.map((f) => f.path)).toEqual(forward.files.map((f) => f.path));
+    expect(backward.skipped).toEqual(forward.skipped);
+    expect(forward.skipped).toEqual([
+      { path: "docs/a/z.md", reason: "over_limit" },
+      { path: "docs/b.md", reason: "over_limit" },
+    ]);
+  });
+
+  it("counts only selectable docs: skipped files do not use up the cap", () => {
+    const entries = [
+      dir("docs"),
+      blob("docs/big.md", { size: DEFAULT_MAX_FILE_BYTES + 1 }),
+      blob("docs/node_modules/x.md"),
+      ...docs(3),
+    ];
+    const selection = selectDocFiles(entries, { maxFiles: 3 });
+    expect(selection.files).toHaveLength(3);
+    expect(selection.capped).toBeNull();
+    expect(selection.skipped.map((s) => s.reason).sort()).toEqual(["ignored_folder", "too_large"]);
+  });
+
+  it("applies the size cap at the boundary and keeps README and CODEOWNERS out of the count", () => {
+    const entries = [
+      dir("docs"),
+      blob("README.md"),
+      blob("CODEOWNERS"),
+      blob("docs/edge.md", { size: 1024 }),
+      blob("docs/over.md", { size: 1025 }),
+      blob("docs/small.md", { size: 10 }),
+    ];
+    const selection = selectDocFiles(entries, { maxFiles: 1, maxFileBytes: 1024 });
+    expect(selection.files.map((f) => f.path)).toEqual(["docs/edge.md"]);
+    expect(selection.capped).toEqual({ found: 2, limit: 1 });
+    expect(selection.skipped).toEqual([
+      { path: "docs/over.md", reason: "too_large" },
+      { path: "docs/small.md", reason: "over_limit" },
+    ]);
+    expect(selection.repoLevelFiles.readme?.path).toBe("README.md");
+    expect(selection.repoLevelFiles.codeowners?.path).toBe("CODEOWNERS");
+  });
+
+  it("defaults to 2000 documents", () => {
+    expect(DEFAULT_MAX_FILES).toBe(2000);
+    const selection = selectDocFiles([dir("docs"), ...docs(2001)]);
+    expect(selection.files).toHaveLength(2000);
+    expect(selection.capped).toEqual({ found: 2001, limit: 2000 });
+  });
+
+  it("re-plans when the cap or the size cap changes", async () => {
+    const entries = [dir("docs"), ...docs(4)];
+    const first = await planTree(mockClient({ entries }).client, repo, firstSync, {
+      selection: { maxFiles: 3 },
+    });
+    const stored: StoredTreeState = {
+      treeSha: first.treeSha,
+      selectionFingerprint: first.selectionFingerprint,
+    };
+    const same = await planTree(mockClient({ entries }).client, repo, stored, {
+      selection: { maxFiles: 3 },
+    });
+    expect(same.outcome).toBe("unchanged");
+    for (const selection of [{ maxFiles: 4 }, { maxFiles: 3, maxFileBytes: 2048 }]) {
+      const again = await planTree(mockClient({ entries }).client, repo, stored, { selection });
+      expect(again.outcome).toBe("changed");
+    }
+  });
+});
+
 describe("selectionFingerprint", () => {
+  it("carries the rules version (2: the cap truncates and warns)", () => {
+    expect(SELECTION_RULES_VERSION).toBe(2);
+    expect(selectionFingerprint()).toMatch(/^v2:[0-9a-f]{64}$/);
+  });
+
   it("is stable for defaults and equivalent explicit settings", () => {
     expect(selectionFingerprint()).toBe(selectionFingerprint({}));
     expect(selectionFingerprint()).toBe(

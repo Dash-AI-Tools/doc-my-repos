@@ -139,6 +139,46 @@ const PAGES: readonly PageCase[] = [
     },
   },
   {
+    name: "repo page, files not synced, details open (seeded)",
+    path: "/acme/capped-docs",
+    stack: "seeded",
+    ready: async (page) => {
+      const box = page.getByTestId("repo-sync-warnings");
+      await expect(box).toBeVisible();
+      await box.getByText("Show details").click();
+      await expect(box.getByTestId("sync-warning").first()).toBeVisible();
+      await expect(page.getByTestId("repo-last-run")).toBeVisible();
+    },
+  },
+  {
+    name: "sync status (seeded)",
+    path: "/status",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByRole("heading", { level: 1, name: "Sync status" })).toBeVisible();
+      await expect(page.getByTestId("status-last-run")).toBeVisible();
+      await expect(page.getByTestId("status-repo-error").first()).toBeVisible();
+      await expect(page.getByTestId("status-repo-warnings").first()).toBeVisible();
+    },
+  },
+  {
+    name: "sync status, nothing synced yet (empty database)",
+    path: "/status",
+    stack: "empty",
+    ready: async (page) => {
+      await expect(page.getByTestId("status-no-run")).toBeVisible();
+      await expect(page.getByTestId("status-no-repos")).toBeVisible();
+    },
+  },
+  {
+    name: "sync status, database error",
+    path: "/status",
+    stack: "unreachable",
+    ready: async (page) => {
+      await expect(page.getByTestId("status-load-error")).toBeVisible();
+    },
+  },
+  {
     name: "repo page, not found (seeded)",
     path: "/acme/does-not-exist",
     stack: "seeded",

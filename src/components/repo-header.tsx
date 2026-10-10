@@ -1,9 +1,20 @@
 import Link from "next/link";
 
 import { githubRepoUrl } from "@/lib/github-links";
+import {
+  plural,
+  repoStatusChip,
+  runOutcomeLabel,
+  TONE_CLASSES,
+  triggerLabel,
+  type RepoRunOutcome,
+  type SyncTrigger,
+} from "@/lib/sync-status";
+import type { SyncWarningView } from "@/lib/sync-warnings";
 import { formatAbsoluteTime, formatRelativeTime } from "@/lib/time";
 
 import { documentCountLabel, okfBadgeLabel } from "./repo-card";
+import { SyncWarningsNotice } from "./sync-warnings-notice";
 
 /**
  * Header of a repository space (task 9.3): breadcrumb, `owner/name` as the page title, badges
@@ -11,6 +22,10 @@ import { documentCountLabel, okfBadgeLabel } from "./repo-card";
  * count and last synced time. Also the sync state: a repository whose last sync failed shows the
  * failure while its stored content stays on the page, and a repository that was never synced says
  * what is going on. Presentational: it renders what it is given, as text (React escapes it).
+ *
+ * Sync state (tasks 12.2 and 12.3): a status chip (synced, synced with warnings, sync failed,
+ * pending), the repository's last sync run (trigger, when, outcome, warnings), and the files the
+ * last sync left out (document or size cap) in a disclosure.
  * `RepoHeaderData` is the structural subset of the query layer's `RepoDetail` used here, because
  * components never import the server query layer.
  */
@@ -29,18 +44,43 @@ export interface RepoHeaderData {
   readonly syncError: string | null;
   readonly lastSyncedAt: Date | null;
   readonly docCount: number;
+  /** Files the last sync left out (task 12.3); absent or empty when none. */
+  readonly syncWarnings?: readonly SyncWarningView[];
+}
+
+/** The repository's latest sync run (structural subset of the query layer's `RepoLastRun`). */
+export interface RepoHeaderLastRun {
+  readonly trigger: SyncTrigger;
+  readonly startedAt: Date;
+  readonly finishedAt: Date | null;
+  readonly outcome: RepoRunOutcome;
+  readonly warnings: number;
 }
 
 export interface RepoHeaderProps {
   readonly repo: RepoHeaderData;
+  /** The repository's latest recorded run; null or absent when none is recorded. */
+  readonly lastRun?: RepoHeaderLastRun | null;
   /** The time "x ago" is measured against. The page passes the time of the read. */
   readonly now: Date;
 }
 
 const BADGE = "inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-xs font-medium";
 
-export function RepoHeader({ repo, now }: RepoHeaderProps) {
+function TimeText({ date, now }: { readonly date: Date; readonly now: Date }) {
+  return (
+    <time dateTime={date.toISOString()} title={formatAbsoluteTime(date)}>
+      {formatRelativeTime(date, now)}
+      <span className="sr-only"> ({formatAbsoluteTime(date)})</span>
+    </time>
+  );
+}
+
+export function RepoHeader({ repo, now, lastRun = null }: RepoHeaderProps) {
   const syncedAt = repo.lastSyncedAt;
+  const warnings = repo.syncWarnings ?? [];
+  const chip = repoStatusChip(repo.syncStatus, warnings.length);
+  const runAt = lastRun === null ? null : (lastRun.finishedAt ?? lastRun.startedAt);
   const hasContent = syncedAt !== null || repo.docCount > 0;
   const description = repo.description?.trim() ?? "";
   return (
@@ -127,18 +167,28 @@ export function RepoHeader({ repo, now }: RepoHeaderProps) {
         data-testid="repo-meta"
         className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground"
       >
+        <span
+          data-testid="repo-sync-status"
+          data-tone={chip.tone}
+          className={`${BADGE} ${TONE_CLASSES[chip.tone]}`}
+        >
+          {chip.label}
+        </span>
         <span>{documentCountLabel(repo.docCount)}</span>
         {syncedAt !== null ? (
-          <span>
-            Last synced{" "}
-            <time dateTime={syncedAt.toISOString()} title={formatAbsoluteTime(syncedAt)}>
-              {formatRelativeTime(syncedAt, now)}
-              <span className="sr-only"> ({formatAbsoluteTime(syncedAt)})</span>
-            </time>
+          <span data-testid="repo-last-synced">
+            Last synced <TimeText date={syncedAt} now={now} />
           </span>
         ) : (
-          <span>Not synced yet</span>
+          <span data-testid="repo-last-synced">Not synced yet</span>
         )}
+        {lastRun !== null && runAt !== null ? (
+          <span data-testid="repo-last-run">
+            Last run: {triggerLabel(lastRun.trigger)}, <TimeText date={runAt} now={now} />,{" "}
+            {runOutcomeLabel(lastRun.outcome)}
+            {lastRun.warnings > 0 ? `, ${plural(lastRun.warnings, "warning")}` : ""}
+          </span>
+        ) : null}
       </p>
 
       {repo.syncStatus === "error" ? (
@@ -154,8 +204,15 @@ export function RepoHeader({ repo, now }: RepoHeaderProps) {
           <p className="mt-1">
             {hasContent ? "Showing previously synced content." : "No content has been stored yet."}
           </p>
+          {syncedAt !== null ? (
+            <p className="mt-1" data-testid="repo-sync-error-stored">
+              Last successful sync: <TimeText date={syncedAt} now={now} />.
+            </p>
+          ) : null}
         </div>
       ) : null}
+
+      <SyncWarningsNotice warnings={warnings} />
 
       {repo.syncStatus === "pending" ? (
         <div

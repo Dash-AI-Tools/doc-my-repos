@@ -2,6 +2,7 @@ import "server-only";
 
 import { and, asc, eq, sql } from "drizzle-orm";
 
+import { parseSyncWarnings, type SyncWarningView } from "../../lib/sync-warnings";
 import type { Db } from "../db/client";
 import { codeOwnerKinds, codeOwners, documents, repos, type CodeOwnerRef } from "../db/schema";
 import {
@@ -77,6 +78,11 @@ export interface RepoDetail extends RepoSummary {
   readonly codeownersPath: string | null;
   /** Rules in file order; empty when there is no CODEOWNERS file or it has no rules. */
   readonly codeOwners: readonly CodeOwnerRule[];
+  /**
+   * Files the last content sync left out (document cap, size cap, rejected), task 12.3; empty when
+   * none. Fixed texts and repo-relative paths, bounded.
+   */
+  readonly syncWarnings: readonly SyncWarningView[];
 }
 
 export interface ListReposArgs {
@@ -203,6 +209,7 @@ export async function getRepo(
       readmeMarkdown: repos.readmeMarkdown,
       readmeSha: repos.readmeSha,
       codeownersPath: repos.codeownersPath,
+      syncWarnings: repos.syncWarnings,
       exact: match.exact,
     })
     .from(repos)
@@ -224,6 +231,7 @@ export async function getRepo(
         : { path: row.readmePath ?? "README.md", markdown: row.readmeMarkdown, sha: row.readmeSha },
     codeownersPath: row.codeownersPath,
     codeOwners: rules,
+    syncWarnings: parseSyncWarnings(row.syncWarnings),
   };
 }
 

@@ -129,6 +129,7 @@ export const RESERVED_OWNERS: ReadonlySet<string> = new Set([
   "api",
   "e2e",
   "search",
+  "status",
   "_next",
   "favicon.ico",
   "robots.txt",

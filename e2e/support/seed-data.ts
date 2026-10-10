@@ -28,6 +28,9 @@
  *   acme/okf-showcase     public, OKF (okf_version 0.2), 10 documents plus index.md and log.md for
  *                          the metadata card, notices and change log of tasks 11.4 to 11.6 (see
  *                          "OKF document page data" below)
+ *   acme/capped-docs       public, synced over the per-repository limits (task 12.3): 2 docs stored,
+ *                          25 found with a cap of 2 (23 left out) and one file over the size cap,
+ *                          so `repos.sync_warnings` holds a docs_capped and a too_large warning
  *   acme/search-lab        public, plain Markdown, 30 docs for the search page (task 10.3): a title
  *                          match, a heading match and body matches for "deployment", a
  *                          markup-heavy doc, a hostile frontmatter title, a "rate limit" doc and 25
@@ -102,6 +105,14 @@ export interface SeedRepo {
   readonly syncError?: string;
   /** Fixed `repos.last_synced_at` (ISO 8601 UTC), so absolute times are stable. */
   readonly lastSyncedAt?: string;
+  /**
+   * What the tree selection left out (task 12.3), passed to `persistRepoSync` as the plan's
+   * `selection`, so the stored `sync_warnings` are built by the real code.
+   */
+  readonly selection?: {
+    readonly skipped: readonly { readonly path: string; readonly reason: string }[];
+    readonly capped: { readonly found: number; readonly limit: number } | null;
+  };
 }
 
 const LONG_WORD =
@@ -222,6 +233,12 @@ const SHOWCASE_LONG_OUTLINE = [
     "",
   ]).flat(),
 ].join("\n");
+
+/** acme/capped-docs: 25 docs found, cap 2; the 23 left out, in path order. */
+export const CAPPED_LEFT_OUT: readonly string[] = Array.from(
+  { length: 23 },
+  (_, i) => `docs/zz-extra-${String(i + 1).padStart(2, "0")}.md`,
+);
 
 export const SEED_REPOS: readonly SeedRepo[] = [
   {
@@ -621,7 +638,49 @@ export const SEED_REPOS: readonly SeedRepo[] = [
     lastSyncedAt: "2026-03-05T09:00:00.000Z",
     readme: "# empty-docs\n\nThis repository has a README and no docs folder.\n",
   },
+  {
+    githubId: 1015,
+    owner: "acme",
+    name: "capped-docs",
+    description: "A repository over the per-repository sync limits.",
+    visibility: "public",
+    state: "synced",
+    lastSyncedAt: "2026-03-12T10:00:00.000Z",
+    readme: "# capped-docs\n\nMore documentation files than the portal keeps.\n",
+    docs: [
+      { path: "docs/aa-first.md", text: "# First kept page\n\nKept under the limit.\n" },
+      { path: "docs/ab-second.md", text: "# Second kept page\n\nAlso kept.\n" },
+    ],
+    selection: {
+      capped: { found: 25, limit: 2 },
+      skipped: [
+        { path: "docs/huge-export.md", reason: "too_large" },
+        ...CAPPED_LEFT_OUT.map((path) => ({ path, reason: "over_limit" })),
+      ],
+    },
+  },
 ];
+
+/**
+ * Sync runs in the seeded database (task 12.2), oldest first. Every synced or errored repository
+ * appears in both runs; the latest is a partial run in which flaky-service failed.
+ */
+export const SEED_RUNS = {
+  /** A full scheduled run that succeeded, with warnings on capped-docs. */
+  success: {
+    trigger: "schedule" as const,
+    status: "success" as const,
+    startedAt: "2026-03-14T09:00:00.000Z",
+    finishedAt: "2026-03-14T09:00:42.000Z",
+  },
+  /** The latest run: a full manual run where flaky-service failed. */
+  partial: {
+    trigger: "manual" as const,
+    status: "partial" as const,
+    startedAt: "2026-03-15T08:00:00.000Z",
+    finishedAt: "2026-03-15T08:00:05.000Z",
+  },
+} as const;
 
 /** Names used by specs. */
 export const SEEDED = {
@@ -639,6 +698,7 @@ export const SEEDED = {
   emptyDocs: { owner: "acme", name: "empty-docs" },
   searchLab: { owner: "acme", name: "search-lab" },
   okfShowcase: { owner: "acme", name: "okf-showcase" },
+  capped: { owner: "acme", name: "capped-docs" },
 } as const;
 
 /** `owner/name` of every private seeded repository. */

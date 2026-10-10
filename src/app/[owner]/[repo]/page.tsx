@@ -71,7 +71,7 @@ export default async function RepoPage({
   if (data.status === "not_found") notFound();
   if (data.status === "error") return <RepoLoadError href={repoUrl(owner, name)} />;
 
-  const { repo, readme, tree, toc, loadedAt } = data;
+  const { repo, readme, tree, toc, lastRun, loadedAt } = data;
   if (repo.owner !== owner || repo.name !== name) {
     redirect(withFilterQuery(repoUrl(repo.owner, repo.name), filterQuery));
   }
@@ -84,7 +84,7 @@ export default async function RepoPage({
 
   return (
     <div className="flex flex-col gap-8">
-      <RepoHeader repo={repo} now={loadedAt} />
+      <RepoHeader repo={repo} lastRun={lastRun} now={loadedAt} />
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <ReadmeSection
           readme={readme}

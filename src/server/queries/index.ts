@@ -8,6 +8,7 @@ import {
 } from "./documents";
 import { getRepo, listCodeOwners, listRepos } from "./repos";
 import { getRepoFacets, searchDocuments, searchFacets } from "./search";
+import { getRepoSyncInfo, getSyncStatus } from "./status";
 
 /**
  * The shared read layer (task 9.1, design decision 5b). Pages and route handlers import reads
@@ -35,6 +36,8 @@ export const QUERY_FUNCTIONS = {
   searchDocuments,
   searchFacets,
   getRepoFacets,
+  getSyncStatus,
+  getRepoSyncInfo,
 } as const;
 
 /** Registered queries that may read `documents.search_vector` (search only, design decision 2). */
@@ -99,4 +102,18 @@ export {
   type SearchParams,
   type SearchResult,
 } from "./search";
+export {
+  getRepoSyncInfo,
+  getSyncStatus,
+  MAX_STATUS_REPOS,
+  type RepoLastRun,
+  type RepoSyncState,
+  type RepoWarningSummary,
+  type RunningSync,
+  type SyncRunCounts,
+  type SyncRunSummary,
+  type SyncRunTrigger,
+  type SyncStatus,
+  type SyncStatusArgs,
+} from "./status";
 export type { QueryOptions } from "./visibility";

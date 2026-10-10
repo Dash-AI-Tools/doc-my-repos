@@ -84,8 +84,6 @@ export function syncRunLockKey(runId: number): string {
 export type RepoSyncErrorKind =
   /** The recursive tree was truncated by GitHub (task 5.4). */
   | "tree_truncated"
-  /** More doc files than the per-repo limit (task 5.4). */
-  | "too_many_files"
   /** Listed in config but not accessible to the installation (task 5.3). */
   | "not_accessible";
 
@@ -104,17 +102,17 @@ export class RepoSyncSkipped extends Error {
   }
 }
 
-/** A typed per-repo failure the worker can throw for outcomes that are not exceptions upstream. */
+/**
+ * A typed per-repo failure the worker can throw for outcomes that are not exceptions upstream.
+ * (More docs than the per-repo cap is not a failure since task 12.3: the selection is capped and
+ * the repo warned, see `tree.ts`.)
+ */
 export class RepoSyncError extends Error {
   override name = "RepoSyncError";
   readonly kind: RepoSyncErrorKind;
-  readonly count: number | undefined;
-  readonly limit: number | undefined;
-  constructor(kind: RepoSyncErrorKind, detail: { count?: number; limit?: number } = {}) {
+  constructor(kind: RepoSyncErrorKind) {
     super(`repo sync failed: ${kind}`);
     this.kind = kind;
-    this.count = detail.count;
-    this.limit = detail.limit;
   }
 }
 
@@ -241,13 +239,6 @@ export function describeSyncError(error: unknown, now: number = Date.now()): Syn
           "repository tree truncated by GitHub (too large to list in one call); docs not synced",
           false,
         );
-      case "too_many_files": {
-        const detail =
-          Number.isSafeInteger(error.count) && Number.isSafeInteger(error.limit)
-            ? ` (${error.count} found, limit ${error.limit})`
-            : "";
-        return info("too_many_files", `too many docs files${detail}; docs not synced`, false);
-      }
       case "not_accessible":
         return info("not_accessible", NOT_ACCESSIBLE_MESSAGE, false);
     }

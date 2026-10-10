@@ -3,14 +3,14 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 
 import type { Db } from "../../src/server/db/client";
-import { repos } from "../../src/server/db/schema";
+import { repos, syncRuns, type SyncRepoResult } from "../../src/server/db/schema";
 import {
   persistRepoSync,
   type PersistFetchedDoc,
   type PersistPlan,
   type PersistRepo,
 } from "../../src/server/sync/persist";
-import { SEED_REPOS, type SeedRepo } from "./seed-data";
+import { SEED_REPOS, SEED_RUNS, type SeedRepo } from "./seed-data";
 
 /**
  * Writes `SEED_REPOS` into a migrated database through the real persistence path
@@ -22,6 +22,9 @@ import { SEED_REPOS, type SeedRepo } from "./seed-data";
  * state of `flaky-service` (`sync_status`/`sync_error`, written by the run recorder after a
  * failure) and `pending` repositories (a repository row that no sync has completed). Both are
  * written with the values the sync writes.
+ *
+ * Two `sync_runs` rows (`SEED_RUNS`) give `/status` and the repository headers a last run (task
+ * 12.2). Their `results` entries have the shape the run recorder writes.
  */
 
 function sha(seed: string): string {
@@ -67,7 +70,82 @@ function planFor(repo: SeedRepo): PersistPlan {
       repo.codeowners === undefined
         ? { state: "absent" }
         : file(".github/CODEOWNERS", repo.codeowners),
+    ...(repo.selection === undefined
+      ? {}
+      : { selection: { skipped: repo.selection.skipped, capped: repo.selection.capped } }),
   };
+}
+
+function runEntry(repo: SeedRepo, extra: Partial<SyncRepoResult>): SyncRepoResult {
+  return {
+    repo: `${repo.owner}/${repo.name}`,
+    githubId: repo.githubId,
+    status: "ok",
+    error: null,
+    errorKind: null,
+    retryable: false,
+    retryAfter: null,
+    added: 0,
+    updated: 0,
+    identical: 0,
+    removed: 0,
+    skipped: 0,
+    skippedFiles: [],
+    failedFiles: [],
+    failedFilesTotal: 0,
+    warnings: [],
+    warningsTotal: 0,
+    replacedRepos: [],
+    ...extra,
+  };
+}
+
+/** Per-repo entry of the successful run: every stored document added; skips for capped-docs. */
+function successEntry(repo: SeedRepo): SyncRepoResult {
+  const skipped = repo.selection?.skipped ?? [];
+  return runEntry(repo, {
+    added: repo.docs?.length ?? 0,
+    skipped: skipped.length,
+    skippedFiles: skipped.slice(0, 50).map((s) => ({ path: s.path, reason: s.reason })),
+    warnings: repo.selection?.capped
+      ? [
+          {
+            path: null,
+            message: `document limit reached: ${repo.selection.capped.found} docs files found, only the first ${repo.selection.capped.limit} synced`,
+          },
+        ]
+      : [],
+    warningsTotal: repo.selection?.capped ? 1 : 0,
+  });
+}
+
+async function seedRuns(db: Db): Promise<void> {
+  const synced = SEED_REPOS.filter((r) => r.state !== "pending");
+  await db.insert(syncRuns).values([
+    {
+      ...SEED_RUNS.success,
+      scope: null,
+      startedAt: new Date(SEED_RUNS.success.startedAt),
+      finishedAt: new Date(SEED_RUNS.success.finishedAt),
+      results: synced.map(successEntry),
+    },
+    {
+      ...SEED_RUNS.partial,
+      scope: null,
+      startedAt: new Date(SEED_RUNS.partial.startedAt),
+      finishedAt: new Date(SEED_RUNS.partial.finishedAt),
+      results: synced.map((repo) =>
+        repo.state === "error"
+          ? runEntry(repo, {
+              status: "error",
+              error: repo.syncError ?? "GitHub request failed",
+              errorKind: "rate_limited",
+              retryable: true,
+            })
+          : runEntry(repo, { status: "unchanged" }),
+      ),
+    },
+  ]);
 }
 
 export async function seedDatabase(db: Db): Promise<void> {
@@ -101,4 +179,5 @@ export async function seedDatabase(db: Db): Promise<void> {
       await db.update(repos).set(update).where(eq(repos.githubId, repo.githubId));
     }
   }
+  await seedRuns(db);
 }

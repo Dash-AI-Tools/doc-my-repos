@@ -49,6 +49,7 @@ const repo: RepoDetail = {
       sourcePath: ".github/CODEOWNERS",
     },
   ],
+  syncWarnings: [],
 };
 
 function docRow(path: string, title: string): DocsTreeRow {
@@ -72,6 +73,7 @@ function ok(over: Partial<RepoDetail> = {}) {
     readme: { status: "rendered" as const, html: "<h1>Hello</h1>" },
     tree,
     toc: null,
+    lastRun: null,
   };
 }
 

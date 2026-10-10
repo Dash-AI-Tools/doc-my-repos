@@ -9,7 +9,7 @@ import { buildDocsTree, flattenDocsTree } from "../../lib/docs-tree";
 import { docPathCandidates } from "../../lib/routes";
 import type { Db } from "../db/client";
 import * as schema from "../db/schema";
-import { codeOwners, documents, repos } from "../db/schema";
+import { codeOwners, documents, repos, syncRuns, type SyncRepoResult } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import {
   countDocs,
@@ -20,6 +20,8 @@ import {
   getDocumentByPath,
   getRepo,
   getRepoFacets,
+  getRepoSyncInfo,
+  getSyncStatus,
   listCodeOwners,
   listRepos,
   NOT_QUERIES,
@@ -227,7 +229,87 @@ async function seed(db: Db): Promise<Seed> {
       sourcePath: "CODEOWNERS",
     },
   ]);
+  await seedRuns(db);
   return { handbook, secret, empty, big };
+}
+
+/** A `sync_runs.results` entry with zero counts unless overridden. */
+function runEntry(
+  githubId: number,
+  repo: string,
+  extra: Partial<SyncRepoResult> = {},
+): SyncRepoResult {
+  return {
+    repo,
+    githubId,
+    status: "ok",
+    error: null,
+    errorKind: null,
+    retryable: false,
+    retryAfter: null,
+    added: 0,
+    updated: 0,
+    identical: 0,
+    removed: 0,
+    skipped: 0,
+    skippedFiles: [],
+    failedFiles: [],
+    failedFilesTotal: 0,
+    warnings: [],
+    warningsTotal: 0,
+    replacedRepos: [],
+    ...extra,
+  };
+}
+
+/**
+ * Sync runs (task 12.2), oldest first: a full run covering the public handbook (ok), the private
+ * secret (error) and a removed repository; then a single-repo run of the private secret (the
+ * latest finished run); then a running single-repo run of the secret.
+ */
+async function seedRuns(db: Db): Promise<void> {
+  await db.insert(syncRuns).values([
+    {
+      trigger: "schedule",
+      scope: null,
+      status: "partial",
+      startedAt: new Date("2026-01-01T00:00:00Z"),
+      finishedAt: new Date("2026-01-01T00:00:12Z"),
+      reposTotal: 2,
+      reposSynced: 1,
+      reposFailed: 1,
+      docsAdded: 99,
+      results: [
+        runEntry(101, "Acme/Handbook", {
+          added: 3,
+          updated: 1,
+          skipped: 2,
+          warningsTotal: 4,
+        }),
+        runEntry(102, "acme/secret", {
+          status: "error",
+          error: "GitHub rate limit reached; retry later",
+          added: 5,
+        }),
+        runEntry(999, "gone/repo", { status: "removed", removed: 7 }),
+        runEntry(103, "beta/empty", { status: "unchanged" }),
+      ],
+    },
+    {
+      trigger: "webhook",
+      scope: "acme/secret",
+      status: "success",
+      startedAt: new Date("2026-01-02T00:00:00Z"),
+      finishedAt: new Date("2026-01-02T00:00:01Z"),
+      results: [runEntry(102, "acme/secret", { added: 1, warningsTotal: 2 })],
+    },
+    {
+      trigger: "manual",
+      scope: "ACME/Secret",
+      status: "running",
+      startedAt: new Date("2026-01-03T00:00:00Z"),
+    },
+  ]);
 }
 
 /** One way of reaching the private repository through a query, and whether it was seen. */
@@ -338,6 +420,44 @@ function flipCases(s: Seed): Record<keyof typeof QUERY_FUNCTIONS, FlipCase[]> {
         run: (db, o) => getRepoFacets(db, byName, undefined, o),
         seen: (r) => (r as { total: number }).total > 0,
       },
+    ],
+    getSyncStatus: [
+      {
+        label: "repository list",
+        run: (db, o) => getSyncStatus(db, {}, o),
+        seen: (r) => (r as { repos: { name: string }[] }).repos.some((x) => x.name === "secret"),
+      },
+      {
+        label: "last run scoped to the repository",
+        run: (db, o) => getSyncStatus(db, {}, o),
+        seen: (r) =>
+          (r as { lastRun: { scope: string | null } | null }).lastRun?.scope === "acme/secret",
+      },
+      {
+        label: "run counts",
+        run: (db, o) => getSyncStatus(db, {}, o),
+        seen: (r) => {
+          const run = (
+            r as { lastRun: { scope: string | null; counts: { failed: number } } | null }
+          ).lastRun;
+          // The full run, when the scoped run is hidden: its failure is the secret's.
+          return run !== null && (run.scope !== null || run.counts.failed > 0);
+        },
+      },
+      {
+        label: "running run",
+        run: (db, o) => getSyncStatus(db, {}, o),
+        seen: (r) => (r as { running: unknown }).running !== null,
+      },
+      {
+        label: "totals",
+        run: (db, o) => getSyncStatus(db, {}, o),
+        seen: (r) => (r as { reposByStatus: { error: number } }).reposByStatus.error > 0,
+      },
+    ],
+    getRepoSyncInfo: [
+      { label: "by id", run: (db, o) => getRepoSyncInfo(db, byId, o), seen: (r) => r !== null },
+      { label: "by name", run: (db, o) => getRepoSyncInfo(db, byName, o), seen: (r) => r !== null },
     ],
     searchFacets: [
       {
@@ -674,6 +794,164 @@ describeDb("query layer on a real database", () => {
       expect(await getAdjacentDocs(t.db, unknown, "docs/index.md")).toBeNull();
       expect(await countDocs(t.db, unknown)).toBe(0);
       expect(await listCodeOwners(t.db, unknown)).toEqual([]);
+    });
+  });
+
+  describe("sync status (task 12.2)", () => {
+    it("reports the latest visible run, the running run and every repository's state", async () => {
+      const status = await getSyncStatus(t.db);
+      expect(status.lastRun).toEqual({
+        trigger: "webhook",
+        scope: "acme/secret",
+        status: "success",
+        startedAt: new Date("2026-01-02T00:00:00Z"),
+        finishedAt: new Date("2026-01-02T00:00:01Z"),
+        durationMs: 1000,
+        error: null,
+        counts: {
+          repos: 1,
+          ok: 1,
+          failed: 0,
+          skipped: 0,
+          docsAdded: 1,
+          docsUpdated: 0,
+          docsRemoved: 0,
+          docsSkipped: 0,
+          warnings: 2,
+        },
+      });
+      expect(status.running).toEqual({
+        trigger: "manual",
+        scope: "ACME/Secret",
+        startedAt: new Date("2026-01-03T00:00:00Z"),
+      });
+      expect(status.repos.map((r) => `${r.owner}/${r.name}`)).toEqual([
+        "Acme/Handbook",
+        "acme/secret",
+        "beta/empty",
+        "zeta/big",
+      ]);
+      expect(status.repos[1]).toEqual({
+        owner: "acme",
+        name: "secret",
+        visibility: "private",
+        syncStatus: "error",
+        syncError: "GitHub rate limit reached; retry later",
+        lastSyncedAt: null,
+        warnings: [],
+        skippedFiles: 0,
+      });
+      expect(status.reposTotal).toBe(4);
+      expect(status.reposByStatus).toEqual({ ok: 1, error: 1, pending: 2 });
+      expect(status.reposWithWarnings).toBe(0);
+      expect(status.truncated).toBe(false);
+      const text = JSON.stringify(status);
+      for (const internal of ["treeSha", "tree", "githubId", "syncRequestedAt", "selection"]) {
+        expect(text).not.toContain(internal);
+      }
+    });
+
+    it("hides a hidden repository's run and counts only visible repositories", async () => {
+      const status = await getSyncStatus(t.db, {}, { visibility: publicReposOnly });
+      expect(status.repos.map((r) => r.name)).toEqual(["Handbook", "empty", "big"]);
+      expect(status.running).toBeNull();
+      // The secret's own run is skipped: the full run is the latest visible one. Its counts
+      // leave out the secret (error) and the removed repository (no visible row).
+      expect(status.lastRun).toMatchObject({
+        trigger: "schedule",
+        scope: null,
+        status: "partial",
+        counts: {
+          repos: 2,
+          ok: 2,
+          failed: 0,
+          skipped: 0,
+          docsAdded: 3,
+          docsUpdated: 1,
+          docsRemoved: 0,
+          docsSkipped: 2,
+          warnings: 4,
+        },
+      });
+      expect(JSON.stringify(status)).not.toMatch(/secret|gone\/repo|rate limit/i);
+      expect(status.reposByStatus).toEqual({ ok: 1, error: 0, pending: 2 });
+    });
+
+    it("caps the repository list and flags it", async () => {
+      const status = await getSyncStatus(t.db, { limit: 2 });
+      expect(status.repos).toHaveLength(2);
+      expect(status.truncated).toBe(true);
+      expect(status.reposTotal).toBe(4);
+      for (const limit of [0, -1, 1.5, Number.NaN, 10_000]) {
+        expect((await getSyncStatus(t.db, { limit })).repos).toHaveLength(4);
+      }
+    });
+
+    it("parses stored sync warnings defensively", async () => {
+      await t.db
+        .update(repos)
+        .set({
+          syncWarnings: sql`'[{"code":"docs_capped","message":"Only the first 2 of 5","count":3,"paths":["docs/c.md","docs/d.md",7]},{"code":5},null,"x"]'::jsonb`,
+        })
+        .where(eq(repos.id, s.big));
+      try {
+        const status = await getSyncStatus(t.db);
+        const big = status.repos.find((r) => r.name === "big");
+        expect(big?.warnings).toEqual([
+          { code: "docs_capped", message: "Only the first 2 of 5", count: 3 },
+        ]);
+        expect(big?.skippedFiles).toBe(3);
+        expect(status.reposWithWarnings).toBe(1);
+        const detail = await getRepo(t.db, "zeta", "big");
+        expect(detail?.syncWarnings).toEqual([
+          {
+            code: "docs_capped",
+            message: "Only the first 2 of 5",
+            count: 3,
+            paths: ["docs/c.md", "docs/d.md"],
+          },
+        ]);
+      } finally {
+        await t.db.update(repos).set({ syncWarnings: [] }).where(eq(repos.id, s.big));
+      }
+    });
+
+    it("finds a repository's latest run and its own outcome", async () => {
+      expect(await getRepoSyncInfo(t.db, { id: s.secret })).toEqual({
+        lastRun: {
+          trigger: "webhook",
+          fullRun: false,
+          startedAt: new Date("2026-01-02T00:00:00Z"),
+          finishedAt: new Date("2026-01-02T00:00:01Z"),
+          outcome: "ok",
+          error: null,
+          added: 1,
+          updated: 0,
+          removed: 0,
+          skipped: 0,
+          warnings: 2,
+        },
+      });
+      expect(await getRepoSyncInfo(t.db, { owner: "acme", name: "HANDBOOK" })).toEqual({
+        lastRun: {
+          trigger: "schedule",
+          fullRun: true,
+          startedAt: new Date("2026-01-01T00:00:00Z"),
+          finishedAt: new Date("2026-01-01T00:00:12Z"),
+          outcome: "ok",
+          error: null,
+          added: 3,
+          updated: 1,
+          removed: 0,
+          skipped: 2,
+          warnings: 4,
+        },
+      });
+      expect(await getRepoSyncInfo(t.db, { id: s.big })).toEqual({ lastRun: null });
+      expect(await getRepoSyncInfo(t.db, { owner: "acme", name: "nope" })).toBeNull();
+      expect(
+        await getRepoSyncInfo(t.db, { id: s.secret }, { visibility: publicReposOnly }),
+      ).toBeNull();
     });
   });
 

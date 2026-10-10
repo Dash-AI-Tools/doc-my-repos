@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import type { EnvSource } from "./env";
 import { ConfigError, loadConfig, type LoadedConfig } from "./load";
-import { DEFAULT_DOCS_PATHS } from "./schema";
+import { DEFAULT_DOCS_PATHS, configSchema } from "./schema";
 
 // Resolved from this file, so the test does not depend on the working directory.
 const EXAMPLE_PATH = fileURLToPath(
@@ -148,6 +148,11 @@ describe("docmyrepos.config.example.yml", () => {
     ]);
     expect(loaded.config.exclude).toBeUndefined();
     expect(loaded.config.defaults.docsPaths).toEqual([...DEFAULT_DOCS_PATHS]);
+    // The example spells out the defaults.
+    expect(loaded.config.limits).toEqual(configSchema.parse({}).limits);
+    expect(parse(SPLIT.active)).toMatchObject({
+      limits: { maxDocsPerRepo: 2000, maxFileBytes: 262144 },
+    });
   });
 
   it("has an active part that validates without any alternative", () => {

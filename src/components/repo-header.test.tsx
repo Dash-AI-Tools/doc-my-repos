@@ -162,3 +162,100 @@ describe("RepoHeader, repository waiting for its first sync", () => {
     expect(meta.querySelector("time")).toBeNull();
   });
 });
+
+describe("RepoHeader, sync state (tasks 12.2 and 12.3)", () => {
+  const RUN = {
+    trigger: "webhook" as const,
+    startedAt: new Date("2026-10-10T11:00:00Z"),
+    finishedAt: new Date("2026-10-10T11:30:00Z"),
+    outcome: "unchanged" as const,
+    warnings: 0,
+  };
+
+  it("shows a status chip for each state", () => {
+    const cases: [Partial<RepoHeaderData>, string, string][] = [
+      [{}, "Synced", "success"],
+      [{ syncStatus: "error", syncError: "x" }, "Sync failed", "error"],
+      [{ syncStatus: "pending", lastSyncedAt: null, docCount: 0 }, "Pending", "warning"],
+      [
+        { syncWarnings: [{ code: "too_large", message: "m", count: 1, paths: [] }] },
+        "Synced with warnings",
+        "warning",
+      ],
+    ];
+    for (const [over, label, tone] of cases) {
+      header(over);
+      const chip = screen.getByTestId("repo-sync-status");
+      expect(chip.textContent).toBe(label);
+      expect(chip.getAttribute("data-tone")).toBe(tone);
+      cleanup();
+    }
+  });
+
+  it("shows the last run: trigger, when, outcome and warnings", () => {
+    render(<RepoHeader repo={BASE} lastRun={{ ...RUN, warnings: 3 }} now={NOW} />);
+    const run = screen.getByTestId("repo-last-run");
+    expect(run.textContent).toContain("Last run: webhook, 30 minutes ago");
+    expect(run.textContent).toContain("no changes, 3 warnings");
+    expect(run.querySelector("time")?.getAttribute("datetime")).toBe("2026-10-10T11:30:00.000Z");
+  });
+
+  it("shows a failed last run on an errored repository with the time of the stored content", () => {
+    render(
+      <RepoHeader
+        repo={{
+          ...BASE,
+          syncStatus: "error",
+          syncError: "GitHub rate limit exhausted; retry later",
+        }}
+        lastRun={{ ...RUN, outcome: "error" }}
+        now={NOW}
+      />,
+    );
+    expect(screen.getByTestId("repo-last-run").textContent).toContain("failed");
+    const stored = screen.getByTestId("repo-sync-error-stored");
+    expect(stored.textContent).toContain("Last successful sync: 3 hours ago");
+  });
+
+  it("omits the last run when none is recorded", () => {
+    header();
+    expect(screen.queryByTestId("repo-last-run")).toBeNull();
+  });
+
+  it("lists the files the last sync left out in a disclosure", () => {
+    header({
+      syncWarnings: [
+        {
+          code: "docs_capped",
+          message: "Only the first 2000 of 2030 documentation files were synced.",
+          count: 30,
+          paths: ["docs/a.md", "docs/<b>.md"],
+        },
+        {
+          code: "too_large",
+          message: "1 file larger than 256 KB was not synced.",
+          count: 1,
+          paths: ["docs/huge.md"],
+        },
+      ],
+    });
+    const box = screen.getByTestId("repo-sync-warnings");
+    expect(box.getAttribute("role")).toBe("status");
+    expect(box.textContent).toContain("Some files were not synced");
+    expect(box.textContent).toContain("31 files in this repository are not shown.");
+    const details = within(box).getByTestId("sync-warnings-details");
+    expect(details.tagName).toBe("DETAILS");
+    expect(details.hasAttribute("open")).toBe(false);
+    const items = within(box).getAllByTestId("sync-warning");
+    expect(items.map((i) => i.getAttribute("data-code"))).toEqual(["docs_capped", "too_large"]);
+    expect(items[0]?.textContent).toContain("docs/<b>.md");
+    expect(items[0]?.textContent).toContain("and 28 more files");
+    expect(items[1]?.textContent).not.toContain("more file");
+    expect(box.querySelector("b")).toBeNull();
+  });
+
+  it("shows no warning notice without warnings", () => {
+    header({ syncWarnings: [] });
+    expect(screen.queryByTestId("repo-sync-warnings")).toBeNull();
+  });
+});

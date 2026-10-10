@@ -36,6 +36,13 @@
       "when": 1791621019797,
       "tag": "0004_nappy_brood",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791641137912,
+      "tag": "0005_strange_jack_flag",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { DEFAULT_DOCS_PATHS } from "../config/schema";
+import {
+  DEFAULT_DOCS_PATHS,
+  DEFAULT_MAX_DOCS_PER_REPO,
+  DEFAULT_MAX_FILE_BYTES as CONFIG_DEFAULT_MAX_FILE_BYTES,
+} from "../config/schema";
 import { pickCodeownersPath } from "../docs/codeowners-location";
 import { findDocsFolder, normalizeDocsPath } from "../docs/docs-folder";
 import { GitHubError, type CallOptions, type GitHubClient, type TreeEntry } from "../github/client";
@@ -21,24 +25,36 @@ import { GitHubError, type CallOptions, type GitHubClient, type TreeEntry } from
  * Failures:
  * - GitHub errors (including `not_found` on the branch head) are thrown as `GitHubError`; they are
  *   never turned into an empty plan, so the caller cannot mistake them for "no docs".
- * - A truncated recursive tree is `tree_truncated`, and more docs than `maxFiles` is
- *   `too_many_files`. Both are typed outcomes the caller records as a repo error while keeping the
- *   stored content. The design calls for one recursive tree call per repo, so there is no
- *   per-directory fallback; a partial tree is never planned from, because it would delete the docs
- *   the truncated listing left out.
+ * - A truncated recursive tree is `tree_truncated`, a typed outcome the caller records as a repo
+ *   error while keeping the stored content. The design calls for one recursive tree call per repo,
+ *   so there is no per-directory fallback; a partial tree is never planned from, because it would
+ *   delete the docs the truncated listing left out.
+ *
+ * Document cap (task 12.3): more docs than `maxFiles` does not fail the sync. The first `maxFiles`
+ * files in path order (code unit order, so the same tree always keeps the same files) are
+ * selected, the rest are reported as `over_limit` skips and `capped` is set. Documents stored
+ * earlier that fall past the cap are not in the selection, so the sync removes them like any
+ * file that left the docs folder: the portal shows exactly the capped set. The cap is part of the
+ * selection fingerprint, so raising it re-plans every repo once.
  */
 
-/** Bump when the selection rules in this file change, so every repo is re-planned once. */
-export const SELECTION_RULES_VERSION = 1;
+/**
+ * Bump when the selection rules in this file change, so every repo is re-planned once. 2: the
+ * document cap truncates instead of failing, and content syncs record `repos.sync_warnings`.
+ */
+export const SELECTION_RULES_VERSION = 2;
 
 /** Doc file extensions (spec: `.md`, `.mdx`), matched case-insensitively. */
 export const DEFAULT_DOC_EXTENSIONS = [".md", ".mdx"] as const;
-/** Per-file size cap (design: 256 KB, well below the 1 MB tsvector limit). */
-export const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
+/**
+ * Per-file size cap (design: 256 KB, well below the 1 MB tsvector limit). The config's
+ * `limits.maxFileBytes` may lower it, never raise it.
+ */
+export const DEFAULT_MAX_FILE_BYTES = CONFIG_DEFAULT_MAX_FILE_BYTES;
 /** Folder names skipped anywhere below the docs folder, matched case-insensitively. */
 export const DEFAULT_IGNORED_FOLDERS = ["node_modules"] as const;
-/** Most doc files planned for one repository. */
-export const DEFAULT_MAX_FILES = 2000;
+/** Most doc files planned for one repository; the rest are skipped `over_limit`. */
+export const DEFAULT_MAX_FILES = DEFAULT_MAX_DOCS_PER_REPO;
 /** Longest accepted path; matches the GitHub client's own limit. */
 const MAX_PATH_LENGTH = 1024;
 
@@ -96,7 +112,9 @@ export type SkipReason =
   /** Traversal, empty segments, backslashes, control characters, or an over-long path. */
   | "invalid_path"
   /** The entry's object id is not a SHA. */
-  | "invalid_entry";
+  | "invalid_entry"
+  /** Past the per-repository document cap (`maxFiles`), in path order. */
+  | "over_limit";
 
 export interface SkippedFile {
   /** Path as found, with control characters replaced so it is safe to store and display. */
@@ -118,6 +136,8 @@ export interface Selection {
   /** Sorted by path. Only files that would otherwise have been docs, README or CODEOWNERS. */
   skipped: SkippedFile[];
   repoLevelFiles: RepoLevelFiles;
+  /** Set when more docs than `maxFiles` were found: how many, and the cap. */
+  capped: { found: number; limit: number } | null;
 }
 
 /** Normalizes and validates options. Throws `TypeError` on a programming error (bad numbers). */
@@ -294,11 +314,19 @@ export function selectDocFiles(
   const readme = readmeEntry ? accept(readmeEntry) : null;
   const codeowners = codeownersEntry ? accept(codeownersEntry) : null;
 
+  files.sort(byPath);
+  let capped: Selection["capped"] = null;
+  if (files.length > r.maxFiles) {
+    capped = { found: files.length, limit: r.maxFiles };
+    for (const over of files.splice(r.maxFiles)) skip(over.path, "over_limit");
+  }
+
   return {
     docsFolder,
-    files: files.sort(byPath),
+    files,
     skipped: skipped.sort(byPath),
     repoLevelFiles: { readme, codeowners },
+    capped,
   };
 }
 
@@ -348,10 +376,7 @@ export type TreePlan =
       unchanged: false;
       outcome: "failed";
       /** Recorded as the repo's error; stored content is kept. */
-      reason: "tree_truncated" | "too_many_files";
-      /** For `too_many_files`: how many docs were found, and the limit. */
-      count?: number;
-      limit?: number;
+      reason: "tree_truncated";
     } & HeadState)
   | {
       /** The repository has no default branch (no commits). A successful, empty sync. */
@@ -365,6 +390,7 @@ export type TreePlan =
       files: [];
       skipped: [];
       repoLevelFiles: { readme: null; codeowners: null };
+      capped: null;
     };
 
 /**
@@ -396,6 +422,7 @@ export async function planTree(
       files: [],
       skipped: [],
       repoLevelFiles: { readme: null, codeowners: null },
+      capped: null,
     };
   }
 
@@ -438,17 +465,6 @@ export async function planTree(
   }
 
   const selected = selectDocFiles(tree.data.entries, selection);
-  const limit = resolveSelection(selection).maxFiles;
-  if (selected.files.length > limit) {
-    return {
-      unchanged: false,
-      outcome: "failed",
-      reason: "too_many_files",
-      count: selected.files.length,
-      limit,
-      ...state,
-    };
-  }
   return {
     unchanged: false,
     outcome: selected.docsFolder === null ? "no_docs" : "changed",
