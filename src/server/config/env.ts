@@ -37,9 +37,20 @@ const requiredString = () => z.preprocess(blankToUndefined, z.string({ error: "i
 
 // A shared secret: trimmed like every value, then at least MIN_SECRET_LENGTH characters. The message
 // is fixed and never includes the value.
+// `.env.example` ships `replace-with-...` placeholders that are long enough to pass the length check
+// and are public, so a deployment that forgot to change one would be guarded by a known secret
+// (forgeable webhooks, open /api/sync). They are rejected by name; the message never echoes the value.
+const PLACEHOLDER_SECRET = /^replace-with-/i;
+
 const sharedSecret = () =>
   requiredString().pipe(
-    z.string().min(MIN_SECRET_LENGTH, `must be at least ${MIN_SECRET_LENGTH} characters`),
+    z
+      .string()
+      .min(MIN_SECRET_LENGTH, `must be at least ${MIN_SECRET_LENGTH} characters`)
+      .refine(
+        (value) => !PLACEHOLDER_SECRET.test(value),
+        "is still the placeholder from .env.example; generate your own (for example `openssl rand -hex 32`)",
+      ),
   );
 
 const numericId = () =>

@@ -12,6 +12,7 @@ import { codeOwners, documents, repos, syncRuns } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import { createInstallationTokenProvider } from "../github/app-auth";
 import { createGitHubClient } from "../github/client";
+import { getDocsTree, searchDocuments } from "../queries";
 import { recordingLogger } from "../test-logger";
 import {
   createSyncContext,
@@ -810,6 +811,78 @@ describeDb("sync engine against a fixture-backed fake GitHub", () => {
       ["never-existed", 0, "error", "not_accessible", undefined],
     ]);
     expect(await repoRow(METRICS_ID)).toBeUndefined();
+  });
+
+  // Spec scenarios "One file changed" (search data updated) and "File deleted upstream" (gone from
+  // the table of contents and from search).
+  it("a changed file is searchable by its new text at once; a deleted file leaves search and the tree", async () => {
+    const fake = fixture();
+    const ctx = ctxFor(fake);
+    const searchPaths = async (q: string) =>
+      (await searchDocuments(h.db, { q })).hits.map((hit) => hit.doc.path);
+    const treePaths = async () =>
+      (await getDocsTree(h.db, { id: (await repoRow(HANDBOOK_ID))?.id as number })).map(
+        (row) => row.path,
+      );
+
+    await syncAll(ctx, { trigger: "manual" });
+    expect(await searchPaths("Welcome")).toEqual(["docs/getting-started.md"]);
+    expect(await searchPaths("zebrafish")).toEqual([]);
+    expect(await searchPaths("Deploying")).toEqual(["docs/guides/deploy.md"]);
+    expect(await treePaths()).toEqual(["docs/getting-started.md", "docs/guides/deploy.md"]);
+
+    fake.setFile(HANDBOOK_ID, "docs/getting-started.md", "# Getting Started\n\nZebrafish only.\n");
+    await syncAll(ctx, { trigger: "webhook" });
+    expect(await searchPaths("zebrafish")).toEqual(["docs/getting-started.md"]);
+    expect(await searchPaths("Welcome")).toEqual([]);
+
+    fake.deleteFile(HANDBOOK_ID, "docs/guides/deploy.md");
+    await syncAll(ctx, { trigger: "webhook" });
+    expect(await searchPaths("Deploying")).toEqual([]);
+    expect(await searchPaths("Steps")).toEqual([]);
+    expect(await treePaths()).toEqual(["docs/getting-started.md"]);
+  });
+
+  // Spec scenarios "Malformed frontmatter" (synced, no metadata, warning recorded) and, for OKF,
+  // "Only the required key" (title from the file name, no error).
+  it("a document with malformed frontmatter is synced without metadata and the run records a warning", async () => {
+    const fake = fixture([
+      {
+        id: 707,
+        name: "notes",
+        files: {
+          "docs/broken.md":
+            "---\ntitle: [unclosed\nfoo: : bar\n---\n# Broken Heading\n\nBody text here.\n",
+          "docs/type-only.md": "---\ntype: Note\n---\n\nJust a body, no heading.\n",
+        },
+      },
+    ]);
+    const result = await syncAll(ctxFor(fake), { trigger: "manual" });
+    expect(result.run.ran && result.run.status).toBe("success");
+    expect(await repoRow(707)).toMatchObject({ syncStatus: "ok", syncError: null, isOkf: true });
+
+    const stored = await docs(707);
+    const broken = stored.find((d) => d.path === "docs/broken.md");
+    expect(broken).toBeDefined();
+    expect(broken).toMatchObject({ frontmatter: {}, type: null, title: "Broken Heading" });
+    expect(broken?.body).toContain("title: [unclosed");
+    expect(broken?.body).toContain("Body text here.");
+
+    // `type` alone: the file name is the title, and nothing is reported.
+    const typeOnly = stored.find((d) => d.path === "docs/type-only.md");
+    expect(typeOnly).toMatchObject({
+      type: "Note",
+      title: "Type only",
+      frontmatter: { type: "Note" },
+      description: null,
+    });
+
+    const [run] = await runs();
+    const entry = run?.results.find((r) => r.githubId === 707);
+    expect(entry).toMatchObject({ status: "ok", added: 2 });
+    expect(entry?.warnings).toEqual([
+      { path: "docs/broken.md", message: expect.stringMatching(/not valid YAML/) },
+    ]);
   });
 
   it("a truncated tree is a repo error that keeps stored content", async () => {

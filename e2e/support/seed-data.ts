@@ -56,7 +56,8 @@
  *   concepts/full-metadata      every field: type, tags, status, description, resource, sources (a
  *                               link, an object, a local path), generated, verified, a stale_after in
  *                               the future, and a producer key (`owner_team`)
- *   concepts/type-only          frontmatter `type: Note` and nothing else
+ *   concepts/type-only          frontmatter `type: Note` and nothing else, no heading: the title
+ *                               falls back to the file name ("Type only")
  *   concepts/odd-keys           unknown keys of every shape (nested, list, number, boolean, null, a
  *                               long string, markup-looking text) and hostile `resource`/`sources`
  *   concepts/deprecated-metric  status deprecated
@@ -567,7 +568,7 @@ export const SEED_REPOS: readonly SeedRepo[] = [
       },
       {
         path: "docs/concepts/type-only.md",
-        text: "---\ntype: Note\n---\n\n# Type only\n\nThis document declares nothing but its type.\n",
+        text: "---\ntype: Note\n---\n\nThis document declares nothing but its type, so its title is its file name.\n",
       },
       {
         path: "docs/concepts/odd-keys.md",

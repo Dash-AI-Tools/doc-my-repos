@@ -10,7 +10,7 @@
 # - SKIP_MIGRATIONS=1 skips the step (for example when a deploy job migrates once, or on replicas
 #   that start after the first one).
 # - The server replaces this shell (exec), so signals reach it: SIGTERM stops the background
-#   scheduler and the server, and the container exits 0.
+#   scheduler and the server. Next 16 exits with code 143 on SIGTERM, which Docker treats as a normal stop.
 set -eu
 
 if [ "${SKIP_MIGRATIONS:-}" = "1" ]; then

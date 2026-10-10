@@ -114,7 +114,14 @@ test.describe("OKF document page, seeded database", () => {
     });
 
     test("shows only the type for a document that declares nothing else", async ({ page }) => {
-      await page.goto(doc("concepts/type-only"));
+      const response = await page.goto(doc("concepts/type-only"));
+      expect(response?.status()).toBe(200);
+      // Spec "Only the required key": no title in the file, so the file name is the title.
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Type only");
+      await expect(page).toHaveTitle(/^Type only/);
+      await expect(
+        page.getByTestId("docs-tree").getByRole("link", { name: "Type only" }),
+      ).toBeVisible();
       await expect(card(page)).toBeVisible();
       await expect(page.getByTestId("okf-type")).toHaveText("Note");
       await expect(card(page).locator("dt")).toHaveText(["Type"]);

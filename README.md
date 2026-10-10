@@ -189,21 +189,23 @@ Files left out by the limits are listed as a warning in the repository header an
 
 [`.env.example`](.env.example) lists every variable with its comment. Real values go in `.env` (git-ignored) or the environment of your platform.
 
-| Variable                                                                | Required | Purpose                                                                                                                           |
-| ----------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                                                          | yes      | Postgres connection string (`postgres://` or `postgresql://`). Compose points the app at its `db` service itself.                 |
-| `GITHUB_APP_ID`                                                         | yes      | Numeric ID of your GitHub App.                                                                                                    |
-| `GITHUB_APP_INSTALLATION_ID`                                            | yes      | ID of the App's installation on your organization.                                                                                |
-| `GITHUB_APP_PRIVATE_KEY` or `GITHUB_APP_PRIVATE_KEY_PATH`               | one      | The App private key: PEM text (in `.env`: one line in double quotes with `\n` for line breaks) or a path to the file. Never both. |
-| `GITHUB_WEBHOOK_SECRET`                                                 | yes      | Webhook secret of the App, 16+ characters. Verifies webhook signatures.                                                           |
-| `SYNC_SECRET`                                                           | yes      | Secret protecting `POST /api/sync`, 16+ characters.                                                                               |
-| `CONFIG_PATH`                                                           | no       | Config file path. Default `docmyrepos.config.yml`.                                                                                |
-| `LOG_LEVEL`                                                             | no       | `debug`, `info` (default), `warn`, `error` or `silent`. An unknown value stops startup.                                           |
-| `SYNC_SCHEDULER`                                                        | no       | `1` or `0` forces the background sync scheduler on or off. Default: on when `NODE_ENV=production`, off otherwise.                 |
-| `SKIP_MIGRATIONS`, `DB_WAIT_SECONDS`                                    | no       | Container only: skip the start-up migrations (`1`); how long to wait for the database (default `60`).                             |
-| `APP_BIND`, `APP_PORT`, `APP_DATABASE_URL`, `DOCMYREPOS_CONFIG`         | no       | Compose only: published address and port, an external database, the config file to mount.                                         |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`    | no       | Compose only: credentials and port of the `db` service.                                                                           |
-| `TEST_DATABASE_URL`, `SKIP_DB_TESTS`, `DATABASE_URL_E2E`, `E2E_SKIP_DB` | no       | Tests only, see [Development](#development).                                                                                      |
+| Variable                                                             | Required | Purpose                                                                                                                           |
+| -------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                       | yes      | Postgres connection string (`postgres://` or `postgresql://`). Compose points the app at its `db` service itself.                 |
+| `GITHUB_APP_ID`                                                      | yes      | Numeric ID of your GitHub App.                                                                                                    |
+| `GITHUB_APP_INSTALLATION_ID`                                         | yes      | ID of the App's installation on your organization.                                                                                |
+| `GITHUB_APP_PRIVATE_KEY` or `GITHUB_APP_PRIVATE_KEY_PATH`            | one      | The App private key: PEM text (in `.env`: one line in double quotes with `\n` for line breaks) or a path to the file. Never both. |
+| `GITHUB_WEBHOOK_SECRET`                                              | yes      | Webhook secret of the App, 16+ characters. Verifies webhook signatures.                                                           |
+| `SYNC_SECRET`                                                        | yes      | Secret protecting `POST /api/sync`, 16+ characters.                                                                               |
+| `CONFIG_PATH`                                                        | no       | Config file path. Default `docmyrepos.config.yml`.                                                                                |
+| `LOG_LEVEL`                                                          | no       | `debug`, `info` (default), `warn`, `error` or `silent`. An unknown value stops startup.                                           |
+| `SYNC_SCHEDULER`                                                     | no       | `1` or `0` forces the background sync scheduler on or off. Default: on when `NODE_ENV=production`, off otherwise.                 |
+| `SKIP_MIGRATIONS`, `DB_WAIT_SECONDS`                                 | no       | Container only: skip the start-up migrations (`1`); how long to wait for the database (default `60`).                             |
+| `APP_BIND`, `APP_PORT`, `APP_DATABASE_URL`, `DOCMYREPOS_CONFIG`      | no       | Compose only: published address and port, an external database, the config file to mount.                                         |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | no       | Compose only: credentials and port of the `db` service.                                                                           |
+
+> Change `POSTGRES_PASSWORD` for anything that is not local development. `docker compose config` prints your `.env` values (secrets included) after interpolation: do not paste its output into issues or chats. The `replace-with-...` placeholders for `SYNC_SECRET` and `GITHUB_WEBHOOK_SECRET` in `.env.example` are rejected at startup until you replace them.
+> | `TEST_DATABASE_URL`, `SKIP_DB_TESTS`, `DATABASE_URL_E2E`, `E2E_SKIP_DB` | no | Tests only, see [Development](#development). |
 
 Never set `E2E_FIXTURES`: it turns the server into a database-less fixture server for the browser tests.
 

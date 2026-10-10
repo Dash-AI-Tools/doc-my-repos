@@ -170,6 +170,17 @@ test.describe("docs table of contents and document pages, seeded database", () =
       await expect(empty).toContainText("docs/");
       await expect(page.getByTestId("docs-nav-pending")).toHaveCount(0);
       await expect(page.getByTestId("docs-tree")).toHaveCount(0);
+      // Spec "No docs folder": the repository is still listed, with its README and code owners.
+      await expect(
+        page.getByTestId("readme-body").getByRole("heading", { level: 1, name: "empty-docs" }),
+      ).toBeVisible();
+      await expect(page.getByTestId("code-owners-empty")).toBeVisible();
+      await page.goto("/");
+      const listed = page.getByTestId("repo-card").filter({
+        has: page.locator('a[href="/acme/empty-docs"]'),
+      });
+      await expect(listed).toHaveCount(1);
+      await expect(listed).toContainText("No documents");
 
       await page.goto(repoPath(SEEDED.pending));
       await expect(page.getByTestId("docs-nav-pending")).toContainText("after the first sync");
