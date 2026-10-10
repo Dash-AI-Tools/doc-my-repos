@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  customType,
   index,
   integer,
   jsonb,
@@ -20,6 +21,29 @@ export const syncTrigger = pgEnum("sync_trigger", ["webhook", "manual", "schedul
 export const syncRunStatus = pgEnum("sync_run_status", ["running", "success", "partial", "failed"]);
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
+
+// Postgres tsvector, read as its text form. Only used for the generated search column.
+const tsvector = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "tsvector";
+  },
+});
+
+/**
+ * Text-search configuration baked into documents.search_vector. Language-neutral: no
+ * stemming or stop words, so docs in any language match. Search queries (task 10.1) must
+ * call websearch_to_tsquery with this same regconfig, or lexemes will not line up.
+ * Changing it requires a new migration that recomputes the column.
+ */
+export const SEARCH_TEXT_CONFIG = "simple";
+
+const searchConfig = sql.raw(`'${SEARCH_TEXT_CONFIG}'::regconfig`);
+
+// Weights: title A, headings B, description and tags C, body D. Every input is coalesced
+// so a null column never nulls out the whole vector. Only the `text` of each heading is
+// indexed (not `slug` or `depth`). Tags go through an IMMUTABLE text[]-only wrapper
+// (migration 0001) because array_to_string itself is STABLE and is rejected here.
+const searchVectorExpression = sql`setweight(to_tsvector(${searchConfig}, coalesce("title", '')), 'A') || setweight(jsonb_to_tsvector(${searchConfig}, jsonb_path_query_array(coalesce("headings", '[]'::jsonb), '$[*].text'), '["string"]'::jsonb), 'B') || setweight(to_tsvector(${searchConfig}, coalesce("description", '')), 'C') || setweight(to_tsvector(${searchConfig}, coalesce(public.docmyrepos_immutable_array_to_string("tags", ' '), '')), 'C') || setweight(to_tsvector(${searchConfig}, coalesce("body", '')), 'D')`;
 
 export type Heading = { depth: number; text: string; slug: string };
 export type CodeOwnerRef = { handle: string; kind: (typeof codeOwnerKinds)[number] };
@@ -101,8 +125,15 @@ export const documents = pgTable(
     reserved: documentReserved("reserved"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+    // Computed by Postgres (GENERATED ALWAYS ... STORED); Drizzle omits it from insert and
+    // update types, and Postgres rejects explicit writes. Select it only for search.
+    searchVector: tsvector("search_vector").notNull().generatedAlwaysAs(searchVectorExpression),
   },
-  (t) => [unique("documents_repo_id_path_unique").on(t.repoId, t.path)],
+  (t) => [
+    unique("documents_repo_id_path_unique").on(t.repoId, t.path),
+    index("documents_search_vector_idx").using("gin", t.searchVector),
+    index("documents_repo_id_type_idx").on(t.repoId, t.type),
+  ],
 );
 
 export const codeOwners = pgTable(

@@ -16,7 +16,7 @@
 ## 3. Database (foundation for sync, search, OKF)
 
 - [x] 3.1 Add Drizzle and define `repos` (including `visibility` public/private), `documents`, `code_owners`, `sync_runs` tables per design, and verify `pnpm db:generate` emits a migration
-- [ ] 3.2 Add the weighted generated `tsvector` column + GIN index and `(repo_id, type)` index, and verify via SQL that inserting a row populates the vector
+- [x] 3.2 Add the weighted generated `tsvector` column + GIN index and `(repo_id, type)` index, and verify via SQL that inserting a row populates the vector
 - [ ] 3.3 Add `pnpm db:migrate`, a db client module, and a test helper for a throwaway test database, and verify migrations apply cleanly from empty
 - [ ] 3.4 Add an advisory-lock helper for per-repo sync serialization and verify a test shows a second concurrent acquire fails/waits
 
