@@ -72,11 +72,15 @@ function isPostgresUrl(value: string): boolean {
   return hostname !== "" || (url.searchParams.get("host") ?? "") !== "";
 }
 
+export const DATABASE_URL_VAR = "DATABASE_URL";
+
+const databaseUrlSchema = requiredString().refine(
+  isPostgresUrl,
+  "must be a postgres:// or postgresql:// URL with a host",
+);
+
 const envSchema = z.object({
-  DATABASE_URL: requiredString().refine(
-    isPostgresUrl,
-    "must be a postgres:// or postgresql:// URL with a host",
-  ),
+  DATABASE_URL: databaseUrlSchema,
   GITHUB_APP_ID: numericId(),
   GITHUB_APP_INSTALLATION_ID: numericId(),
   GITHUB_WEBHOOK_SECRET: requiredString(),
@@ -168,6 +172,24 @@ function resolvePrivateKey(env: EnvSource, readFile: FileReader): KeyResult {
   const problem = pemProblem(pem);
   if (problem) return fail(`${source}: ${problem}`);
   return { key: new Secret(pem), problems: [] };
+}
+
+export type DatabaseUrlResult =
+  { url: Secret<string>; problems: [] } | { url: null; problems: string[] };
+
+/**
+ * Validates only `DATABASE_URL`, for tools that run without the GitHub App settings (the
+ * migration job). Same rules as `parseEnv`; problem text never contains the URL.
+ */
+export function parseDatabaseUrl(env: EnvSource): DatabaseUrlResult {
+  const parsed = databaseUrlSchema.safeParse(env[DATABASE_URL_VAR], { reportInput: false });
+  if (!parsed.success) {
+    return {
+      url: null,
+      problems: parsed.error.issues.map((issue) => `${DATABASE_URL_VAR}: ${issue.message}`),
+    };
+  }
+  return { url: new Secret(parsed.data), problems: [] };
 }
 
 export type EnvResult = { env: EnvConfig; problems: [] } | { env: null; problems: string[] };
