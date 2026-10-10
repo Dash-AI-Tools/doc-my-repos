@@ -4,7 +4,7 @@
 - [x] 1.2 Scaffold Next.js (App Router, TypeScript strict, pnpm, `src/` layout) and verify `pnpm dev` serves a placeholder page
 - [x] 1.3 Add Tailwind v4 and base layout (header, container, footer) and verify styles apply on the placeholder page
 - [x] 1.4 Add ESLint, Prettier, and `pnpm typecheck`/`lint`/`format:check` scripts and verify all pass on a clean tree
-- [ ] 1.5 Add Vitest with a sample test and verify `pnpm test` passes
+- [x] 1.5 Add Vitest with a sample test and verify `pnpm test` passes
 - [ ] 1.6 Add `docker-compose.yml` with a Postgres service and `.env.example`, and verify `docker compose up -d db` yields a reachable database
 
 ## 2. Configuration (config-and-sources)
