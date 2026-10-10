@@ -51,7 +51,7 @@
 
 ## 7. Markdown rendering (markdown-rendering)
 
-- [ ] 7.1 Build the unified pipeline (GFM, frontmatter stripping, heading slugs + anchors) and verify unit tests for tables, task lists, footnotes, anchors
+- [x] 7.1 Build the unified pipeline (GFM, frontmatter stripping, heading slugs + anchors) and verify unit tests for tables, task lists, footnotes, anchors
 - [ ] 7.2 Add `rehype-sanitize` with an extended allow-list after all transforms, and verify XSS tests (`<script>`, `onerror`, `javascript:` links)
 - [ ] 7.3 Add server-side Shiki highlighting with dual themes plus copy button, and verify tests for known and unknown languages
 - [ ] 7.4 Implement the link rewriting plugin (relative, bundle-root-absolute, GitHub blob fallback, broken links) and verify unit tests for each case

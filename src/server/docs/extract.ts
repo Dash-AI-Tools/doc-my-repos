@@ -104,7 +104,7 @@ function tooNested(line: string): boolean {
   return false;
 }
 
-function limitNesting(text: string): string {
+export function limitNesting(text: string): string {
   return text
     .split("\n")
     .map((line) => (tooNested(line) ? "" : line))
@@ -126,6 +126,8 @@ function tidy(value: string, max: number): string {
   return text;
 }
 
+/** A list item marker in column 0. See `splitRanges`. */
+const LIST_START = /^(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 /** A line that can only be paragraph text: no marker of any block starts it. */
 const PLAIN_TEXT_START = /^[^\s#>\-+*=_|<~`[\d]/;
@@ -202,10 +204,58 @@ const enum HtmlRun {
  * such blocks except in deeply nested containers.
  */
 export function splitChunks(body: string): string[] {
-  const chunks: string[] = [];
+  return splitRanges(body, DEFAULT_CHUNK_LIMITS, false).map((range) =>
+    cut(body.slice(range.start, range.end), CHUNK_MAX_CHARS),
+  );
+}
+
+/** Where `splitRanges` cuts. */
+export interface ChunkLimits {
+  readonly target: number;
+  readonly maxChars: number;
+  readonly maxLines: number;
+}
+
+export const DEFAULT_CHUNK_LIMITS: ChunkLimits = {
+  target: CHUNK_TARGET_CHARS,
+  maxChars: CHUNK_MAX_CHARS,
+  maxLines: CHUNK_MAX_LINES,
+};
+
+/** A piece of the body, `[start, end)`. */
+export interface ChunkRange {
+  readonly start: number;
+  readonly end: number;
+  /**
+   * Only with `keepOverflow`: the piece passed the limits before any safe point came, so it is
+   * the whole stretch up to the next safe point and may be as large as the body.
+   */
+  readonly overflow: boolean;
+}
+
+/**
+ * The tracker behind `splitChunks`, see there. Without `keepOverflow` a piece that passes the
+ * limits is emitted up to the limit and the rest is skipped to the next safe point (`splitChunks`
+ * then cuts each piece to `maxChars`). With it nothing is skipped: the stretch is emitted whole
+ * and flagged, for a caller that must render all of it. An open fence or raw HTML block never
+ * counts as passing the limits then: both are linear to parse, and cutting inside one would turn
+ * code into markdown. With `listStartsAreSafe` false a list marker in column 0 is not a safe
+ * point, so a list with blank lines between its items stays one list.
+ */
+export function splitRanges(
+  body: string,
+  limits: ChunkLimits,
+  keepOverflow: boolean,
+  listStartsAreSafe = true,
+): ChunkRange[] {
+  const chunks: ChunkRange[] = [];
   let chunkStart = 0;
   let chunkLines = 0;
   let skipping = false;
+  // The piece held a fence or raw HTML block that was allowed past the limits.
+  let exempt = false;
+  let lastSafe = -1;
+  let lastSafeLines = 0;
   let afterBlank = true;
   let afterBlockEnd = false;
   let afterText = false;
@@ -217,8 +267,8 @@ export function splitChunks(body: string): string[] {
   // line in column 0 ends, or be top-level, where such a line is content. Unresolvable.
   let indentedBlock = false;
 
-  const emit = (until: number) => {
-    chunks.push(cut(body.slice(chunkStart, until), CHUNK_MAX_CHARS));
+  const emit = (until: number, overflow = false) => {
+    if (until > chunkStart) chunks.push({ start: chunkStart, end: until, overflow });
   };
 
   let pos = 0;
@@ -241,27 +291,50 @@ export function splitChunks(body: string): string[] {
     const safe =
       !lost &&
       !inBlock &&
-      (((afterBlank || afterBlockEnd) && first > 32) ||
+      (((afterBlank || afterBlockEnd) &&
+        first > 32 &&
+        (listStartsAreSafe || !LIST_START.test(line))) ||
         (opensFence !== null && first > 32) ||
         ATX_HEADING_COL0.test(line));
 
-    if (!skipping && (pos - chunkStart >= CHUNK_MAX_CHARS || chunkLines >= CHUNK_MAX_LINES)) {
-      emit(pos);
+    const full = () => pos - chunkStart >= limits.maxChars || chunkLines >= limits.maxLines;
+    if (keepOverflow && !skipping && !safe && lastSafe > chunkStart && full()) {
+      // Cut at the last safe point passed, so the block that is now too long (a table) is not
+      // lumped together with the text before it.
+      emit(lastSafe);
+      chunkLines -= lastSafeLines;
+      chunkStart = lastSafe;
+      exempt = false;
+    }
+    if (safe) {
+      lastSafe = pos;
+      lastSafeLines = chunkLines;
+    }
+    const overLimit = full();
+    const inExemptBlock = keepOverflow && (fence !== null || rawEnd !== null);
+    if (overLimit && inExemptBlock) exempt = true;
+    if (!skipping && overLimit && !inExemptBlock) {
+      if (!keepOverflow) emit(pos);
       if (safe) {
+        if (keepOverflow) emit(pos);
         chunkStart = pos;
         chunkLines = 0;
+        exempt = false;
       } else {
         skipping = true;
       }
     } else if (safe) {
       if (skipping) {
+        if (keepOverflow) emit(pos, !exempt);
         chunkStart = pos;
         chunkLines = 0;
         skipping = false;
-      } else if (pos - chunkStart >= CHUNK_TARGET_CHARS) {
+        exempt = false;
+      } else if (pos - chunkStart >= limits.target) {
         emit(pos);
         chunkStart = pos;
         chunkLines = 0;
+        exempt = false;
       }
     }
     chunkLines++;
@@ -305,12 +378,12 @@ export function splitChunks(body: string): string[] {
     afterText = !blank && PLAIN_TEXT_START.test(line);
     pos = end + 1;
   }
-  if (!skipping && chunkStart < body.length) emit(body.length);
+  if (!skipping || keepOverflow) emit(body.length, skipping && !exempt);
   return chunks;
 }
 
 /** Plain text of the inline content: links, emphasis and code reduced to their text. */
-function inlineText(heading: Parents): string {
+export function inlineText(heading: Parents): string {
   let out = "";
   const stack: Nodes[] = [...heading.children].reverse();
   while (stack.length > 0 && out.length < MAX_HEADING_SOURCE_CHARS) {
