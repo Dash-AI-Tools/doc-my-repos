@@ -8,7 +8,9 @@ import { promisify } from "node:util";
 import { getTableConfig, type AnyPgTable } from "drizzle-orm/pg-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { MigrationError, migrateDatabase, runMigrations } from "./migrate";
+import { withAdvisoryLock } from "./advisory-lock";
+import { createDb } from "./client";
+import { MIGRATION_LOCK_KEY, MigrationError, migrateDatabase, runMigrations } from "./migrate";
 import { codeOwners, documents, repos, syncRuns } from "./schema";
 import {
   createEmptyDatabase,
@@ -296,7 +298,7 @@ describeDb("scripts/db-migrate.ts against a real database", () => {
   }, 120_000);
 });
 
-describeDb("two db:migrate runs in parallel on one empty database", () => {
+describeDb("parallel db:migrate runs on one empty database", () => {
   let empty: EmptyDatabase;
   beforeAll(async () => {
     empty = await createEmptyDatabase();
@@ -305,18 +307,18 @@ describeDb("two db:migrate runs in parallel on one empty database", () => {
     await empty?.drop();
   }, 60_000);
 
-  it("leaves the database consistent", async () => {
+  it("take turns: every run succeeds and exactly one applies the migrations", async () => {
     const env = { DATABASE_URL: empty.url.reveal() };
-    const results = await Promise.all([cli(env), cli(env)]);
-    // Known gap, handled by tasks 3.4 and 13.2 (migration serialization): there is no advisory
-    // lock yet, so the loser of the race can fail with an opaque unique violation (23505) from
-    // the migrations bookkeeping and exit non-zero. We only require that the winner succeeds, that
-    // a loser fails cleanly without the URL, and that the database ends fully migrated.
-    expect(results.some((r) => r.code === 0)).toBe(true);
+    const results = await Promise.all([cli(env), cli(env), cli(env)]);
+    // The migration advisory lock (task 13.2) serializes the runs: the first applies everything,
+    // the others wait, then find nothing left to apply. None fails on the bookkeeping table.
     for (const r of results) {
-      expect(r.code === 0 || r.code === 1).toBe(true);
-      expect(r.stdout + r.stderr).not.toContain(empty.url.reveal());
+      expect(r).toMatchObject({ code: 0, stderr: "" });
+      expect(r.stdout).not.toContain(empty.url.reveal());
     }
+    const applied = results.filter((r) => r.stdout.startsWith("Applied "));
+    expect(applied).toHaveLength(1);
+    expect(results.filter((r) => r.stdout.includes("up to date"))).toHaveLength(2);
 
     const { Client } = await import("pg");
     const client = new Client({ connectionString: empty.url.reveal() });
@@ -340,4 +342,72 @@ describeDb("two db:migrate runs in parallel on one empty database", () => {
       await client.end();
     }
   }, 120_000);
+});
+
+describeDb("the migration lock", () => {
+  let empty: EmptyDatabase;
+  beforeAll(async () => {
+    empty = await createEmptyDatabase();
+  }, 60_000);
+  afterAll(async () => {
+    await empty?.drop();
+  }, 60_000);
+
+  it("makes a run wait for the holder, and gives up with a clear message when it does not finish", async () => {
+    const env = { DATABASE_URL: empty.url.reveal() };
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const holderDb = createDb(empty.url.reveal(), { max: 1 });
+    let entered: () => void = () => undefined;
+    const holding = new Promise<void>((resolve) => (entered = resolve));
+    const holder = withAdvisoryLock(holderDb.pool, MIGRATION_LOCK_KEY, async () => {
+      entered();
+      await held;
+    });
+    await holding;
+
+    // Another run holds the lock: a short wait ends in a MigrationError that names no connection.
+    const timedOut = await caught(migrateDatabase(env, drizzleDir, { lockWaitMs: 300 }));
+    expect(timedOut).toBeInstanceOf(MigrationError);
+    expect(timedOut.message).toBe(
+      "another migration run holds the lock (timeout); gave up after 0 s",
+    );
+    expect(timedOut.message).not.toContain(empty.url.reveal());
+
+    // Released while a run waits: that run proceeds and applies the migrations.
+    const waiting = migrateDatabase(env, drizzleDir, { lockWaitMs: 10_000 });
+    setTimeout(release, 400);
+    await expect(waiting).resolves.toEqual({ applied: journalLength, total: journalLength });
+    expect((await holder).acquired).toBe(true);
+    await holderDb.close();
+  }, 60_000);
+});
+
+describe("an unreachable database", () => {
+  it("reports it as not reachable after one attempt when waiting is off", async () => {
+    const error = await caught(migrateDatabase({ DATABASE_URL: URL_NEVER_USED }, drizzleDir));
+    expect(error).toBeInstanceOf(MigrationError);
+    expect(error.message).toBe(
+      "DATABASE_URL: database not reachable after 1 attempt, database error (ECONNREFUSED)",
+    );
+    expect(error.message).not.toMatch(/leak|127\.0\.0\.1/);
+  });
+
+  it("retries for the wait time, then fails with the attempt count", async () => {
+    const retries: number[] = [];
+    const started = Date.now();
+    const error = await caught(
+      migrateDatabase({ DATABASE_URL: URL_NEVER_USED }, drizzleDir, {
+        waitForDatabaseMs: 600,
+        waitIntervalMs: 100,
+        onWait: ({ attempt }) => retries.push(attempt),
+      }),
+    );
+    expect(error.message).toMatch(
+      /^DATABASE_URL: database not reachable after [2-9] attempts, database error \(ECONNREFUSED\)$/,
+    );
+    expect(retries.length).toBeGreaterThanOrEqual(1);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(500);
+    expect(error.message).not.toMatch(/leak/);
+  });
 });

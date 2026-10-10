@@ -1,3 +1,16 @@
+# DocMyRepos: the app and its Postgres database.
+#
+#   cp .env.example .env              # then set the GITHUB_APP_* values, GITHUB_WEBHOOK_SECRET, SYNC_SECRET
+#   docker compose up -d --build --wait
+#
+# The app image runs the database migrations on start, then serves on http://127.0.0.1:3000.
+# `pnpm db:up` starts only the db service, for development with `pnpm dev`.
+#
+# Self-hosting notes (see "Self-hosting with Docker" in README.md):
+# - TLS belongs to a reverse proxy in front of the app. The app is published on 127.0.0.1 only;
+#   change APP_BIND only if the proxy runs on another host.
+# - Production: do not publish the database port (delete the `ports` entry of `db`).
+# - Never set E2E_FIXTURES: it turns the app into a database-less fixture server.
 name: docmyrepos
 
 services:
@@ -9,6 +22,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docmyrepos}
       POSTGRES_DB: ${POSTGRES_DB:-docmyrepos}
     ports:
+      # For development (pnpm dev, pnpm test) from the host. Loopback only; remove in production.
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -18,6 +32,66 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+
+  app:
+    build: .
+    image: docmyrepos:local
+    # Without .env the app still starts and says what is missing in the page and in the logs.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Inside the compose network the database is the `db` service, not 127.0.0.1 (which is what
+      # DATABASE_URL in .env means on the host). This takes precedence over .env. For an external
+      # database set APP_DATABASE_URL and remove the db service and the depends_on below. Percent-
+      # encode special characters in the password. Connect directly to Postgres or through a
+      # proxy in session mode: advisory locks do not work behind PgBouncer in transaction mode.
+      DATABASE_URL: ${APP_DATABASE_URL:-postgres://${POSTGRES_USER:-docmyrepos}:${POSTGRES_PASSWORD:-docmyrepos}@db:5432/${POSTGRES_DB:-docmyrepos}}
+      # Set SKIP_MIGRATIONS=1 on every replica but one (see README.md) to skip the start-up migration.
+      SKIP_MIGRATIONS: ${SKIP_MIGRATIONS:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
+    volumes:
+      # Read-only config. The default is an empty file (all repositories the App can access). Set
+      # DOCMYREPOS_CONFIG=./docmyrepos.config.yml in .env to use your own copy of
+      # docmyrepos.config.example.yml. The file must exist: compose would create a directory for a
+      # missing one.
+      - ${DOCMYREPOS_CONFIG:-./docker/docmyrepos.config.default.yml}:/app/docmyrepos.config.yml:ro
+    # Private key from a file instead of GITHUB_APP_PRIVATE_KEY in .env: uncomment this and the
+    # top-level `secrets` below, set GITHUB_APP_PRIVATE_KEY_PATH=/run/secrets/github_app_key and
+    # leave GITHUB_APP_PRIVATE_KEY empty. The container user (uid 1000) must be able to read the
+    # file: `chown 1000 github-app.private-key.pem && chmod 400 github-app.private-key.pem`.
+    # secrets:
+    #   - github_app_key
+    healthcheck:
+      # The test comes from the image (GET /api/status: 200 when the app and the database answer).
+      interval: 10s
+    restart: unless-stopped
+    # Reaps zombie processes and forwards signals. SIGTERM stops the sync scheduler and the server.
+    init: true
+    stop_grace_period: 30s
+    # Immutable root file system; the server only writes to /tmp (verified).
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    # mem_limit: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# secrets:
+#   github_app_key:
+#     file: ./github-app.private-key.pem
 
 volumes:
   db-data:

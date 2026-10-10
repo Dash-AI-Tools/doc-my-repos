@@ -1,0 +1,10 @@
+# Default config for `docker compose up`: intentionally empty, so DocMyRepos shows every
+# repository the GitHub App installation can access, with the default settings.
+#
+# To narrow or tune it, copy docmyrepos.config.example.yml to docmyrepos.config.yml, edit the
+# copy, and point compose at it by adding this line to .env:
+#
+#   DOCMYREPOS_CONFIG=./docmyrepos.config.yml
+#
+# Compose mounts the file read-only at /app/docmyrepos.config.yml. Config changes apply after
+# `docker compose restart app`, or on the next POST /api/sync for everything but the `sync` block.

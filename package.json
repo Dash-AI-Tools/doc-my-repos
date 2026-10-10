@@ -16,7 +16,7 @@
     "format:check": "prettier --check .",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env scripts/db-migrate.ts",
-    "build:migrate": "esbuild scripts/db-migrate.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/db-migrate.mjs"
+    "build:migrate": "esbuild scripts/db-migrate.ts --bundle --platform=node --format=esm --target=node22 --external:pg-native --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\" --outfile=dist/db-migrate.mjs"
   },
   "dependencies": {
     "@octokit/auth-app": "^8.3.1",

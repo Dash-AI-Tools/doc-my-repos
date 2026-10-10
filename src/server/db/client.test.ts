@@ -118,7 +118,7 @@ describe("connection timeout", () => {
       ctx.skip(`network refused 10.255.255.1 immediately: ${(error as Error).message}`);
     }
     expect((error as Error).message).toBe(
-      "DATABASE_URL: migration failed, database error (timeout)",
+      "DATABASE_URL: database not reachable after 1 attempt, database error (timeout)",
     );
     expect(Date.now() - started).toBeLessThan(5_000);
   }, 15_000);
@@ -260,7 +260,7 @@ describe("migrateDatabase", () => {
     const error = await caught(migrateDatabase({ DATABASE_URL: UNREACHABLE }, folder));
     expect(error).toBeInstanceOf(MigrationError);
     expect((error as Error).message).toBe(
-      "DATABASE_URL: migration failed, database error (ECONNREFUSED)",
+      "DATABASE_URL: database not reachable after 1 attempt, database error (ECONNREFUSED)",
     );
     expectNoLeak(everything(error));
   });

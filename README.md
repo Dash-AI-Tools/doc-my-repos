@@ -31,18 +31,17 @@ flowchart LR
 
 The app reads repos from the GitHub API, stores parsed documents in Postgres, and serves pages from the database. It never calls GitHub while you browse.
 
-## Quickstart (planned)
+## Quickstart
 
-Requires Node.js 22+, pnpm, and Docker.
+Requires Docker with Compose. (Developing on the host also needs Node.js 22+ and pnpm.)
 
 ```bash
-cp .env.example .env                              # set the GITHUB_APP_* values, GITHUB_WEBHOOK_SECRET, SYNC_SECRET
-cp docmyrepos.config.example.yml docmyrepos.config.yml
-docker compose up                                 # app + Postgres, runs migrations
-curl -X POST -H "Authorization: Bearer $SYNC_SECRET" http://localhost:3000/api/sync
+cp .env.example .env     # set GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET, SYNC_SECRET
+docker compose up -d --build --wait    # app + Postgres; the app applies the database migrations on start
+curl -X POST -H "Authorization: Bearer <SYNC_SECRET from .env>" http://127.0.0.1:3000/api/sync   # first sync
 ```
 
-Then open <http://localhost:3000>.
+Then open <http://127.0.0.1:3000>. Everything is optional beyond the `.env` values; to narrow the repositories, copy `docmyrepos.config.example.yml` to `docmyrepos.config.yml` and set `DOCMYREPOS_CONFIG=./docmyrepos.config.yml` in `.env` (see [Self-hosting with Docker](#self-hosting-with-docker)). Without the GitHub values the app still starts, and the home page and the logs name what is missing. You need a GitHub App first: follow the [GitHub App setup guide](docs/github-app-setup.md).
 
 ### Configuration
 
@@ -95,6 +94,78 @@ DocMyRepos authenticates as a GitHub App, not with a personal access token:
 4. Copy the App id, the private key and the installation id into your environment.
 
 The App's single webhook keeps content fresh and tells DocMyRepos when repositories are added to or removed from the installation. For local development, use a tunnel such as `smee.io` or `ngrok`. See the [GitHub App setup guide](docs/github-app-setup.md) for the steps and an [App manifest](docs/github-app-manifest.json).
+
+## Self-hosting with Docker
+
+The `Dockerfile` builds a small production image (multi-stage, Node 24 on Alpine, about 330 MB, runs as the non-root `node` user, uid 1000) and `docker-compose.yml` runs it with Postgres 17. Both hold no secrets: settings come from the environment, the optional config file is mounted.
+
+```bash
+docker build -t docmyrepos .
+docker run -d --init --name docmyrepos -p 127.0.0.1:3000:3000 --env-file .env \
+  -e DATABASE_URL=postgres://user:password@db.example.com:5432/docmyrepos \
+  -v "$PWD/docmyrepos.config.yml:/app/docmyrepos.config.yml:ro" docmyrepos
+```
+
+### Environment
+
+[`.env.example`](.env.example) lists every variable with its comment; copy it to `.env`. Compose passes `.env` to the app (the file may be missing, then the app reports what is not set).
+
+| Variable                                                                                                          | Purpose                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                                                                    | Required. Compose sets it for the app to the `db` service; set `APP_DATABASE_URL` to use another database |
+| `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`                                                                     | Required. From the GitHub App                                                                             |
+| `GITHUB_APP_PRIVATE_KEY` or `GITHUB_APP_PRIVATE_KEY_PATH`                                                         | Required, one of them. Inline PEM (one line in double quotes, `\n` for line breaks) or a key file path    |
+| `GITHUB_WEBHOOK_SECRET`, `SYNC_SECRET`                                                                            | Required, 16+ characters each                                                                             |
+| `CONFIG_PATH`                                                                                                     | Optional: config file path, default `docmyrepos.config.yml` in `/app`                                     |
+| `LOG_LEVEL`, `SYNC_SCHEDULER`                                                                                     | Optional, see [Logging](#logging) and [Sync status](#sync-status). The scheduler is on in the image       |
+| `SKIP_MIGRATIONS`, `DB_WAIT_SECONDS`                                                                              | Optional: skip the start-up migrations (`1`); how long to wait for the database (default `60`)            |
+| `APP_BIND`, `APP_PORT`, `DOCMYREPOS_CONFIG`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | Compose only: published address and port, config file to mount, database credentials                      |
+
+Never set `E2E_FIXTURES`: it turns the server into a database-less fixture server for the browser tests.
+
+### Config file and private key
+
+- **Config:** compose mounts `./docker/docmyrepos.config.default.yml` (an empty config: every repository the App can access) read-only at `/app/docmyrepos.config.yml`. To use your own, set `DOCMYREPOS_CONFIG=./docmyrepos.config.yml` in `.env`. With `docker run` mount the file at that path, or mount it anywhere and set `CONFIG_PATH`. The file must exist before `docker compose up`: Docker would create a directory in its place. If no file exists in the container the defaults apply; an unreadable or invalid file is reported on the home page and in the logs.
+- **Private key from a file:** instead of `GITHUB_APP_PRIVATE_KEY`, uncomment the `secrets` blocks in `docker-compose.yml` and set `GITHUB_APP_PRIVATE_KEY_PATH=/run/secrets/github_app_key`. The container user (uid 1000) must be able to read the file, for example `chown 1000 github-app.private-key.pem && chmod 400 github-app.private-key.pem`. Keep the key out of the repository (`*.pem` is ignored).
+
+### Start-up, migrations and health
+
+The entrypoint (`docker-entrypoint.sh`) waits up to `DB_WAIT_SECONDS` (default 60) for the database, applies the SQL migrations in `/app/drizzle` (`dist/db-migrate.mjs`, a self-contained bundle: `pnpm build:migrate`), then starts the server. When the database stays unreachable or a migration fails, it prints a clear message (never the connection string) and the container exits with status 1. Migration runs take a Postgres advisory lock, so several containers may start together: one applies the migrations and the others wait, then find nothing to do. Migrations are forward-only; a restart does not apply them again.
+
+- **Health:** the image has a `HEALTHCHECK` on `GET /api/status` (200: the app and its database answer; 503: they do not, or the configuration is invalid). `docker compose up --wait` waits for it. With the GitHub settings missing the home page loads with an error notice, `/api/status` answers 503 and the container becomes unhealthy after the 90 s start period.
+- **Stopping:** `docker stop` sends `SIGTERM`; the scheduler stops, a running sync is aborted, and Next.js exits with status 143 (128 + SIGTERM), which Docker treats as a normal stop. `init: true` in compose (`--init` for `docker run`) reaps zombie processes.
+- **Read-only:** compose runs the container with a read-only root file system and a `tmpfs` at `/tmp`, no capabilities and `no-new-privileges`.
+- **Ports:** the app is published on `127.0.0.1:3000` and the database on `127.0.0.1:5432` (for development). In production remove the `db` ports entry, and change `APP_BIND` only if your reverse proxy runs on another host.
+
+### Reverse proxy
+
+Put a reverse proxy (nginx, Caddy, Traefik, a cloud load balancer) in front. It must:
+
+- **Terminate TLS** and forward `X-Forwarded-Proto` by **overwriting** it with the scheme it received, never by appending to or trusting a client-supplied value. The app uses it to send HSTS only over HTTPS.
+- **Not add security headers or a CSP.** The app sets its own (see [Security headers and CSP](#security-headers-and-csp)); a second copy may conflict.
+- **Not cache HTML.** Pages are rendered per request with a nonce, and send `Cache-Control: no-store`. Only `/_next/static/*` is safe to cache.
+- **Rate-limit** `/api/search`, `/api/sync` and `/api/status`. The app does not rate-limit; it only caps concurrent status reads.
+- **Pass the webhook body untouched** to `/api/webhooks/github` (the signature covers the raw body) and allow bodies of the size GitHub sends (up to 25 MB).
+
+```nginx
+location / {
+  proxy_pass http://127.0.0.1:3000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Forwarded-Proto $scheme;   # overwrites any client value
+  proxy_set_header X-Forwarded-For $remote_addr;
+  client_max_body_size 25m;
+}
+```
+
+The portal has no login: anyone who can reach it can read everything it has synced. Put authentication in front of it (network rules, an authenticating proxy) if any of the synced repositories are private. See the [Security note](#security-note).
+
+### Operating
+
+- **Logs** are JSON lines on stdout and stderr (`docker compose logs app`); keep `LOG_LEVEL` at `info` or above in production. Compose rotates them (3 files of 10 MB).
+- **Upgrading:** `git pull && docker compose up -d --build`. The new container applies pending migrations before it serves. To roll back, redeploy the previous image; migrations are forward-only, so take a backup first if the new version added one.
+- **Backups:** everything in the database is derived from GitHub, so a lost database is rebuilt by a full sync (the sync history is lost). To keep it: `docker compose exec db pg_dump -U docmyrepos docmyrepos > backup.sql`.
+- **Several replicas:** point them all at one database. Migrations are serialized by the lock above (or set `SKIP_MIGRATIONS=1` on all but one, or migrate once with `docker compose run --rm --no-deps --entrypoint node app dist/db-migrate.mjs`). Only one replica runs each scheduled full sync, and repository syncs never overlap across replicas.
+- **PgBouncer:** the sync locks and the migration lock are session-level advisory locks, which do not work through PgBouncer in transaction mode. Connect directly to Postgres, or through a pooler in session mode.
 
 ## Running e2e tests
 
