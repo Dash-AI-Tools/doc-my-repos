@@ -360,3 +360,164 @@ describe("document page, OKF filters (tasks 11.1 to 11.3)", () => {
     expect(out).toContain('aria-label="Documentation"');
   });
 });
+
+describe("document page, OKF metadata, notices and change log (tasks 11.4 to 11.6)", () => {
+  const okfRepo: RepoDetail = { ...repo, isOkf: true, okfVersion: "0.2" };
+  const base = ok();
+
+  function page(
+    over: {
+      repo?: RepoDetail;
+      doc?: Partial<DocPageOk["doc"]>;
+      loadedAt?: Date;
+    } = {},
+  ): DocPageOk {
+    return ok({
+      repo: over.repo ?? okfRepo,
+      doc: { ...base.doc, ...over.doc },
+      ...(over.loadedAt === undefined ? {} : { loadedAt: over.loadedAt }),
+    });
+  }
+
+  const typedDoc = {
+    type: "Runbook",
+    tags: ["database"],
+    status: "active",
+    description: "Switch to the replica.",
+    frontmatter: {
+      type: "Runbook",
+      tags: ["database"],
+      status: "active",
+      description: "Switch to the replica.",
+      owner_team: "platform",
+    },
+  };
+
+  it("shows the metadata card between the header and the body in an OKF repository", async () => {
+    loadDocPage.mockResolvedValue(page({ doc: typedDoc }));
+    const out = await html();
+    expect(out).toContain('data-testid="okf-metadata"');
+    expect(out).toContain("Document metadata");
+    expect(out).toContain('href="/acme/api?type=Runbook"');
+    expect(out).toContain("owner_team");
+    const header = out.indexOf('data-testid="doc-header"');
+    const card = out.indexOf('data-testid="okf-metadata"');
+    const body = out.indexOf('data-testid="doc-body"');
+    expect(header).toBeLessThan(card);
+    expect(card).toBeLessThan(body);
+  });
+
+  it("shows the description once: in the card, not also under the title", async () => {
+    loadDocPage.mockResolvedValue(page({ doc: typedDoc }));
+    const out = await html();
+    expect(out).not.toContain('data-testid="doc-description"');
+    expect(out.split("Switch to the replica.")).toHaveLength(2);
+  });
+
+  it("shows a type-only document with just its type", async () => {
+    loadDocPage.mockResolvedValue(
+      page({ doc: { type: "Note", description: null, frontmatter: { type: "Note" } } }),
+    );
+    const out = await html();
+    expect(out).toContain('data-testid="okf-row-type"');
+    expect(out).not.toContain('data-testid="okf-row-status"');
+    expect(out).not.toContain('data-testid="okf-other-fields"');
+  });
+
+  it("shows no card for an untyped document with nothing to show", async () => {
+    loadDocPage.mockResolvedValue(
+      page({ doc: { description: null, frontmatter: {}, type: null } }),
+    );
+    expect(await html()).not.toContain('data-testid="okf-metadata"');
+  });
+
+  it("shows no OKF UI at all for a plain repository, whatever the frontmatter says", async () => {
+    loadDocPage.mockResolvedValue(
+      page({
+        repo,
+        doc: {
+          ...typedDoc,
+          status: "deprecated",
+          frontmatter: { ...typedDoc.frontmatter, status: "deprecated", stale_after: "2001-01-01" },
+        },
+      }),
+    );
+    const out = await html();
+    expect(out).not.toContain("okf-");
+    expect(out).not.toContain("Document metadata");
+    expect(out).not.toContain("deprecated");
+    // the header description stays where it was
+    expect(out).toContain('data-testid="doc-description"');
+  });
+
+  it("shows a deprecation notice above the body", async () => {
+    loadDocPage.mockResolvedValue(
+      page({ doc: { ...typedDoc, status: "deprecated", frontmatter: { type: "Runbook" } } }),
+    );
+    const out = await html();
+    const notice = out.indexOf('data-testid="okf-notice-deprecated"');
+    expect(notice).toBeGreaterThan(-1);
+    expect(notice).toBeLessThan(out.indexOf('data-testid="doc-body"'));
+    expect(notice).toBeGreaterThan(out.indexOf('data-testid="okf-metadata"'));
+  });
+
+  it("uses the load time as now: a past stale_after warns, a future one does not", async () => {
+    const frontmatter = { type: "Runbook", stale_after: "2026-10-01" };
+    loadDocPage.mockResolvedValue(page({ doc: { ...typedDoc, frontmatter } }));
+    expect(await html()).toContain("it was due for review on");
+    // the same document, viewed before the date
+    loadDocPage.mockResolvedValue(
+      page({ doc: { ...typedDoc, frontmatter }, loadedAt: new Date("2026-09-01T00:00:00Z") }),
+    );
+    const early = await html();
+    expect(early).not.toContain("okf-notice-stale");
+    expect(early).toContain("(in 30 days)");
+  });
+
+  it("frames the reserved log.md of an OKF repository as a change log, with no metadata card", async () => {
+    loadDocPage.mockResolvedValue(
+      page({
+        doc: {
+          path: "docs/log.md",
+          title: "Log",
+          reserved: "log",
+          type: "Note",
+          frontmatter: { type: "Note", owner_team: "x" },
+        },
+      }),
+    );
+    const out = await html(["log"]);
+    expect(out).toContain('data-testid="change-log"');
+    expect(out).toContain('data-testid="change-log-badge"');
+    expect(out).not.toContain('data-testid="okf-metadata"');
+    expect(out.indexOf('data-testid="change-log"')).toBeLessThan(
+      out.indexOf('data-testid="doc-body"'),
+    );
+  });
+
+  it("shows the reserved index.md as a plain page: no card, no change log", async () => {
+    loadDocPage.mockResolvedValue(
+      page({
+        doc: {
+          path: "docs/guides/index.md",
+          title: "Guides",
+          reserved: "index",
+          type: null,
+          frontmatter: { okf_version: "0.2", description: "Folder summary." },
+        },
+      }),
+    );
+    const out = await html(["guides", "index"]);
+    expect(out).not.toContain('data-testid="okf-metadata"');
+    expect(out).not.toContain('data-testid="change-log"');
+  });
+
+  it("renders a log.md of a plain repository as an ordinary page", async () => {
+    loadDocPage.mockResolvedValue(
+      page({ repo, doc: { path: "docs/log.md", title: "Log", reserved: "log" } }),
+    );
+    const out = await html(["log"]);
+    expect(out).not.toContain("change-log");
+    expect(out).not.toContain("Change log");
+  });
+});

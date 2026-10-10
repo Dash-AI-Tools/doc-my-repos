@@ -25,6 +25,9 @@
  *                          with a long outline, a frontmatter title, odd characters in a file name
  *                          (task 9.6 and 9.7)
  *   acme/empty-docs        public, README, synced, NO docs                       (task 9.6 and 9.7)
+ *   acme/okf-showcase     public, OKF (okf_version 0.2), 10 documents plus index.md and log.md for
+ *                          the metadata card, notices and change log of tasks 11.4 to 11.6 (see
+ *                          "OKF document page data" below)
  *   acme/search-lab        public, plain Markdown, 30 docs for the search page (task 10.3): a title
  *                          match, a heading match and body matches for "deployment", a
  *                          markup-heavy doc, a hostile frontmatter title, a "rate limit" doc and 25
@@ -40,6 +43,27 @@
  *   type=concept: billing, release-pipeline, tax. + tag=finance: billing, tax. + status=draft: tax.
  *   type=Runbook + status=active: failover.   type=Runbook + type=Table: 5 documents.
  * globex/handbook (private OKF) has types policy only; acme/api-service is plain Markdown.
+ *
+ * OKF document page data (tasks 11.4 to 11.6), acme/okf-showcase. It uses its own vocabulary, so no
+ * search query of the other specs matches it. Dates are far enough from today that real time does
+ * not matter: "past" is 2020-01-01 and "future" is 2999-01-01 (a stale warning needs a past
+ * date). Counts over its 10 documents (index.md and log.md are never counted; untyped-note has no
+ * type): type Metric 4, Policy 2, Experiment 1, Guide 1, Note 1; status active 4, Deprecated 1,
+ * deprecated 1, draft 1; tag finance 2, quarterly 1.
+ *   concepts/full-metadata      every field: type, tags, status, description, resource, sources (a
+ *                               link, an object, a local path), generated, verified, a stale_after in
+ *                               the future, and a producer key (`owner_team`)
+ *   concepts/type-only          frontmatter `type: Note` and nothing else
+ *   concepts/odd-keys           unknown keys of every shape (nested, list, number, boolean, null, a
+ *                               long string, markup-looking text) and hostile `resource`/`sources`
+ *   concepts/deprecated-metric  status deprecated
+ *   concepts/draft-metric       status draft
+ *   concepts/stale-metric       stale_after 2020-01-01 (past), status active
+ *   concepts/stale-deprecated   status Deprecated (capital) and stale_after 2020-01-01: two notices
+ *   concepts/bad-dates          stale_after, generated and verified that are not dates
+ *   guides/fresh                stale_after 2999-01-01: no warning
+ *   guides/untyped-note         no frontmatter at all: no metadata card
+ * and docs/log.md has two dated entries (the change log), docs/index.md is the folder summary.
  *
  * Search data (task 10.3). The word "deployment" (the spec's "Title outranks body") appears in:
  *   title (rank A)         search-lab "Deployment"
@@ -479,6 +503,115 @@ export const SEED_REPOS: readonly SeedRepo[] = [
     ],
   },
   {
+    githubId: 1014,
+    owner: "acme",
+    name: "okf-showcase",
+    description: "Documents that exercise the OKF metadata card, notices and change log.",
+    visibility: "public",
+    state: "synced",
+    lastSyncedAt: "2026-03-07T09:00:00.000Z",
+    readme: "# okf-showcase\n\nAn OKF repository for the document page.\n",
+    docs: [
+      {
+        path: "docs/index.md",
+        text: '---\nokf_version: "0.2"\ndescription: Entry point of the showcase.\n---\n\n# Showcase\n\nStart with the metrics.\n',
+      },
+      {
+        path: "docs/log.md",
+        text: "# Log\n\n## 2026-03-20\n\nAdded the full metadata example.\n\n## 2026-03-10\n\nCreated the showcase.\n",
+      },
+      {
+        path: "docs/concepts/full-metadata.md",
+        text: [
+          "---",
+          "type: Metric",
+          "tags: [finance, quarterly]",
+          "status: active",
+          "description: A metric that carries every field the card shows.",
+          "resource: https://example.com/metrics/full",
+          "sources:",
+          "  - https://example.com/source-one",
+          "  - title: Audit report",
+          "    url: https://example.com/audit",
+          "  - docs/local-notes.md",
+          "generated: 2026-01-15",
+          "verified: 2026-02-20T10:30:00Z",
+          "stale_after: 2999-01-01",
+          "owner_team: platform",
+          "---",
+          "",
+          "# Full metadata",
+          "",
+          "Body text of the full metadata document.",
+          "",
+        ].join("\n"),
+      },
+      {
+        path: "docs/concepts/type-only.md",
+        text: "---\ntype: Note\n---\n\n# Type only\n\nThis document declares nothing but its type.\n",
+      },
+      {
+        path: "docs/concepts/odd-keys.md",
+        text: [
+          "---",
+          "type: Experiment",
+          "owner_team: platform",
+          "nested:",
+          "  level1:",
+          "    level2: deep value",
+          "  flag: true",
+          "list: [alpha, 2, false, null]",
+          "count: 42",
+          "enabled: false",
+          "nothing:",
+          'markup: "<img src=x onerror=alert(1)> and <script>window.__xss = 1</script> **not bold**"',
+          `long: "${"lorem ipsum ".repeat(120).trim()}"`,
+          "resource: javascript:alert(1)",
+          "sources:",
+          "  - javascript:alert(2)",
+          '  - "data:text/html,<script>alert(3)</script>"',
+          "  - ../escape.md",
+          "  - https://user:secret@example.com/credentials",
+          "  - https://example.com/safe-source",
+          "---",
+          "",
+          "# Odd keys",
+          "",
+          "Keys the card does not know are listed under Other fields.",
+          "",
+        ].join("\n"),
+      },
+      {
+        path: "docs/concepts/deprecated-metric.md",
+        text: "---\ntype: Metric\nstatus: deprecated\ndescription: Replaced by the ledger.\n---\n\n# Deprecated metric\n\nDo not use this metric any more.\n",
+      },
+      {
+        path: "docs/concepts/draft-metric.md",
+        text: "---\ntype: Metric\nstatus: draft\n---\n\n# Draft metric\n\nStill being written.\n",
+      },
+      {
+        path: "docs/concepts/stale-metric.md",
+        text: "---\ntype: Metric\nstatus: active\nstale_after: 2020-01-01\n---\n\n# Stale metric\n\nNot reviewed for years.\n",
+      },
+      {
+        path: "docs/concepts/stale-deprecated.md",
+        text: "---\ntype: Policy\nstatus: Deprecated\nstale_after: 2020-01-01\n---\n\n# Stale and deprecated\n\nBoth notices apply.\n",
+      },
+      {
+        path: "docs/concepts/bad-dates.md",
+        text: '---\ntype: Policy\nstatus: active\ngenerated: "2026-02-30"\nverified: yesterday\nstale_after: next quarter\n---\n\n# Bad dates\n\nNone of the dates can be read.\n',
+      },
+      {
+        path: "docs/guides/fresh.md",
+        text: "---\ntype: Guide\ntags: [finance]\nstatus: active\nstale_after: 2999-01-01\n---\n\n# Fresh guide\n\nDue for review in the far future.\n",
+      },
+      {
+        path: "docs/guides/untyped-note.md",
+        text: "# Untyped note\n\nNo frontmatter at all.\n",
+      },
+    ],
+  },
+  {
     githubId: 1012,
     owner: "acme",
     name: "empty-docs",
@@ -505,6 +638,7 @@ export const SEEDED = {
   showcase: { owner: "acme", name: "doc-showcase" },
   emptyDocs: { owner: "acme", name: "empty-docs" },
   searchLab: { owner: "acme", name: "search-lab" },
+  okfShowcase: { owner: "acme", name: "okf-showcase" },
 } as const;
 
 /** `owner/name` of every private seeded repository. */

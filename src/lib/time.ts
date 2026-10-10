@@ -15,11 +15,18 @@ const absoluteFormat = new Intl.DateTimeFormat(LOCALE, {
   hourCycle: "h23",
 });
 
+const dateFormat = new Intl.DateTimeFormat(LOCALE, { dateStyle: "medium", timeZone: "UTC" });
+
 const relativeFormat = new Intl.RelativeTimeFormat(LOCALE, { numeric: "auto" });
 
 /** `14 Mar 2026, 09:30 UTC`, or an empty string for an invalid date. */
 export function formatAbsoluteTime(date: Date): string {
   return Number.isNaN(date.getTime()) ? "" : `${absoluteFormat.format(date)} UTC`;
+}
+
+/** `14 Mar 2026` (the UTC calendar date), or an empty string for an invalid date. */
+export function formatAbsoluteDate(date: Date): string {
+  return Number.isNaN(date.getTime()) ? "" : dateFormat.format(date);
 }
 
 const MINUTE = 60;

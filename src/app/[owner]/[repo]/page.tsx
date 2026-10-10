@@ -99,6 +99,7 @@ export default async function RepoPage({
             repo={repo.name}
             awaitingSync={awaitingSync}
             filters={filters}
+            okf={repo.isOkf}
           />
           <CodeOwnersPanel rules={repo.codeOwners} awaitingSync={awaitingSync} />
         </div>

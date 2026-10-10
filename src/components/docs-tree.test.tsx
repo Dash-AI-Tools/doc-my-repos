@@ -284,3 +284,27 @@ describe("DocsTree expandAll (filtered table of contents)", () => {
     }
   });
 });
+
+describe("DocsTree, labels (task 11.6)", () => {
+  it("shows a label beside the page link, not inside it", () => {
+    const rows = [row("docs/a.md", "A"), row("docs/log.md", "Log")];
+    const tree = buildDocsTree(rows, "docs");
+    const labelled = toNavTree(
+      tree,
+      (doc) => docUrl("acme", "api", doc.path, tree.path),
+      (doc) => (doc.reserved === "log" ? "Change log" : null),
+    );
+    render(<DocsTree tree={labelled} />);
+    expect(screen.getAllByTestId("docs-tree-label").map((el) => el.textContent)).toEqual([
+      "Change log",
+    ]);
+    // the link's name stays the page title
+    expect(screen.getByRole("link", { name: "Log" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Change log/ })).toBeNull();
+  });
+
+  it("shows no label without labelFor", () => {
+    render(<DocsTree tree={nav([row("docs/log.md", "Log")])} />);
+    expect(screen.queryByTestId("docs-tree-label")).toBeNull();
+  });
+});

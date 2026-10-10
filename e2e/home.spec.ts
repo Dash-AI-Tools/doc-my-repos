@@ -106,7 +106,7 @@ test.describe("home page, seeded database", () => {
     await expect(card(page, SEEDED.privateOkf).getByTestId("okf-badge")).toHaveText("OKF");
     await expect(card(page, SEEDED.privateOkf).getByTestId("private-badge")).toBeVisible();
     await expect(card(page, SEEDED.full).getByTestId("okf-badge")).toHaveCount(0);
-    await expect(page.getByTestId("okf-badge")).toHaveCount(2);
+    await expect(page.getByTestId("okf-badge")).toHaveCount(3);
   });
 
   test("shows description, document count and last synced time on a card", async ({ page }) => {

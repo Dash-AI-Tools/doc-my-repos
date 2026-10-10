@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatAbsoluteTime, formatRelativeTime } from "@/lib/time";
+import { formatAbsoluteDate, formatAbsoluteTime, formatRelativeTime } from "@/lib/time";
 
 const NOW = new Date("2026-10-10T12:00:00Z");
 const ago = (ms: number) => new Date(NOW.getTime() - ms);
@@ -57,5 +57,22 @@ describe("formatRelativeTime", () => {
 
   it("returns an empty string for an invalid date", () => {
     expect(formatRelativeTime(new Date("nope"), NOW)).toBe("");
+  });
+});
+
+describe("formatAbsoluteDate", () => {
+  it("formats the UTC calendar date, whatever the time of day", () => {
+    expect(formatAbsoluteDate(new Date("2026-03-14T00:00:00Z"))).toBe("14 Mar 2026");
+    expect(formatAbsoluteDate(new Date("2026-03-14T23:59:59Z"))).toBe("14 Mar 2026");
+  });
+
+  it("handles a leap day and very old and far future years", () => {
+    expect(formatAbsoluteDate(new Date("2024-02-29T00:00:00Z"))).toBe("29 Feb 2024");
+    expect(formatAbsoluteDate(new Date("1066-10-14T00:00:00Z"))).toBe("14 Oct 1066");
+    expect(formatAbsoluteDate(new Date("9999-12-31T00:00:00Z"))).toBe("31 Dec 9999");
+  });
+
+  it("returns an empty string for an invalid date", () => {
+    expect(formatAbsoluteDate(new Date(Number.NaN))).toBe("");
   });
 });

@@ -45,9 +45,16 @@ export interface DocsNavSlotProps {
   readonly variant?: "card" | "sidebar";
   /** The OKF filter controls; null/absent for a repository that is not OKF. */
   readonly filters?: TocFilterView | null;
+  /**
+   * The repository is OKF: its `log.md` carries the "Change log" label in the tree (task 11.6).
+   * Separate from `filters`, which is null for an OKF repository with no type, tag or status.
+   */
+  readonly okf?: boolean;
 }
 
 const TREE_ID = "docs-tree";
+
+export const CHANGE_LOG_LABEL = "Change log";
 
 function NavBody({
   docCount,
@@ -58,6 +65,7 @@ function NavBody({
   awaitingSync,
   variant,
   filters,
+  okf,
 }: Required<Omit<DocsNavSlotProps, "currentPath" | "filters">> & {
   currentPath: string | null;
   filters: TocFilterView | null;
@@ -75,6 +83,10 @@ function NavBody({
     const href = docUrl(owner, repo, doc.path, tree.path);
     return href === null ? null : withFilterQuery(href, query);
   };
+  // OKF repositories only: `log.md` is a change log, not a
+  // typed concept, so it carries that label in the tree instead of a type.
+  const labelFor = (doc: DocsTreeDoc): string | null =>
+    okf && doc.reserved === "log" ? CHANGE_LOG_LABEL : null;
   if (flattenDocsTree(tree).length === 0 && !filtered) {
     return (
       <div data-testid="docs-nav-empty" className="mt-2 text-sm text-muted-foreground">
@@ -111,7 +123,7 @@ function NavBody({
         <DocsTree
           // A new filter is a new tree: closed or opened folders of the old one mean nothing.
           key={query}
-          tree={toNavTree(tree, hrefFor)}
+          tree={toNavTree(tree, hrefFor, labelFor)}
           currentPath={currentPath}
           id={TREE_ID}
           expandAll={filtered}
@@ -131,6 +143,7 @@ export function DocsNavSlot({
   awaitingSync = false,
   variant = "card",
   filters = null,
+  okf = false,
 }: DocsNavSlotProps) {
   const body = (
     <NavBody
@@ -142,6 +155,7 @@ export function DocsNavSlot({
       awaitingSync={awaitingSync}
       variant={variant}
       filters={filters}
+      okf={okf}
     />
   );
   return (

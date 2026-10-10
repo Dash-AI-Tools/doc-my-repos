@@ -233,3 +233,24 @@ describe("DocsNavSlot, OKF filters (tasks 11.1 to 11.3)", () => {
     );
   });
 });
+
+describe("DocsNavSlot, change log label (task 11.6)", () => {
+  const rows: DocsTreeRow[] = [
+    row("docs/a.md", "A"),
+    { ...row("docs/log.md", "Log"), reserved: "log" },
+    { ...row("docs/index.md", "Home"), reserved: "index" },
+  ];
+  const withLog = buildDocsTree(rows, "docs");
+
+  it("labels log.md as a change log in an OKF repository, and nothing else", () => {
+    render(<DocsNavSlot docCount={3} tree={withLog} owner="acme" repo="kb" okf />);
+    expect(screen.getAllByTestId("docs-tree-label").map((el) => el.textContent)).toEqual([
+      "Change log",
+    ]);
+  });
+
+  it("shows no label in a plain repository", () => {
+    render(<DocsNavSlot docCount={3} tree={withLog} owner="acme" repo="kb" />);
+    expect(screen.queryByTestId("docs-tree-label")).toBeNull();
+  });
+});

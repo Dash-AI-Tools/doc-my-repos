@@ -115,6 +115,39 @@ describe("searchResultItem", () => {
     expect(item.section).toBe("Deployment checks");
   });
 
+  it("shows no type, status or tag chips for the reserved index.md and log.md (task 11.6)", () => {
+    for (const reserved of ["index", "log"] as const) {
+      const item = searchResultItem(
+        hit({
+          doc: {
+            path: `docs/${reserved}.md`,
+            title: "Reserved",
+            description: null,
+            type: "Log",
+            tags: ["t"],
+            status: "active",
+            reserved,
+          },
+        }),
+      );
+      expect(item).toMatchObject({ type: null, status: null, tags: [] });
+    }
+    const typed = searchResultItem(
+      hit({
+        doc: {
+          path: "docs/a.md",
+          title: "A",
+          description: null,
+          type: "Log",
+          tags: ["t"],
+          status: "active",
+          reserved: null,
+        },
+      }),
+    );
+    expect(typed).toMatchObject({ type: "Log", status: "active", tags: ["t"] });
+  });
+
   it("skips the anchor of a depth-1 heading (the document's own title)", () => {
     const item = searchResultItem(hit({ heading: { depth: 1, text: "Setup", slug: "setup" } }));
     expect(item.href).toBe("/acme/api/docs/guides/setup");

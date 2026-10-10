@@ -46,6 +46,8 @@ export function searchResultItem(hit: SearchHit): ResultItemData {
   // A depth-1 heading is the document's own title, which the document page hides when the body
   // repeats it: no anchor and no "section" label for it.
   const section = heading !== null && heading.depth > 1 ? heading : null;
+  // `index.md` and `log.md` are not typed concepts: no type, status or tag chips on their rows.
+  const typed = doc.reserved === null;
   return {
     key: `${repo.id}:${doc.path}`,
     title: doc.title,
@@ -56,9 +58,9 @@ export function searchResultItem(hit: SearchHit): ResultItemData {
     section: section?.text ?? null,
     snippet: hit.snippet,
     isPrivate: repo.visibility === "private",
-    type: doc.type,
-    status: doc.status,
-    tags: doc.tags,
+    type: typed ? doc.type : null,
+    status: typed ? doc.status : null,
+    tags: typed ? doc.tags : [],
   };
 }
 

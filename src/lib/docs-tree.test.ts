@@ -328,6 +328,18 @@ describe("toNavTree", () => {
     });
   });
 
+  it("labels the pages labelFor names and leaves the others without a label key", () => {
+    const withLog = buildDocsTree(
+      [row("docs/a.md", "A"), row("docs/log.md", "Log", { reserved: "log" })],
+      "docs",
+    );
+    const nav = toNavTree(withLog, href, (doc) => (doc.reserved === "log" ? "Change log" : null));
+    expect(nav.children).toEqual([
+      { kind: "doc", title: "A", path: "docs/a.md", href: "/u/a" },
+      { kind: "doc", title: "Log", path: "docs/log.md", href: "/u/log", label: "Change log" },
+    ]);
+  });
+
   it("gives a folder without an index no link and no summary", () => {
     const odd = toNavTree(tree, href).children[2];
     expect(odd).toMatchObject({ kind: "folder", href: null, indexPath: null, summary: null });

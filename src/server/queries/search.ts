@@ -181,6 +181,16 @@ interface Prepared {
 const TRUE = sql`true`;
 const FALSE = sql`false`;
 
+/**
+ * Type, tags and status as search sees them (task 11.6). `index.md` and `log.md` are reserved
+ * files, not typed concepts (OKF spec), so even when their frontmatter has these keys they read as
+ * absent: they never match a type, tag or status filter, never add to a facet count and carry no
+ * chips in the results. They are still found by the text of their title and body.
+ */
+const TYPE_OF = sql`(case when ${documents.reserved} is null then ${documents.type} end)`;
+const STATUS_OF = sql`(case when ${documents.reserved} is null then ${documents.status} end)`;
+const TAGS_OF = sql`(case when ${documents.reserved} is null then ${documents.tags} else '{}'::text[] end)`;
+
 /** A text value list bound as one `text[]` parameter. */
 function textArray(values: readonly string[]): SQL {
   return sql`${sql.param([...values])}::text[]`;
@@ -218,9 +228,9 @@ function prepare(params: SearchParams): Prepared {
     query,
     tsQuery: sql`websearch_to_tsquery(${searchConfig}, ${query})`,
     repoFilter: repoFilter(params.repo),
-    typeFilter: valueFilter(normalizeFilterValues(params.type), sql`${documents.type}`),
+    typeFilter: valueFilter(normalizeFilterValues(params.type), TYPE_OF),
     tagFilter: tagFilter(normalizeFilterValues(params.tag)),
-    statusFilter: valueFilter(normalizeFilterValues(params.status), sql`${documents.status}`),
+    statusFilter: valueFilter(normalizeFilterValues(params.status), STATUS_OF),
     limit: searchLimit(params.limit),
     offset: searchOffset(params.offset),
   };
@@ -229,7 +239,7 @@ function prepare(params: SearchParams): Prepared {
 function tagFilter(values: readonly string[] | undefined): SQL {
   if (values === undefined) return TRUE;
   if (values.length === 0) return FALSE;
-  return sql`${documents.tags} && ${textArray(values)}`;
+  return sql`${TAGS_OF} && ${textArray(values)}`;
 }
 
 /**
@@ -334,8 +344,8 @@ export async function searchDocuments(
       ${repos.id} as "repo_id", ${repos.owner} as "owner", ${repos.name} as "name",
       ${repos.visibility} as "visibility", ${repos.docsPath} as "docs_path",
       ${documents.path} as "path", ${documents.title} as "title",
-      ${documents.description} as "description", ${documents.type} as "type",
-      ${documents.tags} as "tags", ${documents.status} as "status",
+      ${documents.description} as "description", ${TYPE_OF} as "type",
+      ${TAGS_OF} as "tags", ${STATUS_OF} as "status",
       ${documents.reserved} as "reserved",
       ts_headline(${searchConfig},
         translate(left(${documents.body}, ${MAX_HEADLINE_SOURCE_CHARS}), ${translateFrom}, ${translateTo}),
@@ -438,7 +448,7 @@ export async function searchFacets(
   const result = await db.execute(sql`
     with m as materialized (
       select ${repos.id} as "repo_id", ${repos.owner} as "owner", ${repos.name} as "name",
-        ${documents.type} as "type", ${documents.tags} as "tags", ${documents.status} as "status",
+        ${TYPE_OF} as "type", ${TAGS_OF} as "tags", ${STATUS_OF} as "status",
         coalesce(${p.repoFilter}, false) as "r", coalesce(${p.typeFilter}, false) as "ty",
         coalesce(${p.tagFilter}, false) as "tg", coalesce(${p.statusFilter}, false) as "s"
       from ${documents}

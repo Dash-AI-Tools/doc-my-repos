@@ -426,3 +426,24 @@ pre:has(> .dmr-copy-host) {
   text-decoration: none;
   padding: 0 0.1em;
 }
+
+/*
+ * Change log (task 11.6): the document page of an OKF repository's reserved `log.md` is wrapped in
+ * <div class="change-log"> with a left rule; each entry heading (`##`, usually a date) gets a dot
+ * on the rule. Tokens only. The entries stay in the order the author wrote them.
+ */
+.change-log .markdown-body h2 {
+  position: relative;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.change-log .markdown-body h2::before {
+  content: "";
+  position: absolute;
+  top: 0.55em;
+  left: calc(-1.25rem - 1px - 0.3125rem);
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 9999px;
+  background: var(--primary);
+}

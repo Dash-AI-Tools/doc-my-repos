@@ -276,6 +276,8 @@ export interface NavDoc {
   /** Repo-relative path, to find the current page. */
   readonly path: string;
   readonly href: string;
+  /** A short label shown next to the title (`Change log`); absent for an ordinary page. */
+  readonly label?: string;
 }
 
 /** A folder in the navigation tree. */
@@ -300,15 +302,25 @@ export type NavNode = NavDoc | NavFolder;
  * The slim form of the tree that goes to the browser (task 9.6): titles, links and summaries, with
  * the link of every page already built (`hrefFor` returns null for a page that has no URL; such
  * a page is left out). The root's own `index.md` becomes its first child, since the root has no
- * folder row to link from. Pure; keeps the order of `buildDocsTree`.
+ * folder row to link from. `labelFor` (optional) gives a page a short label, such as the
+ * "Change log" of an OKF repository's `log.md` (task 11.6). Pure; keeps the order of `buildDocsTree`.
  */
 export function toNavTree(
   tree: DocsTreeFolder,
   hrefFor: (doc: DocsTreeDoc) => string | null,
+  labelFor?: (doc: DocsTreeDoc) => string | null,
 ): NavFolder {
   const doc = (d: DocsTreeDoc): NavDoc | null => {
     const href = hrefFor(d);
-    return href === null ? null : { kind: "doc", title: d.title, path: d.path, href };
+    if (href === null) return null;
+    const label = labelFor?.(d) ?? null;
+    return {
+      kind: "doc",
+      title: d.title,
+      path: d.path,
+      href,
+      ...(label === null ? {} : { label }),
+    };
   };
   const folder = (f: DocsTreeFolder, isRoot: boolean): NavFolder => {
     const children: NavNode[] = [];

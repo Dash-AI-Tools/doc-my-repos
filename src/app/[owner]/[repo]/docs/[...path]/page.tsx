@@ -2,12 +2,16 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 
+import { ChangeLog } from "@/components/change-log";
 import { DocBody } from "@/components/doc-body";
 import { DocBreadcrumb } from "@/components/doc-breadcrumb";
 import { DocPager } from "@/components/doc-pager";
 import { DocsNavSlot } from "@/components/docs-nav-slot";
+import { OkfMetadataCard } from "@/components/okf-metadata-card";
+import { OkfNotices } from "@/components/okf-notices";
 import { OutlineNav } from "@/components/outline-nav";
 import { RepoLoadError } from "@/components/repo-load-error";
+import { buildOkfMeta } from "@/lib/okf-meta";
 import { docUrl, repoUrl } from "@/lib/routes";
 import { buildFilterQuery } from "@/lib/search-params";
 import { buildTocFilterView, parseTocFilters, withFilterQuery } from "@/lib/toc-filters";
@@ -28,6 +32,12 @@ import { loadDocPage, type DocPageOk } from "@/server/doc-page";
  * Page title: the page's `h1` is the document title. A body that opens with an `h1` repeating the
  * title has that heading hidden (`DocBody`), so there is one `h1`; a body whose first heading
  * differs (a frontmatter `title`) is shown as written.
+ *
+ * OKF (tasks 11.4 to 11.6), for a repository that is OKF only (a plain repository shows no OKF UI):
+ * the metadata card between the header and the body, deprecation, draft and stale notices right
+ * above the body, and the reserved `log.md` framed as a change log. The card is for typed
+ * documents: the reserved `index.md` and `log.md` get no card. Time-dependent output (the stale
+ * warning) uses `loadedAt`, the time the page was loaded.
  *
  * Layout: the content column, then the sidebar (outline, then table of contents) after it in the
  * DOM, so keyboard users reach the document first. The sidebar sticks to the viewport on large
@@ -149,7 +159,19 @@ export default async function DocPage({
         });
   const syncedAt = repo.lastSyncedAt;
   const awaitingSync = repo.syncStatus === "pending" || repo.lastSyncedAt === null;
-  const description = doc.description?.trim() ?? "";
+  const okfMeta = repo.isOkf
+    ? buildOkfMeta(doc.frontmatter, {
+        type: doc.type,
+        tags: doc.tags,
+        status: doc.status,
+        description: doc.description,
+      })
+    : null;
+  const showCard = okfMeta !== null && doc.reserved === null && okfMeta.hasContent;
+  const isChangeLog = repo.isOkf && doc.reserved === "log";
+  // The card has a Description row, so the header does not repeat it.
+  const description =
+    showCard && okfMeta.description !== null ? "" : (doc.description?.trim() ?? "");
 
   return (
     <div className="flex flex-col gap-6">
@@ -215,6 +237,14 @@ export default async function DocPage({
               </div>
             </header>
 
+            {showCard ? (
+              <OkfMetadataCard
+                meta={okfMeta}
+                now={loadedAt}
+                repoPath={repoUrl(repo.owner, repo.name)}
+              />
+            ) : null}
+
             {notice !== null ? (
               <p
                 data-testid="doc-notice"
@@ -225,7 +255,14 @@ export default async function DocPage({
             ) : null}
 
             <div className="mt-6">
-              <DocBody body={body} />
+              {okfMeta !== null ? <OkfNotices meta={okfMeta} now={loadedAt} /> : null}
+              {isChangeLog ? (
+                <ChangeLog>
+                  <DocBody body={body} />
+                </ChangeLog>
+              ) : (
+                <DocBody body={body} />
+              )}
             </div>
           </article>
 
@@ -246,6 +283,7 @@ export default async function DocPage({
             currentPath={doc.path}
             awaitingSync={awaitingSync}
             filters={filters}
+            okf={repo.isOkf}
           />
         </div>
       </div>

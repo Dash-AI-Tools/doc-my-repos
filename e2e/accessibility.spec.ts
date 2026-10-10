@@ -257,6 +257,68 @@ const PAGES: readonly PageCase[] = [
     },
   },
   {
+    name: "document page, OKF metadata card with every field (seeded)",
+    path: "/acme/okf-showcase/docs/concepts/full-metadata",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("okf-metadata")).toBeVisible();
+      await expect(page.getByTestId("okf-row-sources")).toBeVisible();
+      await expect(page.getByTestId("okf-other-fields")).toBeVisible();
+    },
+  },
+  {
+    name: "document page, OKF metadata card with only a type (seeded)",
+    path: "/acme/okf-showcase/docs/concepts/type-only",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("okf-type")).toHaveText("Note");
+    },
+  },
+  {
+    name: "document page, OKF unknown keys of every shape, hostile links as text (seeded)",
+    path: "/acme/okf-showcase/docs/concepts/odd-keys",
+    stack: "seeded",
+    ready: async (page) => {
+      await page.getByTestId("okf-other-fields").locator("summary").click();
+      await expect(page.getByTestId("okf-other-list")).toBeVisible();
+      await expect(page.getByTestId("okf-ref-link")).toHaveCount(1);
+    },
+  },
+  {
+    name: "document page, deprecated and stale notices stacked (seeded)",
+    path: "/acme/okf-showcase/docs/concepts/stale-deprecated",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("okf-notice-deprecated")).toBeVisible();
+      await expect(page.getByTestId("okf-notice-stale")).toBeVisible();
+    },
+  },
+  {
+    name: "document page, draft notice (seeded)",
+    path: "/acme/okf-showcase/docs/concepts/draft-metric",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("okf-notice-draft")).toBeVisible();
+    },
+  },
+  {
+    name: "document page, stale_after in the future and dates that cannot be read (seeded)",
+    path: "/acme/okf-showcase/docs/concepts/bad-dates",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("okf-row-stale-after")).toContainText("(not a valid date)");
+    },
+  },
+  {
+    name: "document page, log.md as a change log (seeded)",
+    path: "/acme/okf-showcase/docs/log",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("change-log-badge")).toBeVisible();
+      await expect(page.getByTestId("docs-tree-label")).toBeVisible();
+    },
+  },
+  {
     name: "search, results with facets (seeded)",
     path: "/search?q=deployment",
     stack: "seeded",

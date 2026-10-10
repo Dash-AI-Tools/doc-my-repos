@@ -137,14 +137,16 @@ function PageLink({
   href,
   path,
   shared,
+  label,
 }: {
   title: string;
   href: string;
   path: string;
   shared: Shared;
+  label?: string;
 }) {
   const current = path === shared.currentPath;
-  return (
+  const link = (
     <Link
       href={href}
       prefetch={false}
@@ -153,6 +155,19 @@ function PageLink({
     >
       {title}
     </Link>
+  );
+  if (label === undefined) return link;
+  // The label sits beside the link, not in it, so the link's name stays the page title.
+  return (
+    <div className="flex min-w-0 items-start gap-1.5">
+      <div className="min-w-0">{link}</div>
+      <span
+        data-testid="docs-tree-label"
+        className="mt-1 shrink-0 rounded-full bg-okf-badge px-1.5 py-0.5 text-[0.6875rem] leading-none font-medium text-okf-badge-foreground"
+      >
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -233,7 +248,13 @@ function NodeList({
           <FolderRow key={`d:${node.path}`} folder={node} shared={shared} />
         ) : (
           <li key={`f:${node.path}`}>
-            <PageLink title={node.title} href={node.href} path={node.path} shared={shared} />
+            <PageLink
+              title={node.title}
+              href={node.href}
+              path={node.path}
+              shared={shared}
+              label={node.label}
+            />
           </li>
         ),
       )}
