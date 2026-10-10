@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 
+import { MermaidSvgError, sanitizeMermaidSvg } from "./mermaid-svg";
 import { MermaidViewer } from "./mermaid-viewer";
 import { useMermaidTheme } from "./use-mermaid-theme";
 
@@ -12,11 +13,14 @@ import { useMermaidTheme } from "./use-mermaid-theme";
  * Security
  *  - `securityLevel: "strict"` is the only level used: Mermaid encodes HTML in labels, disables
  *    click handlers and sanitizes the SVG it returns with DOMPurify. Never `loose`, never
- *    `sandbox`, no `htmlLabels` override, no `dompurifyConfig`.
+ *    `sandbox`, no `dompurifyConfig`.
  *  - The source is author text and only ever goes to `mermaid.render` as a string.
- *  - The single HTML sink is `dangerouslySetInnerHTML` with the SVG string that `mermaid.render`
- *    returned in strict mode. No author string reaches it: on any failure the source is shown as
- *    React text.
+ *  - Strict mode does not stop an external `<img>` in a label (the browser requests it), so
+ *    `htmlLabels: false` is set and every SVG goes through `sanitizeMermaidSvg` (mermaid-svg.ts)
+ *    before it is stored. `renderDiagram` is the only path to the page, for the inline diagram and
+ *    the enlarge dialog alike.
+ *  - The single HTML sink is `dangerouslySetInnerHTML` with the sanitized SVG string. No author
+ *    string reaches it: on any failure the source is shown as React text.
  *  - Limits cap CPU per diagram (`maxTextSize`, `maxEdges`).
  *
  * Mermaid's `render` is not re-entrant and `initialize` is global, so every render runs through
@@ -66,6 +70,7 @@ const MAX_MESSAGE_LINES = 8;
 const TIMEOUT_MESSAGE = "The diagram took too long to render.";
 const LOAD_MESSAGE = "Diagram library failed to load.";
 const TOO_LARGE_MESSAGE = "The diagram source is too large to render.";
+const IMAGE_SHAPE_MESSAGE = "Image shapes are not supported in diagrams.";
 const GENERIC_MESSAGE = "The diagram could not be rendered.";
 
 class DiagramError extends Error {
@@ -102,8 +107,41 @@ function configure(mermaid: MermaidApi, theme: MermaidTheme): void {
     maxTextSize: MAX_TEXT_SIZE,
     maxEdges: MAX_EDGES,
     suppressErrorRendering: true,
+    // Labels as SVG <text>, never <foreignObject> HTML, so author HTML (an <img>, say) is not
+    // parsed as markup at all. `flowchart.htmlLabels` is deprecated in favour of the root key but
+    // older diagram code still reads it, so both are set. See mermaid-svg.ts for the second layer.
+    htmlLabels: false,
+    flowchart: { htmlLabels: false },
+    class: { htmlLabels: false },
+    // Keys a diagram's own `%%{init: ...}%%` directive may not change. `themeCSS` and the font
+    // keys put author CSS (with `url()`) into the SVG, and the `htmlLabels` owners would turn
+    // HTML labels back on. These loads happen during `render`, before any sanitizer sees the
+    // result. The first six are Mermaid's defaults, which setting `secure` replaces.
+    secure: [
+      "secure",
+      "securityLevel",
+      "startOnLoad",
+      "maxTextSize",
+      "suppressErrorRendering",
+      "maxEdges",
+      "htmlLabels",
+      "flowchart",
+      "class",
+      "themeCSS",
+      "fontFamily",
+      "altFontFamily",
+    ],
   });
   initializedTheme = theme;
+}
+
+/**
+ * Mermaid's image shape (`A@{ img: "https://..." }`) loads the URL with `new Image()` while it
+ * lays the diagram out, before any output can be sanitized, so such sources are never rendered.
+ * Deliberately broad: a false positive only shows the source with an error.
+ */
+export function usesImageShape(source: string): boolean {
+  return /@\s*\{[^]*?\bimg\b/i.test(source);
 }
 
 /** Test hook: forget module state. */
@@ -141,6 +179,7 @@ export function renderDiagram(
   theme: MermaidTheme,
 ): Promise<string> {
   const run = async (): Promise<string> => {
+    if (usesImageShape(source)) throw new DiagramError(IMAGE_SHAPE_MESSAGE);
     const mermaid = await loadMermaid();
     configure(mermaid, theme);
     const id = `${baseId}-${++counter}`;
@@ -149,7 +188,12 @@ export function renderDiagram(
         Promise.resolve().then(() => mermaid.render(id, source)),
         RENDER_TIMEOUT_MS,
       );
-      return svg;
+      try {
+        return sanitizeMermaidSvg(svg);
+      } catch (error) {
+        if (error instanceof MermaidSvgError) throw new DiagramError(error.message);
+        throw error;
+      }
     } finally {
       // On a syntax error Mermaid can leave its scratch element in the body.
       document.getElementById(id)?.remove();

@@ -43,19 +43,64 @@ const BASIC = [
   "",
 ].join("\n");
 
-/** Strict mode must not let a label load an external image unnoticed: the spec records what happens. */
-const EXTERNAL_IMAGE = [
-  "# External image fixture",
-  "",
-  "```mermaid",
+function mermaidDoc(title: string, lines: readonly string[]): string {
+  return [`# ${title}`, "", "```mermaid", ...lines, "```", ""].join("\n");
+}
+
+/**
+ * Mermaid diagrams that try to make the viewer's browser request https://example.invalid/. The
+ * spec asserts that no request is made (strict mode alone does not stop these; see
+ * src/components/mermaid-svg.ts).
+ */
+const EXTERNAL_IMAGE = mermaidDoc("External image fixture", [
   "graph TD",
   `  A["<img src='https://example.invalid/x.png'>"]`,
-  "```",
-  "",
-].join("\n");
+]);
+
+const IMAGE_SHAPE = mermaidDoc("Image shape fixture", [
+  "flowchart LR",
+  `  A@{ img: "https://example.invalid/shape.png", label: "Shape", pos: "b", w: 60, h: 60 }`,
+  "  A --> B",
+]);
+
+const STYLE_URL = mermaidDoc("Style url fixture", [
+  "graph TD",
+  "  A[Styled] --> B[Plain]",
+  "  style A fill:url(https://example.invalid/fill.png),stroke:#333",
+  "  classDef bg background:url(https://example.invalid/bg.png),fill:url(//example.invalid/c.png)",
+  "  class B bg",
+]);
+
+const THEME_CSS = mermaidDoc("Theme CSS fixture", [
+  `%%{init: {"themeCSS": "@import url(https://example.invalid/t.css); .node rect{fill:url(https://example.invalid/t.png)}"}}%%`,
+  "graph TD",
+  "  A[Themed] --> B[Plain]",
+]);
+
+const LABEL_VARIANTS = mermaidDoc("Label variants fixture", [
+  "graph TD",
+  `  A["<svg><image href='https://example.invalid/i.png'/></svg>"] --> B["<iframe src='https://example.invalid/f'></iframe>"]`,
+  `  B --> C["<video poster='https://example.invalid/p.png' src='https://example.invalid/v.mp4'></video>"]`,
+  `  C --> D["<div style='background:url(https://example.invalid/d.png)'>styled</div>"]`,
+  `  D --> E["<link rel=stylesheet href='https://example.invalid/s.css'>"]`,
+]);
+
+const SEQUENCE_IMAGE = mermaidDoc("Sequence fixture", [
+  "sequenceDiagram",
+  `  participant A as <img src='https://example.invalid/seq.png'>Alice`,
+  "  A->>B: Hello",
+]);
 
 /** Fixed documents only: the query picks one by name, it never supplies Markdown. */
-const DOCS: Readonly<Record<string, string>> = { basic: BASIC, "external-image": EXTERNAL_IMAGE };
+const DOCS: Readonly<Record<string, string>> = {
+  basic: BASIC,
+  "external-image": EXTERNAL_IMAGE,
+  "image-shape": IMAGE_SHAPE,
+  "style-url": STYLE_URL,
+  "theme-css": THEME_CSS,
+  "label-variants": LABEL_VARIANTS,
+  "sequence-image": SEQUENCE_IMAGE,
+};
 
 export default async function Page({
   searchParams,

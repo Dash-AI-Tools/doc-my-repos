@@ -2,7 +2,7 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { MermaidDiagram, resetMermaidForTests } from "./mermaid-diagram";
+import { MermaidDiagram, resetMermaidForTests, usesImageShape } from "./mermaid-diagram";
 import { MermaidEnhancer } from "./mermaid-enhancer";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -59,7 +59,12 @@ describe("MermaidDiagram", () => {
     expect(config.theme).toBe("default");
     expect(config.maxTextSize).toBeGreaterThan(0);
     expect(config.maxEdges).toBeGreaterThan(0);
-    expect(config).not.toHaveProperty("htmlLabels");
+    expect(config.htmlLabels).toBe(false);
+    expect(config.flowchart).toEqual({ htmlLabels: false });
+    expect(config.class).toEqual({ htmlLabels: false });
+    expect(config.secure).toEqual(
+      expect.arrayContaining(["securityLevel", "htmlLabels", "flowchart", "class", "themeCSS"]),
+    );
     expect(config).not.toHaveProperty("dompurifyConfig");
     expect(JSON.stringify(config)).not.toMatch(/loose|sandbox/);
   });
@@ -231,5 +236,44 @@ describe("MermaidEnhancer", () => {
     mock.render.mockRejectedValue(new Error("Syntax error in text"));
     render(<Doc />);
     expect(await screen.findAllByRole("alert")).toHaveLength(2);
+  });
+});
+
+describe("sanitizing", () => {
+  it("inserts only the sanitized SVG: no img, image or foreignObject reaches the DOM", async () => {
+    mock.render.mockResolvedValue({
+      svg: `<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><img src="https://example.invalid/x"></foreignObject><image href="https://example.invalid/y"/><text>kept</text></svg>`,
+    });
+    render(<MermaidDiagram source="a" />);
+    const el = await screen.findByRole("img", { name: "Mermaid diagram" });
+    expect(el.querySelector("img, image, foreignObject")).toBeNull();
+    expect(el.textContent).toBe("kept");
+  });
+
+  it("shows the source and a fixed alert when the SVG cannot be sanitized", async () => {
+    mock.render.mockResolvedValue({ svg: "<div>not svg</div>" });
+    render(<MermaidDiagram source="a" />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("The diagram could not be rendered safely.");
+  });
+});
+
+describe("image shapes", () => {
+  it.each([
+    ['A@{ img: "https://example.invalid/x.png", label: "x" }', true],
+    ["A@{\n  img: 'https://example.invalid/x.png'\n}", true],
+    ['A@{ "IMG": "u" }', true],
+    ["A[plain] --> B", false],
+    ["graph TD\n  A@{ shape: rect }", false],
+  ])("detects %j -> %s", (source, expected) => {
+    expect(usesImageShape(source)).toBe(expected);
+  });
+
+  it("never calls mermaid for an image shape and shows the source with an alert", async () => {
+    mock.render.mockClear();
+    render(<MermaidDiagram source={'graph TD\n  A@{ img: "https://example.invalid/x.png" }'} />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Image shapes are not supported in diagrams.");
+    expect(mock.render).not.toHaveBeenCalled();
   });
 });

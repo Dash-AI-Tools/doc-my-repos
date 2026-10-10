@@ -67,3 +67,50 @@ describe("MermaidDiagram with the real library", () => {
     expect(img.querySelector("script, [onclick]")).toBeNull();
   }, 30000);
 });
+
+describe("MermaidDiagram output is free of resource loaders", () => {
+  const hostile =
+    'graph TD\n  A["<img src=\'https://example.invalid/x.png\'>hello"] --> B["<b>bold</b>"]';
+
+  it("contains no img, image, foreignObject or external url", async () => {
+    render(<MermaidDiagram source={hostile} />);
+    const el = await screen.findByRole("img", { name: "Mermaid diagram" }, { timeout: 20000 });
+    expect(el.querySelector("img, image, foreignObject, iframe, script")).toBeNull();
+    expect(el.innerHTML).not.toMatch(/<img/i);
+    expect(el.querySelector("svg")).not.toBeNull();
+  }, 30000);
+
+  it.each([
+    ["flowchart", "graph TD;\n  Start-->Stop;\n", ["Start", "Stop"], "rect, path"],
+    [
+      "sequence",
+      "sequenceDiagram\n  Alice->>Bob: Hello Bob\n  Bob-->>Alice: Hi Alice\n",
+      ["Alice", "Bob", "Hello Bob"],
+      "rect, line",
+    ],
+    [
+      "class",
+      "classDiagram\n  class Animal {\n    +name\n  }\n  Animal <|-- Dog\n",
+      ["Animal", "Dog", "name"],
+      "path, rect",
+    ],
+  ])(
+    "keeps text and shapes of a %s diagram",
+    async (_n, source, words, shapes) => {
+      render(<MermaidDiagram source={source} />);
+      const el = await screen.findByRole("img", { name: "Mermaid diagram" }, { timeout: 20000 });
+      for (const w of words) expect(el.textContent).toContain(w);
+      expect(el.querySelectorAll(shapes).length).toBeGreaterThan(0);
+      expect(el.querySelector("foreignObject")).toBeNull();
+    },
+    30000,
+  );
+
+  it("ignores a themeCSS directive (secure key) so author CSS never reaches the SVG", async () => {
+    const source =
+      'graph TD\n  A-->B\n%%{init: {"themeCSS": ".node{fill:url(https://example.invalid/t.png)}"}}%%';
+    render(<MermaidDiagram source={source} />);
+    const el = await screen.findByRole("img", { name: "Mermaid diagram" }, { timeout: 20000 });
+    expect(el.innerHTML).not.toContain("example.invalid");
+  }, 30000);
+});

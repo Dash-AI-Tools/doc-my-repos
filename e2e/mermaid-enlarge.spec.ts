@@ -217,26 +217,64 @@ test("a code block on the same page still gets its copy button", async ({ page }
   await expect(page.getByRole("button", { name: "Enlarge diagram" })).toHaveCount(1);
 });
 
-test("external image in a Mermaid label (strict mode): records what the browser requests", async ({
-  page,
-}, testInfo) => {
-  const external: string[] = [];
-  page.on("request", (request) => {
-    if (request.url().includes("example.invalid")) external.push(request.url());
-  });
-  await page.route("**/example.invalid/**", (route) => route.abort());
-  await page.goto(`${FIXTURE}?doc=external-image`);
-  await expect(page.locator(".dmr-mermaid-diagram svg")).toBeVisible({ timeout: 30_000 });
-  const labelMarkup = await page
-    .locator(".dmr-mermaid-diagram")
-    .evaluate((el) => ({ hasImg: el.querySelector("img") !== null, html: el.innerHTML.length }));
-  // Give a pending image request time to be issued.
-  await page.waitForTimeout(500);
-  testInfo.annotations.push({
-    type: "external-image",
-    description: `img element in svg: ${labelMarkup.hasImg}; external requests: ${JSON.stringify(external)}`,
-  });
-  console.log(
-    `[external-image] img element present: ${labelMarkup.hasImg}; external requests attempted: ${external.length} ${JSON.stringify(external)}`,
-  );
-});
+// A diagram from an untrusted doc must never make the browser request another origin
+// (tracking pixel, IP and Referer leak). Strict mode alone does not stop these.
+for (const doc of [
+  "external-image",
+  "image-shape",
+  "style-url",
+  "theme-css",
+  "label-variants",
+  "sequence-image",
+]) {
+  for (const theme of ["light", "dark"] as const) {
+    test(`no external request from Mermaid fixture ${doc} (${theme})`, async ({
+      browser,
+    }, testInfo) => {
+      const context = await browser.newContext({ colorScheme: theme });
+      const page = await context.newPage();
+      const external: string[] = [];
+      page.on("request", (request) => {
+        if (request.url().includes("example.invalid")) external.push(request.url());
+      });
+      await page.route("**/example.invalid/**", (route) => route.abort());
+      await page.goto(`${FIXTURE}?doc=${doc}`);
+      // Either the diagram renders, or the source is shown with an error; both are readable.
+      await expect(page.locator(".dmr-mermaid-diagram svg, .dmr-mermaid-error")).toBeVisible({
+        timeout: 30_000,
+      });
+      // Label text may show the URL as plain text; no element or attribute may carry it.
+      const carriers = (root: Element): string[] => {
+        const found: string[] = [];
+        for (const el of [root, ...root.querySelectorAll("*")]) {
+          if (el.localName === "style" && (el.textContent ?? "").includes("example.invalid")) {
+            found.push("style");
+          }
+          for (const attr of el.attributes) {
+            if (attr.value.includes("example.invalid")) found.push(`${el.localName}@${attr.name}`);
+          }
+        }
+        return found;
+      };
+      const loaders = "img, image, foreignObject, iframe, video, link, script";
+      const inline = page.locator(".dmr-mermaid-diagram");
+      if ((await inline.count()) > 0) {
+        expect(await inline.evaluate(carriers)).toEqual([]);
+        expect(await inline.locator(loaders).count()).toBe(0);
+      }
+      // Open the enlarge view too: it renders its own copy.
+      const enlarge = page.getByRole("button", { name: "Enlarge diagram" });
+      if ((await enlarge.count()) > 0) {
+        await enlarge.click();
+        await expect(dialog(page).locator("svg").first()).toBeVisible();
+        expect(await dialog(page).evaluate(carriers)).toEqual([]);
+        expect(await dialog(page).locator(loaders).count()).toBe(0);
+      }
+      await page.screenshot({ path: testInfo.outputPath(`${doc}-${theme}.png`) });
+      // Give a pending request time to be issued.
+      await page.waitForTimeout(500);
+      expect(external).toEqual([]);
+      await context.close();
+    });
+  }
+}
