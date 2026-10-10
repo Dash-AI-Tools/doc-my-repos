@@ -15,6 +15,7 @@ next-env.d.ts
 
 # Build and test output
 coverage/
+.vitest/
 playwright-report/
 test-results/
 *.tsbuildinfo

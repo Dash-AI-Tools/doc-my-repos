@@ -7,6 +7,7 @@ import {
   getDocumentByPath,
 } from "./documents";
 import { getRepo, listCodeOwners, listRepos } from "./repos";
+import { searchDocuments, searchFacets } from "./search";
 
 /**
  * The shared read layer (task 9.1, design decision 5b). Pages and route handlers import reads
@@ -31,7 +32,15 @@ export const QUERY_FUNCTIONS = {
   getAdjacentDocs,
   countDocs,
   findAssetRepo,
+  searchDocuments,
+  searchFacets,
 } as const;
+
+/** Registered queries that may read `documents.search_vector` (search only, design decision 2). */
+export const SEARCH_VECTOR_READERS: ReadonlySet<keyof typeof QUERY_FUNCTIONS> = new Set([
+  "searchDocuments",
+  "searchFacets",
+] as const);
 
 /**
  * Exported functions of this folder that are not queries (they return no rows): the visibility
@@ -74,4 +83,16 @@ export {
   type RepoSyncStatus,
   type RepoVisibility,
 } from "./repos";
+export {
+  MAX_FACET_VALUES,
+  searchDocuments,
+  searchFacets,
+  type FacetCount,
+  type RepoFacetCount,
+  type SearchFacets,
+  type SearchHeading,
+  type SearchHit,
+  type SearchParams,
+  type SearchResult,
+} from "./search";
 export type { QueryOptions } from "./visibility";

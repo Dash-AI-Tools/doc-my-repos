@@ -23,6 +23,9 @@ import {
   listRepos,
   NOT_QUERIES,
   QUERY_FUNCTIONS,
+  SEARCH_VECTOR_READERS,
+  searchDocuments,
+  searchFacets,
 } from "./index";
 import {
   activeRepoVisibility,
@@ -303,6 +306,40 @@ function flipCases(s: Seed): Record<keyof typeof QUERY_FUNCTIONS, FlipCase[]> {
         label: "asset proxy",
         run: (db, o) => findAssetRepo(db, "Acme", "SECRET", o),
         seen: (r) => !!r,
+      },
+    ],
+    searchDocuments: [
+      {
+        label: "hits",
+        run: (db, o) => searchDocuments(db, { q: "private" }, o),
+        seen: (r) => (r as { hits: { repo: { id: number } }[] }).hits.some((h) => h.repo.id === s.secret),
+      },
+      {
+        label: "total",
+        run: (db, o) => searchDocuments(db, { q: "private" }, o),
+        seen: (r) => (r as { total: number }).total > 0,
+      },
+      {
+        label: "repo filter by name",
+        run: (db, o) => searchDocuments(db, { q: "body", repo: "ACME/Secret" }, o),
+        seen: (r) => (r as { total: number }).total > 0,
+      },
+    ],
+    searchFacets: [
+      {
+        label: "repo counts",
+        run: (db, o) => searchFacets(db, { q: "body" }, o),
+        seen: (r) => (r as { repos: { id: number }[] }).repos.some((x) => x.id === s.secret),
+      },
+      {
+        label: "total",
+        run: (db, o) => searchFacets(db, { q: "private" }, o),
+        seen: (r) => (r as { total: number }).total > 0,
+      },
+      {
+        label: "total with repo filter by id",
+        run: (db, o) => searchFacets(db, { q: "body", repo: s.secret }, o),
+        seen: (r) => (r as { total: number }).total > 0,
       },
     ],
   };
@@ -654,19 +691,25 @@ describeDb("query layer on a real database", () => {
       expect(await getRepo(t.db, "acme", "handbook", { visibility: hideAll })).toBeNull();
     });
 
-    it("never selects search_vector and always joins repos for documents and code owners", async () => {
-      statements.length = 0;
-      for (const cases of Object.values(flipCases(s))) {
+    it("reads search_vector only in search and always joins repos for documents and code owners", async () => {
+      let total = 0;
+      for (const [name, cases] of Object.entries(flipCases(s))) {
+        statements.length = 0;
         for (const c of cases) {
           const result = await c.run(logged, {});
           expect(JSON.stringify(result ?? null)).not.toMatch(/searchVector|search_vector/);
         }
+        total += statements.length;
+        const readsVector = SEARCH_VECTOR_READERS.has(name as keyof typeof QUERY_FUNCTIONS);
+        for (const statement of statements) {
+          if (!readsVector) expect(statement, name).not.toContain("search_vector");
+          if (/"documents"|"code_owners"/.test(statement)) {
+            expect(statement, name).toContain('"repos"');
+          }
+        }
       }
-      expect(statements.length).toBeGreaterThan(10);
-      for (const statement of statements) {
-        expect(statement).not.toContain("search_vector");
-        if (/"documents"|"code_owners"/.test(statement)) expect(statement).toContain('"repos"');
-      }
+      expect(total).toBeGreaterThan(10);
+      expect([...SEARCH_VECTOR_READERS].sort()).toEqual(["searchDocuments", "searchFacets"]);
     });
   });
 

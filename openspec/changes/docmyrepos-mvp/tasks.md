@@ -78,7 +78,7 @@
 
 ## 10. Search (search)
 
-- [ ] 10.1 Implement the search query (`websearch_to_tsquery`, weighted ranking, `ts_headline` snippets, repo/type/tag/status filters, facet counts), and verify integration tests for ranking, empty results, and special-character queries
+- [x] 10.1 Implement the search query (`websearch_to_tsquery`, weighted ranking, `ts_headline` snippets, repo/type/tag/status filters, facet counts), and verify integration tests for ranking, empty results, and special-character queries
 - [ ] 10.2 Strip markdown/HTML from snippets and verify a test with markup-heavy content
 - [ ] 10.3 Build the `/search` page with results, highlights, facets, and URL-synced state, and verify a Playwright test for filtering and shareable URLs
 - [ ] 10.4 Build the global `⌘K`/`Ctrl+K` command palette with live results and keyboard navigation, and verify a Playwright test
