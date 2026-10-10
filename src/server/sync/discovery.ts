@@ -1,4 +1,3 @@
-import type { AppConfig } from "../config/schema";
 import { GitHubError, type CallOptions, type GitHubClient, type RepoInfo } from "../github/client";
 
 /**
@@ -62,9 +61,18 @@ export type DiscoveryResult =
       inaccessible: [];
     };
 
+/**
+ * The narrowing part of the config. Read-only, so the frozen config from `loadConfig` fits as is;
+ * a plain `AppConfig` (config/schema) fits too.
+ */
+export interface DiscoveryConfig {
+  readonly repos?: readonly (string | { readonly name: string; readonly docsPath?: string })[];
+  readonly exclude?: readonly string[];
+}
+
 export async function discoverRepositories(
   client: DiscoveryClient,
-  config: Pick<AppConfig, "repos" | "exclude">,
+  config: DiscoveryConfig,
   options: CallOptions = {},
 ): Promise<DiscoveryResult> {
   let listing: RepoInfo[];
