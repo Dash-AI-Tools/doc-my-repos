@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { CommandPalette } from "@/components/command-palette";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <SiteHeader />
           <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
           <SiteFooter />
+          <CommandPalette />
         </ThemeProvider>
       </body>
     </html>

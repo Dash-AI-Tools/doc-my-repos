@@ -394,6 +394,85 @@ for (const theme of ["light", "dark"] as const) {
       expect(await violations(page)).toEqual([]);
     });
 
+    test.describe("command palette open", () => {
+      /** Opens the palette once the page is hydrated (the shortcut listener needs React). */
+      async function openPalette(page: Page): Promise<void> {
+        await expect(page.getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+        await page.keyboard.press("Control+k");
+        await expect(page.getByRole("dialog", { name: "Quick search" })).toBeVisible();
+        await expect(page.getByRole("combobox")).toBeFocused();
+      }
+
+      test("empty query (hints): no violations", async ({ page }) => {
+        test.skip(SKIP_DB, SKIP_DB_REASON);
+        await open(page, theme, pageByName("home, repositories (seeded)"));
+        await openPalette(page);
+        await expect(page.getByTestId("palette-hint")).toBeVisible();
+        expect(await violations(page)).toEqual([]);
+      });
+
+      test("results with one row active: no violations", async ({ page }) => {
+        test.skip(SKIP_DB, SKIP_DB_REASON);
+        await open(page, theme, pageByName("home, repositories (seeded)"));
+        await openPalette(page);
+        await page.getByRole("combobox").pressSequentially("deployment");
+        await expect(page.getByRole("option")).toHaveCount(8);
+        await page.keyboard.press("ArrowDown");
+        await page.keyboard.press("ArrowDown");
+        await expect(page.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
+        await expect(page.locator("[role=option] mark").first()).toBeVisible();
+        await expect(page.getByTestId("palette-private-badge").first()).toBeVisible();
+        expect(await violations(page)).toEqual([]);
+      });
+
+      test("results on the search page, which has its own search form: no violations", async ({
+        page,
+      }) => {
+        test.skip(SKIP_DB, SKIP_DB_REASON);
+        await open(page, theme, pageByName("search, results with facets (seeded)"));
+        await openPalette(page);
+        await page.getByRole("combobox").pressSequentially("gateway");
+        await expect(page.getByRole("option")).toHaveCount(1);
+        expect(await violations(page)).toEqual([]);
+      });
+
+      test("no results: no violations", async ({ page }) => {
+        test.skip(SKIP_DB, SKIP_DB_REASON);
+        await open(page, theme, pageByName("home, repositories (seeded)"));
+        await openPalette(page);
+        await page.getByRole("combobox").pressSequentially("zzzznothing");
+        await expect(page.getByTestId("palette-empty")).toBeVisible();
+        expect(await violations(page)).toEqual([]);
+      });
+
+      test("search unavailable: no violations", async ({ page }) => {
+        await open(page, theme, pageByName("home, database error"));
+        await openPalette(page);
+        await page.getByRole("combobox").pressSequentially("deployment");
+        await expect(page.getByTestId("palette-error")).toBeVisible();
+        expect(await violations(page)).toEqual([]);
+      });
+
+      test("results on a phone, as a full-screen sheet: no violations", async ({ page }) => {
+        test.skip(SKIP_DB, SKIP_DB_REASON);
+        await page.setViewportSize({ width: 375, height: 700 });
+        await open(page, theme, pageByName("home, repositories (seeded)"));
+        await page.getByTestId("palette-trigger").click();
+        await expect(page.getByRole("dialog", { name: "Quick search" })).toBeVisible();
+        await page.getByRole("combobox").pressSequentially("deployment");
+        await expect(page.getByRole("option")).toHaveCount(8);
+        await page.keyboard.press("ArrowDown");
+        expect(await violations(page)).toEqual([]);
+      });
+
+      test("the header trigger focused: no violations", async ({ page }) => {
+        test.skip(SKIP_DB, SKIP_DB_REASON);
+        await open(page, theme, pageByName("home, repositories (seeded)"));
+        await page.getByTestId("palette-trigger").focus();
+        expect(await violations(page)).toEqual([]);
+      });
+    });
+
     test("Shiki token colors meet AA on the code background", async ({ page }) => {
       await open(page, theme, pageByName("theme showcase"));
       const background = THEME_TOKENS[theme]["code-background"];

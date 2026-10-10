@@ -319,8 +319,9 @@ test.describe("header toggle", () => {
       await expect(page.locator("header").getByRole("radiogroup", { name: "Theme" })).toBeVisible();
       await expect(toggle(page).getByRole("radio")).toHaveCount(3);
 
-      // Tab reaches the toggle on the selected option (System), after the logo link.
-      await page.locator("header a").first().focus();
+      // Tab reaches the toggle on the selected option (System), after the logo link and the
+      // search trigger (task 10.4).
+      await page.getByTestId("palette-trigger").focus();
       await page.keyboard.press("Tab");
       await expect(option(page, "System")).toBeFocused();
       const ring = await option(page, "System").evaluate((el) => {

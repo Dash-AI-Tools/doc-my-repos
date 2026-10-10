@@ -1,13 +1,22 @@
-import type { ReactElement } from "react";
+import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { CommandPalette } from "@/components/command-palette";
 import { THEME_STORAGE_KEY } from "@/components/theme-provider";
 import { THEME_TOKENS } from "@/lib/theme-tokens";
 
 import RootLayout, { viewport } from "./layout";
 
 const page = <p data-testid="page">Page content</p>;
+
+/** How many times `type` appears in an element tree (children of host and composite elements). */
+function countElements(node: ReactNode, type: unknown): number {
+  if (Array.isArray(node))
+    return node.reduce((n: number, child) => n + countElements(child, type), 0);
+  if (!isValidElement<{ children?: ReactNode }>(node)) return 0;
+  return (node.type === type ? 1 : 0) + countElements(node.props.children, type);
+}
 
 describe("root layout", () => {
   it("marks <html> with suppressHydrationWarning and a language", () => {
@@ -27,6 +36,25 @@ describe("root layout", () => {
       /<header[^>]*>[\s\S]*data-testid="theme-toggle-placeholder"[\s\S]*<\/header>/,
     );
     expect(html).toContain("Page content");
+  });
+
+  it("puts the search trigger in the header, as a link that works without JavaScript", () => {
+    const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+    const trigger = /<a [^>]*data-testid="palette-trigger"[^>]*>/.exec(header)?.[0] ?? "";
+    expect(trigger).toContain('href="/search"');
+    expect(header).toContain('aria-keyshortcuts="Control+K Meta+K"');
+    // the server cannot know the platform: the Ctrl hint is what it renders
+    expect(header).toContain("Ctrl K");
+  });
+
+  it("mounts the command palette exactly once, in the root layout", () => {
+    expect(countElements(RootLayout({ children: page }), CommandPalette)).toBe(1);
+  });
+
+  it("mounts the command palette closed: no dialog and no second search form in the markup", () => {
+    expect(html).not.toContain("<dialog");
+    expect(html).not.toContain('role="combobox"');
+    expect(html).not.toContain('role="search"');
   });
 
   it("emits the theme script as the first thing in <body>, before any content", () => {

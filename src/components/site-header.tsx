@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PaletteTrigger } from "./palette-trigger";
 import { ThemeToggle } from "./theme-toggle";
 
 export function SiteHeader() {
@@ -12,7 +13,8 @@ export function SiteHeader() {
         >
           DocMyRepos
         </Link>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <PaletteTrigger />
           <ThemeToggle />
         </div>
       </div>

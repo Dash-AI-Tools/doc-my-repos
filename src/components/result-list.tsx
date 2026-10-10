@@ -18,11 +18,20 @@ import type { ResultItemData } from "@/lib/search-view";
 
 const CHIP = "inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-xs font-medium";
 
-export function Snippet({ text }: { readonly text: string }) {
+/** Text styling of a snippet. The command palette (10.4) passes its own, smaller one. */
+const SNIPPET_CLASS = "text-sm break-words text-foreground";
+
+export function Snippet({
+  text,
+  className = SNIPPET_CLASS,
+}: {
+  readonly text: string;
+  readonly className?: string;
+}) {
   const parts = splitHighlights(text);
   if (parts.length === 0) return null;
   return (
-    <p data-testid="result-snippet" className="text-sm break-words text-foreground">
+    <p data-testid="result-snippet" className={className}>
       {parts.map((part, index) =>
         part.highlighted ? (
           <mark
