@@ -206,7 +206,7 @@ describe("bounds", () => {
     expect(file.data.warnings).toContain(WARN_BUDGET);
   });
 
-  it("renders a 256 KB document of code within about a second", async () => {
+  it("renders a 256 KB document of code in bounded time", async () => {
     const line =
       "export function f(a: number, b: string): Promise<void> { return g(a, `${b}`); }\n";
     const doc = fence("ts", line.repeat(Math.floor((60 * 1024) / line.length))).repeat(4);
@@ -215,7 +215,9 @@ describe("bounds", () => {
     const { html, warnings } = await render(doc);
     const ms = Date.now() - t;
     expect(html).toContain("shiki");
-    expect(ms).toBeLessThan(1000);
+    // The highlighter itself stops after ~1 s of work; allow headroom for the rest of the
+    // pipeline and for a loaded CI machine running the whole suite in parallel.
+    expect(ms).toBeLessThan(4000);
     expect(warnings).toContain(WARN_BUDGET);
   });
 

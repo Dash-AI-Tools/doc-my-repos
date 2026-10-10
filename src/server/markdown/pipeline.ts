@@ -21,6 +21,7 @@ import {
 import { parseFrontmatter, stripNul, toWellFormed } from "../docs/frontmatter";
 import { rehypeRewriteImages } from "./images";
 import { type LinkContext, rehypeRewriteLinks } from "./links";
+import { rehypeMermaid } from "./mermaid";
 import { parseBody } from "./parse";
 import { HEADING_ANCHOR_CLASS, rehypeSafeHtml } from "./sanitize";
 
@@ -44,7 +45,9 @@ export type { LinkContext } from "./links";
  *   6. linkRewrite   link rewriting (7.4) then image rewriting (7.5) when `links` is given,
  *                    then the SLOT (rehype)
  *   7. highlight     SLOT (rehype, task 7.3)
- *   8. mermaid       SLOT (rehype, task 7.6)
+ *   8. mermaid       `rehypeMermaid` (mermaid.ts, always on) tags `mermaid` fences, then the
+ *                    SLOT (rehype). Order against highlight does not matter: highlight skips
+ *                    Mermaid.
  *   9. sanitize      `rehypeSafeHtml` (sanitize.ts): rehype-sanitize with the fixed allow-list,
  *                    then a fixed hardening pass. Always the last tree transform; the
  *                    processor is frozen, so nothing can be added after it. Slot output is
@@ -69,7 +72,7 @@ export interface RenderSlots {
   readonly linkRewrite?: PluggableList;
   /** Rehype plugins; code highlighting (7.3). Runs before the sanitizer. */
   readonly highlight?: PluggableList;
-  /** Rehype plugins; Mermaid block marking (7.5). Runs before the sanitizer. */
+  /** Rehype plugins; run after the built-in Mermaid tagging (7.6). Run before the sanitizer. */
   readonly mermaid?: PluggableList;
 }
 
@@ -237,6 +240,7 @@ export function createProcessor(options: ProcessorOptions = {}) {
     )
     .use(slots.linkRewrite ?? [])
     .use(slots.highlight ?? [])
+    .use(rehypeMermaid)
     .use(slots.mermaid ?? [])
     .use(rehypeSafeHtml)
     .use(rehypeStringify)

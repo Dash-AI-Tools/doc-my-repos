@@ -22,6 +22,7 @@
     "@tailwindcss/postcss": "^4.3.3",
     "drizzle-orm": "^0.45.4",
     "github-slugger": "^2.0.0",
+    "mermaid": "^12.1.0",
     "next": "^16.4.0",
     "pg": "^8.23.1",
     "postcss": "^8.5.29",
