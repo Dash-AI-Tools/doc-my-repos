@@ -14,6 +14,14 @@ import {
 } from "./discovery";
 import { PersistError, persistRepoSync, type PersistPlan, type PersistRepo } from "./persist";
 import {
+  databaseNow,
+  executeRemovals,
+  planRemovals,
+  readStoredRepos,
+  removalOutcomeEntry,
+  type RemovalOutcome,
+} from "./removal";
+import {
   INSTALLATION_WIDE_KINDS,
   RepoSyncError,
   describeSyncError,
@@ -38,9 +46,9 @@ import { planTree, type StoredTreeState, type TreePlan } from "./tree";
  * - `syncRepo`: one discovered repository, lock-free. It is the worker `runRepos` calls inside the
  *   repo's sync lock; `syncRepoLocked` is the standalone form that takes the lock itself.
  * - `syncAll`: a full run. Reaps stale runs, opens a run (`scope` null), lists the installation's
- *   repositories narrowed by config, and syncs each one. Nothing is ever deleted here: removal of
- *   repos dropped from config or from the installation is task 5.9, which gets what it needs from
- *   the returned `discovery` (only act on it when `discovery.complete`).
+ *   repositories narrowed by config, syncs each one, then removes stored repos the complete
+ *   listing no longer selects (task 5.9, `removal.ts`): dropped from config, excluded, archived,
+ *   or gone from the installation. Nothing is removed when the listing failed.
  * - `syncOne`: a single-repo run for `POST /api/sync` and webhooks (6.x). The repo must be in the
  *   installation listing and pass the config narrowing; otherwise a typed `not_found` or
  *   `not_configured` result is returned and no run is recorded.
@@ -49,7 +57,8 @@ import { planTree, type StoredTreeState, type TreePlan } from "./tree";
  * nothing here reads the environment or files. `src/server/runtime.ts` builds the context.
  *
  * Failure handling follows the design's removal rule: a failed repo keeps its stored content and
- * is marked `error` with a fixed message; a failed listing deletes nothing. Installation-wide
+ * is marked `error` with a fixed message; a failed listing deletes nothing; `syncOne` never
+ * deletes (its `not_found` may be transient). Installation-wide
  * listing failures also mark every stored repo `error` (content kept); rate limits and aborts
  * leave the rows as they were.
  */
@@ -393,20 +402,33 @@ async function recordDiscoveryFailure(
 }
 
 /**
- * Config-listed repositories the installation cannot access: a `not_accessible` entry each, and a
- * stored row with that name (case-insensitive; one the run just synced under another name is not
- * matched) is marked `error`, content kept. Entries with no stored row carry `githubId` 0 and the
- * name as written in the config.
+ * Config-listed repositories the installation cannot access: a `not_accessible` entry each. Such a
+ * stored repo is absent from the complete listing, so the removal step (which runs first) deleted
+ * it: its `removed` entry is annotated with the `not_accessible` kind and message instead of
+ * adding a second entry; one whose removal was skipped (busy, changed) keeps that entry alone. A
+ * stored row with that name the removal step did not plan (case-insensitive; one the run just
+ * synced under another name is not matched) is marked `error`, content kept. Entries with no
+ * stored row carry `githubId` 0 and the name as written in the config.
  */
 async function recordInaccessible(
   ctx: SyncContext,
   ledger: RunLedger,
   discovery: Extract<DiscoveryResult, { complete: true }>,
+  removals: readonly { outcome: RemovalOutcome; entry: SyncRepoResult }[],
 ): Promise<void> {
   if (discovery.inaccessible.length === 0) return;
   const described = describeSyncError(new RepoSyncError("not_accessible"), ctx.now());
   const synced = new Set(discovery.repos.map((r) => r.githubId));
   for (const missing of discovery.inaccessible) {
+    const handled = removals.filter((r) => sameName(r.outcome.repo.name, missing.name));
+    if (handled.length > 0) {
+      for (const { outcome, entry } of handled) {
+        if (outcome.status !== "removed") continue;
+        entry.error = described.message;
+        entry.errorKind = described.kind;
+      }
+      continue;
+    }
     const rows = (
       await ctx.db
         .select({ githubId: repos.githubId, owner: repos.owner, name: repos.name })
@@ -444,29 +466,47 @@ export interface SyncAllResult {
   /** The run as `withRun` reported it; `value` is the per-repo results when it ran. */
   run: WithRunResult<SyncRepoResult[]>;
   /**
-   * The listing narrowed by config, or null when the run did not get as far as listing. Task 5.9
-   * may remove stored repos missing from `discovery.repos` ONLY when `discovery.complete` is true.
+   * The listing narrowed by config, or null when the run did not get as far as listing. The
+   * removal step acts on it only when `discovery.complete` is true.
    */
   discovery: DiscoveryResult | null;
   /** GitHub ids of the repositories this run attempted (`discovery.repos`), in listing order. */
   discoveredGithubIds: number[];
+  /** What the removal step did per planned repo (task 5.9); empty when it did not run. */
+  removals: RemovalOutcome[];
+}
+
+/**
+ * Whether the removal step may run after the repo loop. The listing was complete (the caller
+ * checks), so removal needs nothing from GitHub; it is still skipped after an abort or an
+ * installation-wide failure (the installation may have just been suspended, whose rule is "keep
+ * content"). A rate limit does not block it, or a large org that always hits the limit would
+ * never drop a repo.
+ */
+function removalAllowed(ledger: RunLedger, signal: AbortSignal): boolean {
+  if (signal.aborted) return false;
+  return ledger.fatal === null || ledger.fatal.kind === "rate_limited";
 }
 
 /**
  * A full sync run. Reaps stale runs first, then inside `withRun` (scope null): lists the
  * installation's repositories narrowed by config, syncs each discovered repo in its repo lock
- * (`runRepos`: per-repo failures are isolated, fatal ones stop the run), and reports config-listed
- * repos the installation cannot access. A failed listing fails the run and deletes nothing.
- * Deletes no repos (task 5.9).
+ * (`runRepos`: per-repo failures are isolated, fatal ones stop the run), removes stored repos the
+ * complete listing no longer selects (`planRemovals`/`executeRemovals`, recorded as `removed`
+ * entries), and reports config-listed repos the installation cannot access. A failed listing
+ * fails the run and deletes nothing.
  */
 export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promise<SyncAllResult> {
   await reapStaleRuns(ctx.db, ctx.pool);
   let discovery: DiscoveryResult | null = null;
+  let removals: RemovalOutcome[] = [];
   const run = await withRun(
     ctx.db,
     ctx.pool,
     { trigger: options.trigger, scope: null, signal: options.signal },
     async ({ signal, ledger }) => {
+      // Taken before the listing: rows a concurrent sync writes after it are not removed.
+      const listedAt = await databaseNow(ctx.db);
       discovery = await discoverRepositories(ctx.github, ctx.config, { signal });
       if (!discovery.complete) {
         await recordDiscoveryFailure(ctx, ledger, discovery.error, "all");
@@ -480,7 +520,25 @@ export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promis
           now: ctx.now,
         }),
       );
-      if (ledger.fatal === null) await recordInaccessible(ctx, ledger, discovery);
+      const handled: { outcome: RemovalOutcome; entry: SyncRepoResult }[] = [];
+      if (removalAllowed(ledger, signal)) {
+        const planned = planRemovals({
+          stored: await readStoredRepos(ctx.db),
+          discovery,
+          config: ctx.config,
+        });
+        removals = await executeRemovals(ctx.db, ctx.pool, planned, {
+          discoveredGithubIds: discovery.repos.map((r) => r.githubId),
+          listedAt,
+          signal,
+        });
+        for (const outcome of removals) {
+          const entry = removalOutcomeEntry(outcome);
+          handled.push({ outcome, entry });
+          ledger.results.push(entry);
+        }
+      }
+      if (ledger.fatal === null) await recordInaccessible(ctx, ledger, discovery, handled);
       return [...ledger.results];
     },
   );
@@ -489,6 +547,7 @@ export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promis
     run,
     discovery: found,
     discoveredGithubIds: found?.complete ? found.repos.map((r) => r.githubId) : [],
+    removals,
   };
 }
 

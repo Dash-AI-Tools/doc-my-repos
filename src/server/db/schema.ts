@@ -52,12 +52,30 @@ export type SyncWarning = { path: string | null; message: string };
  * One repository's outcome in `sync_runs.results` (task 5.7, `src/server/sync/runs.ts`). Lists are
  * capped; the `*Total` fields keep the real counts. Messages are fixed texts, never raw errors.
  */
+/**
+ * Why a stored repo is deleted (task 5.9, `src/server/sync/removal.ts`).
+ * - `not_in_installation`: absent from a complete installation listing (removed from the
+ *   installation, deleted on GitHub, or a config-listed repo the App cannot access).
+ * - `dropped_from_config`: still accessible, but no longer in the config's `repos` list.
+ * - `excluded`: accessible, but now in the config's `exclude` list.
+ * - `archived`: archived upstream; only non-archived repos are synced and shown.
+ * - `deleted`: GitHub reported the repository deleted (webhook, task 6.3).
+ */
+export type RepoRemovalReason =
+  "not_in_installation" | "dropped_from_config" | "excluded" | "archived" | "deleted";
+
 export type SyncRepoResult = {
   /** "owner/name" at the time of the run. */
   repo: string;
   githubId: number;
-  /** `skipped`: not attempted (another sync held the repo, or the run stopped on a fatal error). */
-  status: "ok" | "error" | "unchanged" | "skipped";
+  /**
+   * `skipped`: not attempted (another sync held the repo, or the run stopped on a fatal error).
+   * `removed`: the repo row and its documents and code owners were deleted (task 5.9); `removed`
+   * then counts the deleted documents.
+   */
+  status: "ok" | "error" | "unchanged" | "skipped" | "removed";
+  /** Why the repo was (or is due to be) removed; set only on removal entries (task 5.9). */
+  removalReason?: RepoRemovalReason;
   error: string | null;
   /** Stable error kind (a GitHubError/PersistError/RepoSyncError kind), null when ok. */
   errorKind: string | null;

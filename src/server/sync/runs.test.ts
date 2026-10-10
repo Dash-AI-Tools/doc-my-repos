@@ -32,6 +32,7 @@ import {
   finishRun,
   reapStaleRuns,
   recordRepoOutcome,
+  removalEntry,
   runRepos,
   startRun,
   successEntry,
@@ -243,7 +244,8 @@ describe("results entries and stats", () => {
       { kind: "busy", message: REPO_BUSY_MESSAGE, retryable: true, retryAt: null, fatal: false },
       "skipped",
     );
-    const stats = aggregateRunStats([ok, same, bad, busy]);
+    const gone = removalEntry(runRepo(5), "not_in_installation", 4);
+    const stats = aggregateRunStats([ok, same, bad, busy, gone]);
     expect(stats).toEqual({
       reposTotal: 4,
       reposOk: 2,
@@ -251,9 +253,10 @@ describe("results entries and stats", () => {
       reposUnchanged: 1,
       reposFailed: 1,
       reposSkipped: 1,
+      reposRemoved: 1,
       docsAdded: 3,
       docsUpdated: 1,
-      docsRemoved: 2,
+      docsRemoved: 6,
       docsIdentical: 5,
       docsSkipped: 0,
       warnings: 0,
@@ -261,6 +264,13 @@ describe("results entries and stats", () => {
     expect(computeRunStatus(stats, null)).toBe("partial");
     expect(computeRunStatus(aggregateRunStats([ok, same, busy]), null)).toBe("success");
     expect(computeRunStatus(aggregateRunStats([]), null)).toBe("success");
+    expect(computeRunStatus(aggregateRunStats([gone]), null)).toBe("success");
+    expect(gone).toMatchObject({
+      status: "removed",
+      removalReason: "not_in_installation",
+      removed: 4,
+      error: null,
+    });
     expect(computeRunStatus(aggregateRunStats([bad, busy]), null)).toBe("failed");
     expect(
       computeRunStatus(

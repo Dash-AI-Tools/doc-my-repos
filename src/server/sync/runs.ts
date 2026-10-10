@@ -8,7 +8,13 @@ import {
   withRepoSyncLock,
 } from "../db/advisory-lock";
 import type { Db } from "../db/client";
-import { repos, syncRuns, type SyncRepoResult, type SyncWarning } from "../db/schema";
+import {
+  repos,
+  syncRuns,
+  type RepoRemovalReason,
+  type SyncRepoResult,
+  type SyncWarning,
+} from "../db/schema";
 import { GitHubError, type GitHubErrorKind } from "../github/client";
 import { NOT_ACCESSIBLE_MESSAGE } from "./discovery";
 import { toDbText } from "./document-record";
@@ -381,6 +387,21 @@ export function successEntry(repo: RunRepo, work: RepoWorkResult): SyncRepoResul
   return entry;
 }
 
+/**
+ * A results entry for a repo the removal step deleted (task 5.9): status `removed`, the reason,
+ * and the number of documents deleted with it in `removed`.
+ */
+export function removalEntry(
+  repo: RunRepo,
+  reason: RepoRemovalReason,
+  documentsRemoved: number,
+): SyncRepoResult {
+  const entry = emptyEntry(repo, "removed");
+  entry.removalReason = reason;
+  entry.removed = documentsRemoved;
+  return entry;
+}
+
 /** A results entry for a failed or skipped repo. */
 export function failureEntry(
   repo: RunRepo,
@@ -563,6 +584,7 @@ export async function runRepos<T extends RunRepo>(
 // Run rows
 
 export interface RunStats {
+  /** Repos the run synced or tried to sync; removal entries are not counted (see `reposRemoved`). */
   reposTotal: number;
   /** Repos synced with changes or unchanged. */
   reposOk: number;
@@ -570,6 +592,8 @@ export interface RunStats {
   reposUnchanged: number;
   reposFailed: number;
   reposSkipped: number;
+  /** Repos deleted by the removal step (task 5.9). Stored in `results` only, no column. */
+  reposRemoved: number;
   docsAdded: number;
   docsUpdated: number;
   docsRemoved: number;
@@ -581,12 +605,13 @@ export interface RunStats {
 /** Aggregates per-repo entries. Pure. */
 export function aggregateRunStats(results: readonly SyncRepoResult[]): RunStats {
   const s: RunStats = {
-    reposTotal: results.length,
+    reposTotal: 0,
     reposOk: 0,
     reposSynced: 0,
     reposUnchanged: 0,
     reposFailed: 0,
     reposSkipped: 0,
+    reposRemoved: 0,
     docsAdded: 0,
     docsUpdated: 0,
     docsRemoved: 0,
@@ -595,10 +620,25 @@ export function aggregateRunStats(results: readonly SyncRepoResult[]): RunStats 
     warnings: 0,
   };
   for (const r of results) {
-    if (r.status === "ok") s.reposSynced++;
-    else if (r.status === "unchanged") s.reposUnchanged++;
-    else if (r.status === "error") s.reposFailed++;
-    else s.reposSkipped++;
+    // A removed repo is not a synced one (not in reposTotal); its deleted documents count in
+    // docsRemoved.
+    if (r.status !== "removed") s.reposTotal++;
+    switch (r.status) {
+      case "ok":
+        s.reposSynced++;
+        break;
+      case "unchanged":
+        s.reposUnchanged++;
+        break;
+      case "error":
+        s.reposFailed++;
+        break;
+      case "removed":
+        s.reposRemoved++;
+        break;
+      default:
+        s.reposSkipped++;
+    }
     s.docsAdded += r.added;
     s.docsUpdated += r.updated;
     s.docsRemoved += r.removed;
@@ -676,7 +716,8 @@ export function boundResults(results: readonly SyncRepoResult[]): SyncRepoResult
 /**
  * Writes the final status, `finished_at`, counters, results (`boundResults`; the counters count
  * every repo) and the fatal error message, only `where status = 'running'`, so a run
- * that was reaped is never overwritten. Repos skipped = total - synced - unchanged - failed, and
+ * that was reaped is never overwritten. Repos skipped = total - synced - unchanged - failed (removal
+ * entries are not in total; they are in `results` with status `removed`), and
  * duration = finished_at - started_at; they have no columns of their own.
  */
 export async function finishRun(

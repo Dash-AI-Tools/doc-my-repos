@@ -701,7 +701,7 @@ describeDb("sync engine against a fixture-backed fake GitHub", () => {
     expect(run).toMatchObject({ scope: "acme/handbook", status: "failed" });
   });
 
-  it("a config-listed repo the installation cannot access is reported and its stored row flagged", async () => {
+  it("a config-listed repo the installation cannot access is reported and removed (task 5.9)", async () => {
     const fake = fixture([{ id: 707, name: "ghost", files: { "docs/g.md": "# G\n" } }]);
     await syncAll(ctxFor(fake, { config: {} }), { trigger: "manual" });
     expect((await docs(707)).length).toBe(1);
@@ -713,19 +713,20 @@ describeDb("sync engine against a fixture-backed fake GitHub", () => {
     if (result.discovery?.complete) {
       expect(result.discovery.inaccessible.map((i) => i.name)).toEqual(["ghost", "never-existed"]);
     }
-    expect(await repoRow(707)).toMatchObject({
-      syncStatus: "error",
-      syncError: "not accessible by the GitHub App",
-    });
-    expect((await docs(707)).length).toBe(1);
+    // Absent from a complete listing: removed, and the run says why.
+    expect(await repoRow(707)).toBeUndefined();
+    expect(await docs(707)).toEqual([]);
     const [, run] = await runs();
-    expect(run?.results.map((r) => [r.repo, r.githubId, r.status, r.errorKind])).toEqual([
-      ["acme/handbook", HANDBOOK_ID, "unchanged", null],
-      ["acme/ghost", 707, "error", "not_accessible"],
-      ["never-existed", 0, "error", "not_accessible"],
+    expect(
+      run?.results.map((r) => [r.repo, r.githubId, r.status, r.errorKind, r.removalReason]),
+    ).toEqual([
+      ["acme/handbook", HANDBOOK_ID, "unchanged", null, undefined],
+      ["acme/metrics", METRICS_ID, "removed", null, "dropped_from_config"],
+      ["acme/sandbox", SANDBOX_ID, "removed", null, "dropped_from_config"],
+      ["acme/ghost", 707, "removed", "not_accessible", "not_in_installation"],
+      ["never-existed", 0, "error", "not_accessible", undefined],
     ]);
-    // Metrics was dropped from config; removing it is task 5.9, not this run.
-    expect(await repoRow(METRICS_ID)).toBeDefined();
+    expect(await repoRow(METRICS_ID)).toBeUndefined();
   });
 
   it("a truncated tree is a repo error that keeps stored content", async () => {
