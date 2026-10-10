@@ -78,7 +78,7 @@ DocMyRepos authenticates as a GitHub App, not with a personal access token:
 3. Generate a private key and install the App on your organization, on all repositories or a selection.
 4. Copy the App id, the private key and the installation id into your environment.
 
-The App's single webhook keeps content fresh and tells DocMyRepos when repositories are added to or removed from the installation. For local development, use a tunnel such as `smee.io` or `ngrok`. A step-by-step guide and an App manifest are planned for `docs/`.
+The App's single webhook keeps content fresh and tells DocMyRepos when repositories are added to or removed from the installation. For local development, use a tunnel such as `smee.io` or `ngrok`. See the [GitHub App setup guide](docs/github-app-setup.md) for the steps and an [App manifest](docs/github-app-manifest.json).
 
 ## Security note
 
