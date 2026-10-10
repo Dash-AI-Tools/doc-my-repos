@@ -70,6 +70,15 @@ export function docUrl(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${DOCS_ROUTE_SEGMENT}/${tail}`;
 }
 
+/**
+ * Root-relative URL of a repository space (`/<owner>/<repo>`, task 9.2). Each segment is
+ * percent-encoded with `encodeURIComponent`, so odd characters in a stored name cannot change
+ * the path.
+ */
+export function repoUrl(owner: string, repo: string): string {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+}
+
 /** Path prefix of the image proxy route (`src/app/api/asset/[owner]/[repo]/[...path]`). */
 export const ASSET_ROUTE_PREFIX = "/api/asset";
 

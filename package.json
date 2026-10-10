@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "db:up": "docker compose --env-file .env.example up -d --wait db",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
