@@ -52,3 +52,11 @@ The system SHALL validate the config file and required environment variables (da
 #### Scenario: Invalid config
 - **WHEN** the config file contains a field of the wrong type or an unknown field
 - **THEN** startup fails with an error that identifies the field and file
+
+#### Scenario: Conflicting narrowing
+- **WHEN** the config declares both a repository list and an exclusion list
+- **THEN** startup fails with an error that identifies the `exclude` field and says only one of `repos` or `exclude` may be set
+
+#### Scenario: Empty list
+- **WHEN** the config declares `repos` or `exclude` as an empty list, or leaves the key with no value
+- **THEN** startup fails with an error that identifies the field, so an empty list is never read as "show nothing" or "no narrowing"
