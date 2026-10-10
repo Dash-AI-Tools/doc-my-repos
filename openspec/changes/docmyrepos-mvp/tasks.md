@@ -26,7 +26,7 @@
 - [x] 4.2 Implement title/description/heading extraction with the fallback order (frontmatter → first H1 → filename), and verify unit tests for each fallback
 - [x] 4.3 Implement CODEOWNERS parser (comments, blank lines, multiple owners, teams, emails, escaped patterns) and verify unit tests including ordering
 - [x] 4.4 Implement CODEOWNERS location precedence (`.github/` → root → `docs/`) and verify unit tests
-- [ ] 4.5 Implement docs-folder discovery (case-insensitive candidates, per-repo override) and verify unit tests including the no-docs case
+- [x] 4.5 Implement docs-folder discovery (case-insensitive candidates, per-repo override) and verify unit tests including the no-docs case
 - [ ] 4.6 Implement OKF detection (`type` present in any doc or `okf_version` in docs root `index.md`) and reserved-file handling for `index.md`/`log.md`, and verify unit tests
 
 ## 5. GitHub sync engine (github-sync)
