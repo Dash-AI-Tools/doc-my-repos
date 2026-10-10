@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { MermaidDiagram, type MermaidTheme } from "./mermaid-diagram";
+import { useMermaidTheme } from "./use-mermaid-theme";
 
 /**
  * Turns every `pre.dmr-mermaid > code.language-mermaid` in `children` (the server-rendered,
@@ -14,6 +15,10 @@ import { MermaidDiagram, type MermaidTheme } from "./mermaid-diagram";
  *
  * The scan is idempotent: hosts are reused, and a document without Mermaid blocks renders no
  * diagram, so `mermaid` is never imported for it (the import lives in `MermaidDiagram`).
+ *
+ * The theme comes from `next-themes` (`useMermaidTheme`) unless the `theme` prop is set; a change
+ * re-renders every diagram. Contract for the enlarge view (task 7.8): each diagram lives in
+ * `div.dmr-mermaid-host > div.dmr-mermaid-diagram[role="img"]`, whose `innerHTML` is the SVG.
  */
 
 const HOST_CLASS = "dmr-mermaid-host";
@@ -26,12 +31,14 @@ interface Target {
 
 export function MermaidEnhancer({
   children,
-  theme,
+  theme: themeProp,
 }: {
   readonly children: ReactNode;
-  /** Placeholder for task 7.7: the active theme, once the layout provides it. */
+  /** Overrides the theme from `next-themes` (tests, previews). */
   readonly theme?: MermaidTheme;
 }) {
+  const appTheme = useMermaidTheme();
+  const theme = themeProp ?? appTheme;
   const root = useRef<HTMLDivElement>(null);
   const [targets, setTargets] = useState<readonly Target[]>([]);
 
