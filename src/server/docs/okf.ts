@@ -104,7 +104,7 @@ export function detectOkf(docs: Iterable<OkfDoc>, docsFolder: string | null): Ok
     }
   }
   // Scan every doc so the root index's version is reported even when a typed doc decides first.
-  const okfVersion = version === undefined ? undefined : version;
+  const okfVersion = version;
   if (typed)
     return { isOkf: true, reason: "type", ...(okfVersion !== undefined && { okfVersion }) };
   if (version !== undefined) return { isOkf: true, reason: "okf_version", okfVersion: version };
