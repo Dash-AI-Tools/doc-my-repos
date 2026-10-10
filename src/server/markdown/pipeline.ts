@@ -19,6 +19,7 @@ import {
   MAX_SLUG_CHARS,
 } from "../docs/extract";
 import { parseFrontmatter, stripNul, toWellFormed } from "../docs/frontmatter";
+import { rehypeRewriteImages } from "./images";
 import { type LinkContext, rehypeRewriteLinks } from "./links";
 import { parseBody } from "./parse";
 import { HEADING_ANCHOR_CLASS, rehypeSafeHtml } from "./sanitize";
@@ -40,7 +41,8 @@ export type { LinkContext } from "./links";
  *   4. afterParse    SLOT (remark, mdast)
  *   5. toHast        remark-rehype with raw HTML kept as `raw` nodes, then heading anchors,
  *                    then rehype-raw parses that HTML (still untrusted)
- *   6. linkRewrite   SLOT (rehype, tasks 7.4 and 7.5)
+ *   6. linkRewrite   link rewriting (7.4) then image rewriting (7.5) when `links` is given,
+ *                    then the SLOT (rehype)
  *   7. highlight     SLOT (rehype, task 7.3)
  *   8. mermaid       SLOT (rehype, task 7.6)
  *   9. sanitize      `rehypeSafeHtml` (sanitize.ts): rehype-sanitize with the fixed allow-list,
@@ -60,7 +62,10 @@ export const MAX_RENDER_CHARS = 256 * 1024;
 export interface RenderSlots {
   /** Remark plugins on the mdast tree, after heading slugs are fixed. */
   readonly afterParse?: PluggableList;
-  /** Rehype plugins; link and image rewriting (7.4). Runs before the sanitizer. */
+  /**
+   * Rehype plugins; run after the built-in link (7.4) and image (7.5) rewriting that `links`
+   * enables. Runs before the sanitizer.
+   */
   readonly linkRewrite?: PluggableList;
   /** Rehype plugins; code highlighting (7.3). Runs before the sanitizer. */
   readonly highlight?: PluggableList;
@@ -71,8 +76,9 @@ export interface RenderSlots {
 export interface ProcessorOptions {
   readonly slots?: RenderSlots;
   /**
-   * Where the document lives, for link rewriting (links.ts). Without it links are left as
-   * written and the sanitizer alone decides what survives.
+   * Where the document lives, for link rewriting (links.ts) and image rewriting to the asset
+   * proxy (images.ts), both run at the start of the `linkRewrite` phase. Without it links and
+   * images are left as written and the sanitizer alone decides what survives.
    */
   readonly links?: LinkContext;
 }
@@ -221,7 +227,14 @@ export function createProcessor(options: ProcessorOptions = {}) {
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeHeadingAnchors)
     .use(rehypeRawWhenNeeded)
-    .use(options.links ? [[rehypeRewriteLinks, options.links]] : [])
+    .use(
+      options.links
+        ? [
+            [rehypeRewriteLinks, options.links],
+            [rehypeRewriteImages, options.links],
+          ]
+        : [],
+    )
     .use(slots.linkRewrite ?? [])
     .use(slots.highlight ?? [])
     .use(slots.mermaid ?? [])

@@ -170,6 +170,7 @@ const GITHUB_MESSAGES: Record<GitHubErrorKind, string> = {
   client_error: "GitHub rejected a request",
   invalid_response: "unexpected response from GitHub",
   invalid_input: "invalid repository name, ref or path",
+  too_large: "a file was larger than the allowed size",
   installation_unavailable: "GitHub App installation unavailable",
   app_credentials: "GitHub App credentials rejected (check the App id and private key)",
   invalid_private_key: "GitHub App private key is not a valid PEM RSA private key",

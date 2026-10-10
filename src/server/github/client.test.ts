@@ -236,6 +236,51 @@ describe("errors and retries", () => {
     expect((await catchError(s.client.getFile("o", "r", "a.md"))).kind).toBe("invalid_response");
   });
 
+  describe("getFile maxBytes", () => {
+    it("returns a file at the limit", async () => {
+      const s = setup([new Response("x".repeat(10), { status: 200 })]);
+      const res = await s.client.getFile("o", "r", "a.png", { maxBytes: 10 });
+      expect(res.notModified).toBe(false);
+      if (!res.notModified) expect(res.data.length).toBe(10);
+    });
+
+    it("throws too_large by content-length without reading the body", async () => {
+      let pulled = 0;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulled++;
+          controller.enqueue(new Uint8Array(1024));
+        },
+      });
+      const s = setup([
+        () => new Response(body, { status: 200, headers: { "content-length": "999999" } }),
+      ]);
+      const err = await catchError(s.client.getFile("o", "r", "a.png", { maxBytes: 100 }));
+      expect(err.kind).toBe("too_large");
+      expect(pulled).toBeLessThanOrEqual(1);
+    });
+
+    it("stops reading a stream without content-length once over the limit", async () => {
+      let pulled = 0;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulled++;
+          controller.enqueue(new Uint8Array(64));
+        },
+      });
+      const s = setup([() => new Response(body, { status: 200 })]);
+      const err = await catchError(s.client.getFile("o", "r", "a.png", { maxBytes: 100 }));
+      expect(err.kind).toBe("too_large");
+      expect(pulled).toBeLessThan(10);
+    });
+
+    it("never exceeds the client's own maxBodyBytes", async () => {
+      const s = setup([new Response("x".repeat(100), { status: 200 })], { maxBodyBytes: 10 });
+      const err = await catchError(s.client.getFile("o", "r", "a.png", { maxBytes: 1000 }));
+      expect(err.kind).toBe("too_large");
+    });
+  });
+
   it("maps a failing token provider to unauthorized without its message", async () => {
     const client = createGitHubClient({
       getToken: async () => {

@@ -525,9 +525,10 @@ describe("renderMarkdown with links", () => {
     );
   });
 
-  it("leaves images untouched (task 7.5)", async () => {
+  it("leaves images to the image rewriter (task 7.5): asset proxy, not a GitHub link", async () => {
     const html = await render("![alt](./img/arch.png)\n");
-    expect(html).toContain('src="./img/arch.png"');
+    expect(html).toContain('src="/api/asset/acme/portal/docs/guides/img/arch.png"');
+    expect(html).not.toContain("github.com");
   });
 
   it("rewrites reference-style links and autolinks", async () => {

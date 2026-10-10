@@ -70,6 +70,21 @@ export function docUrl(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${DOCS_ROUTE_SEGMENT}/${tail}`;
 }
 
+/** Path prefix of the image proxy route (`src/app/api/asset/[owner]/[repo]/[...path]`). */
+export const ASSET_ROUTE_PREFIX = "/api/asset";
+
+/**
+ * Root-relative URL of the image proxy for a repo-relative file path (task 7.5). Each segment is
+ * percent-encoded with `encodeURIComponent`; the route decodes each exactly once. No query: the
+ * proxy always serves the repository's default branch. Returns `null` when `path` has an empty,
+ * `.` or `..` segment (such a URL would be normalized by the browser before it is sent).
+ */
+export function assetUrl(owner: string, repo: string, path: string): string | null {
+  const segments = path.split("/");
+  if (!plainSegments(segments)) return null;
+  return `${ASSET_ROUTE_PREFIX}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${segments.map(encodeURIComponent).join("/")}`;
+}
+
 /**
  * Inverse of `docUrl` for a page: `segments` are the already-decoded catch-all route
  * segments after `/docs/`. Returns the repo-relative stored paths to try, in order, or an empty

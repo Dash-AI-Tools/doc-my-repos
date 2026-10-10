@@ -32,6 +32,12 @@ export interface Runtime {
   readonly loaded: LoadedConfig;
   readonly db: DbHandle;
   readonly github: GitHubClient;
+  /**
+   * GitHub client for the image proxy (`/api/asset`), the one request-time GitHub reader. Same
+   * installation token provider as `github`, tuned to fail fast: two attempts, and a rate limit
+   * that asks for more than a second fails at once (the proxy answers 503 with `Retry-After`).
+   */
+  readonly assets: GitHubClient;
   readonly sync: SyncContext;
   /** Closes the database handle. */
   close(): Promise<void>;
@@ -49,6 +55,13 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
     fetch: options.fetch,
   });
   const github = createGitHubClient({ getToken: tokens.getToken, fetch: options.fetch });
+  const assets = createGitHubClient({
+    getToken: tokens.getToken,
+    fetch: options.fetch,
+    maxAttempts: 2,
+    maxWaitMs: 1000,
+    baseBackoffMs: 200,
+  });
   const sync = createSyncContext({
     db: db.db,
     pool: db.pool,
@@ -56,7 +69,9 @@ export function createRuntime(options: RuntimeOptions = {}): Runtime {
     config: loaded.config,
     tuning: options.tuning,
   });
-  return Object.freeze(redactWhenLogged({ loaded, db, github, sync, close: () => db.close() }));
+  return Object.freeze(
+    redactWhenLogged({ loaded, db, github, assets, sync, close: () => db.close() }),
+  );
 }
 
 const CACHE_KEY = Symbol.for("docmyrepos.runtime");

@@ -38,6 +38,8 @@ export type GitHubErrorKind =
   | "invalid_response"
   /** An owner, repo, ref, sha or path that failed validation. Nothing was sent. */
   | "invalid_input"
+  /** A file larger than the caller's `maxBytes` (`getFile`). Not retried. */
+  | "too_large"
   /** The App installation is gone (uninstalled) or suspended. Stored content must be kept. */
   | "installation_unavailable"
   /** GitHub rejected the App's own credentials (App id or private key) when minting a token. */
@@ -56,6 +58,7 @@ const MESSAGES: Record<GitHubErrorKind, string> = {
   client_error: "github: request rejected",
   invalid_response: "github: unexpected response",
   invalid_input: "github: invalid request input",
+  too_large: "github: file larger than the allowed size",
   installation_unavailable:
     "github: GitHub App installation unavailable (uninstalled or suspended)",
   app_credentials: "github: GitHub App credentials rejected (check the App id and private key)",
@@ -177,12 +180,16 @@ export interface GitHubClient {
     blobSha: string,
     options?: CallOptions,
   ): Promise<{ bytes: Uint8Array }>;
-  /** Raw bytes of one file, such as CODEOWNERS. */
+  /**
+   * Raw bytes of one file, such as CODEOWNERS or an image for the asset proxy. With `maxBytes`, a
+   * larger file (by `content-length` or by the bytes actually read, which stop at the limit)
+   * throws `too_large` instead of `invalid_response`.
+   */
   getFile(
     owner: string,
     repo: string,
     path: string,
-    options?: ConditionalOptions & { ref?: string },
+    options?: ConditionalOptions & { ref?: string; maxBytes?: number },
   ): Promise<Conditional<Uint8Array>>;
   getBranchHead(
     owner: string,
@@ -209,13 +216,23 @@ function invalid(): never {
   throw new GitHubError("invalid_input");
 }
 
+/** A GitHub account (user or organization) login, as this client accepts it. */
+export function isValidOwner(owner: unknown): owner is string {
+  return typeof owner === "string" && OWNER_RE.test(owner);
+}
+
+/** A GitHub repository name, as this client accepts it. */
+export function isValidRepoName(repo: unknown): repo is string {
+  return typeof repo === "string" && REPO_RE.test(repo) && repo !== "." && repo !== "..";
+}
+
 function checkOwner(owner: string): string {
-  if (typeof owner !== "string" || !OWNER_RE.test(owner)) invalid();
+  if (!isValidOwner(owner)) invalid();
   return owner;
 }
 
 function checkRepo(repo: string): string {
-  if (typeof repo !== "string" || !REPO_RE.test(repo) || repo === "." || repo === "..") invalid();
+  if (!isValidRepoName(repo)) invalid();
   return repo;
 }
 
@@ -486,6 +503,44 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
     }
   }
 
+  /**
+   * Reads at most `limit` bytes, cancelling the stream as soon as it is exceeded, so a large body
+   * without `content-length` is never buffered whole. Over the limit throws `too_large`.
+   */
+  async function readBytesWithin(res: Response, limit: number): Promise<Uint8Array> {
+    const declared = Number(res.headers.get("content-length"));
+    if (Number.isFinite(declared) && declared > limit) {
+      void res.body?.cancel().catch(() => undefined);
+      throw new GitHubError("too_large", res.status);
+    }
+    if (res.body === null) return new Uint8Array(0);
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > limit) {
+          void reader.cancel().catch(() => undefined);
+          throw new GitHubError("too_large", res.status);
+        }
+        chunks.push(value);
+      }
+    } catch (error) {
+      if (error instanceof GitHubError) throw error;
+      throw new GitHubError("network");
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  }
+
   async function readBytes(res: Response): Promise<Uint8Array> {
     const declared = Number(res.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > maxBodyBytes) {
@@ -607,7 +662,11 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
         signal: opts.signal,
       });
       if (res.status === 304) return { notModified: true };
-      const data = await readBytes(res);
+      const limit = opts.maxBytes;
+      const data =
+        limit === undefined
+          ? await readBytes(res)
+          : await readBytesWithin(res, Math.max(0, Math.min(limit, maxBodyBytes)));
       return { notModified: false, data, etag: res.headers.get("etag") };
     },
 

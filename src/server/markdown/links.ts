@@ -6,7 +6,8 @@ import { anchorId, BROKEN_LINK_CLASS, SLUG_ID, urlScheme } from "./sanitize";
 /**
  * Link rewriting (task 7.4): a rehype plugin in the `linkRewrite` slot, running before the
  * sanitizer, plus the pure resolver behind it. No database, no network: the caller passes the
- * set of synced document paths. Images are NOT handled here (task 7.5).
+ * set of synced document paths. Images are handled by `images.ts` (task 7.5), which reuses the
+ * path helpers exported here.
  *
  * Rules, in order, for the `href` of every `<a>` (Markdown links, reference links, autolinks
  * and raw HTML links all arrive as `a` elements; code is text, so it is never touched):
@@ -93,20 +94,23 @@ export type LinkResolution =
   | { readonly kind: "broken"; readonly reason: BrokenReason };
 
 const UNTOUCHED: LinkResolution = { kind: "untouched" };
-const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+/** A lone UTF-16 surrogate: not a valid character in a URL. */
+export const LONE_SURROGATE =
+  /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+/** C0 and C1 controls, DEL, and the line and paragraph separators. */
+export const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 
 function broken(reason: BrokenReason): LinkResolution {
   return { kind: "broken", reason };
 }
 
 /** `a/b/c.md` gives `a/b`; `c.md` gives the empty string. */
-function dirname(path: string): string {
+export function dirname(path: string): string {
   const i = path.lastIndexOf("/");
   return i === -1 ? "" : path.slice(0, i);
 }
 
-function splitPath(path: string): string[] {
+export function splitPath(path: string): string[] {
   return path === "" ? [] : path.split("/");
 }
 
@@ -114,7 +118,7 @@ function splitPath(path: string): string[] {
  * Applies decoded segments to `base`. `.` and empty segments are skipped; `..` pops but never
  * below `floor` base segments. Returns null when it would.
  */
-function normalize(
+export function normalize(
   base: readonly string[],
   segments: readonly string[],
   floor: number,
@@ -132,7 +136,11 @@ function normalize(
   return out;
 }
 
-function decodeSegment(segment: string): string | null {
+/**
+ * Percent-decodes one path segment, exactly once. Null for a malformed escape, or when the result
+ * holds `/`, `\` or a control character.
+ */
+export function decodeSegment(segment: string): string | null {
   let decoded: string;
   try {
     decoded = decodeURIComponent(segment);
