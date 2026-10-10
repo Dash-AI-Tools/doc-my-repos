@@ -40,6 +40,34 @@ export const describeDb: typeof describe = ((name: string, fn?: () => void) =>
     ? describe.skip(`${name} [SKIPPED: SKIP_DB_TESTS=1]`, fn)
     : describe(name, fn)) as typeof describe;
 
+/** How long `drop()` waits for the pool to drain before force-dropping the database. */
+const DROP_CLOSE_WAIT_MS = 2_000;
+
+/** Captured at import, so a test that fakes timers cannot stall the bounded close. */
+const realSetTimeout = globalThis.setTimeout;
+const realClearTimeout = globalThis.clearTimeout;
+
+/**
+ * Closes `handle`, waiting at most `ms`. True when the pool drained in time. A pool with a client
+ * that is checked out and never released never finishes `end()`; the caller then moves on (for a
+ * test database, `DROP DATABASE ... WITH (FORCE)` ends the remaining sessions). Never throws.
+ */
+export async function closeWithin(handle: DbHandle, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<false>((resolve) => {
+    timer = realSetTimeout(() => resolve(false), ms);
+  });
+  const closed = handle.close().then(
+    () => true,
+    () => true,
+  );
+  try {
+    return await Promise.race([closed, timeout]);
+  } finally {
+    realClearTimeout(timer);
+  }
+}
+
 /** Quotes a Postgres identifier. */
 function quoteIdent(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
@@ -128,10 +156,15 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   }
 
   const handle = createDb(url, { max: 4, connectTimeoutMs: CONNECT_TIMEOUT_MS });
+  // `drop()` may terminate a client a failed test still has checked out; without a listener its
+  // "connection terminated" error would be an uncaught exception.
+  handle.pool.on("connect", (client) => client.on("error", () => undefined));
   let dropped: Promise<void> | undefined;
   const drop = () =>
     (dropped ??= (async () => {
-      await handle.close().catch(() => undefined);
+      // A client a failed test never released keeps `pool.end()` pending forever; FORCE then
+      // terminates its session, so a hanging test cannot leak the database.
+      await closeWithin(handle, DROP_CLOSE_WAIT_MS);
       await withAdminClient(adminUrl, (c) =>
         c.query(`DROP DATABASE IF EXISTS ${quoteIdent(name)} WITH (FORCE)`),
       );
