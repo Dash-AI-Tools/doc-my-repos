@@ -33,7 +33,7 @@ const PROPS: Readonly<Record<string, readonly string[]>> = {
     "dataFootnoteBackref",
   ],
   img: ["src", "alt", "width", "height", "loading", "referrerPolicy"],
-  input: ["type", "checked", "disabled"],
+  input: ["type", "checked", "disabled", "ariaLabel"],
   h1: ["id"],
   h2: ["id", "className"],
   h3: ["id"],

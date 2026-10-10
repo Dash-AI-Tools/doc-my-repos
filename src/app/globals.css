@@ -158,6 +158,10 @@
   a:hover {
     color: var(--link-hover);
   }
+  /* Links inside running text must not rely on color alone (WCAG 1.4.1, axe link-in-text-block). */
+  :where(p, li, td, dd, blockquote) a {
+    text-decoration: underline;
+  }
   :where(input, textarea, select)::placeholder {
     color: var(--muted-foreground);
   }
@@ -413,7 +417,4 @@ pre:has(> .dmr-copy-host) {
 .markdown-body sup > a {
   text-decoration: none;
   padding: 0 0.1em;
-}
-.markdown-body a[data-footnote-backref] {
-  text-decoration: none;
 }

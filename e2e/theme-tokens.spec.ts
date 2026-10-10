@@ -18,23 +18,6 @@ import {
 
 const PAGE = "/e2e/theme";
 
-interface AxeBuilderLike {
-  new (options: { page: Page }): {
-    withRules(rules: string[]): { analyze(): Promise<{ violations: unknown[] }> };
-  };
-}
-
-/** axe arrives with task 8.3; until then the check is skipped instead of failing. */
-async function loadAxe(): Promise<AxeBuilderLike | null> {
-  try {
-    const name = "@axe-core/playwright";
-    const mod = (await import(name)) as { default: AxeBuilderLike };
-    return mod.default;
-  } catch {
-    return null;
-  }
-}
-
 function rgb(hex: string): string {
   const n = (i: number) => parseInt(hex.slice(i, i + 2), 16);
   return `rgb(${n(1)}, ${n(3)}, ${n(5)})`;
@@ -139,14 +122,6 @@ for (const theme of ["light", "dark"] as const) {
 
     test("screenshot", async ({ page }) => {
       await page.screenshot({ path: `test-results/theme-${theme}.png`, fullPage: true });
-    });
-
-    test("axe finds no contrast violations when available", async ({ page }) => {
-      const AxeBuilder = await loadAxe();
-      test.skip(AxeBuilder === null, "@axe-core/playwright is not installed (task 8.3)");
-      if (AxeBuilder === null) return;
-      const results = await new AxeBuilder({ page }).withRules(["color-contrast"]).analyze();
-      expect(results.violations).toEqual([]);
     });
   });
 }

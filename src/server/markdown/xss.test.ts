@@ -419,7 +419,7 @@ describe("XSS corpus specifics", () => {
 
   it("makes any input a disabled checkbox with no name or value", async () => {
     const out = await check('<input type="text" name="x" value="y" checked onclick="alert(1)">');
-    expect(out).toBe('<input checked type="checkbox" disabled>');
+    expect(out).toBe('<input checked type="checkbox" disabled aria-label="Task item">');
   });
 
   it("keeps a link title with quotes inside the attribute", async () => {

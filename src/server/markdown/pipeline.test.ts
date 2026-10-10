@@ -27,9 +27,11 @@ describe("GFM", () => {
     const out = await html("- [x] done\n- [ ] todo\n- plain\n");
     expect(out).toContain('<ul class="contains-task-list">');
     expect(out).toContain(
-      '<li class="task-list-item"><input type="checkbox" checked disabled> done</li>',
+      '<li class="task-list-item"><input type="checkbox" checked disabled aria-label="Task item"> done</li>',
     );
-    expect(out).toContain('<li class="task-list-item"><input type="checkbox" disabled> todo</li>');
+    expect(out).toContain(
+      '<li class="task-list-item"><input type="checkbox" disabled aria-label="Task item"> todo</li>',
+    );
     expect(out).toContain("<li>plain</li>");
     expect(out.match(/<input/g)).toHaveLength(2);
     expect(out.match(/disabled/g)).toHaveLength(2);

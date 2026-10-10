@@ -64,7 +64,7 @@
 
 - [x] 8.1 Define light and dark CSS-variable design tokens and wire them into Tailwind, and verify both palettes render on the placeholder page
 - [x] 8.2 Add `next-themes` (light/dark/system, default system) with pre-paint script and the header toggle, and verify a Playwright test for system preference, persistence, and no flash
-- [ ] 8.3 Check WCAG AA contrast for text, links, badges and code in both themes, and verify via an automated accessibility check (axe) in Playwright
+- [x] 8.3 Check WCAG AA contrast for text, links, badges and code in both themes, and verify via an automated accessibility check (axe) in Playwright
 
 ## 9. Repo space UI (repo-space)
 

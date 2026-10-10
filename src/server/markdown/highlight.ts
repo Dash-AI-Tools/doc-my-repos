@@ -8,6 +8,8 @@ import {
 } from "shiki";
 import type { VFile } from "vfile";
 
+import { DARK_TOKENS, LIGHT_TOKENS, contrastRatio } from "@/lib/theme-tokens";
+
 import { LANGUAGE_CLASS } from "./sanitize";
 
 /**
@@ -27,6 +29,52 @@ import { LANGUAGE_CLASS } from "./sanitize";
  * and the `language-*` class when the fence had one, so the UI can label it). That covers no
  * language, `text`/`plaintext`/`txt`, an unknown language, and Mermaid (7.6 handles it).
  */
+
+/**
+ * Contrast clamp (task 8.3). The block background comes from the `code-background` token, not
+ * from the Shiki theme, and some GitHub token colors (comments, `#6a737d`) fall under WCAG AA
+ * (4.5:1) on it. Every `--shiki-light` / `--shiki-dark` color is therefore checked against the
+ * matching token background and, when too low, mixed toward black (light) or white (dark) in the
+ * smallest step that reaches `MIN_CODE_CONTRAST`, which keeps the hue. A value that is not
+ * `#rrggbb` is replaced by the `code-foreground` token. The output is still plain hex, so the
+ * sanitizer contract is unchanged.
+ */
+export const MIN_CODE_CONTRAST = 4.5;
+const CODE_BACKGROUND = {
+  light: { background: LIGHT_TOKENS["code-background"], fallback: LIGHT_TOKENS["code-foreground"] },
+  dark: { background: DARK_TOKENS["code-background"], fallback: DARK_TOKENS["code-foreground"] },
+} as const;
+
+function hexChannels(hex: string): [number, number, number] {
+  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number];
+}
+
+function mixHex(from: string, to: [number, number, number], t: number): string {
+  const channels = hexChannels(from).map((v, i) => Math.round(v + ((to[i] ?? 0) - v) * t));
+  return `#${channels.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** `color` if it meets `MIN_CODE_CONTRAST` on the theme's code background, else the nearest that does. */
+export function ensureCodeContrast(color: string, theme: "light" | "dark"): string {
+  const { background, fallback } = CODE_BACKGROUND[theme];
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return fallback;
+  if (contrastRatio(color, background) >= MIN_CODE_CONTRAST) return color.toLowerCase();
+  const target: [number, number, number] = theme === "light" ? [0, 0, 0] : [255, 255, 255];
+  for (let step = 1; step <= 100; step++) {
+    const candidate = mixHex(color, target, step / 100);
+    if (contrastRatio(candidate, background) >= MIN_CODE_CONTRAST) return candidate;
+  }
+  return fallback;
+}
+
+/** Applies the clamp to the `--shiki-light` and `--shiki-dark` values of a style string. */
+function clampStyle(style: string): string {
+  return style.replace(
+    /(--shiki-(light|dark)\s*:\s*)([^;]+)/g,
+    (_m, head: string, theme: "light" | "dark", value: string) =>
+      `${head}${ensureCodeContrast(value.trim(), theme)}`,
+  );
+}
 
 export const LIGHT_THEME = "github-light";
 export const DARK_THEME = "github-dark";
@@ -212,7 +260,16 @@ function addWarning(file: VFile, message: string): void {
 function normalizeLine(node: ElementContent): ElementContent {
   if (node.type !== "element") return node;
   const { class: cls, ...rest } = node.properties;
-  return cls === "line" ? { ...node, properties: { ...rest, className: ["line"] } } : node;
+  const children = node.children.map(normalizeLine);
+  const properties =
+    typeof rest.style === "string" ? { ...rest, style: clampStyle(rest.style) } : rest;
+  if (cls === "line")
+    return { ...node, properties: { ...properties, className: ["line"] }, children };
+  return {
+    ...node,
+    properties: cls === undefined ? properties : { ...properties, class: cls },
+    children,
+  };
 }
 
 /** Shiki's `pre` rebuilt with only what the contract allows. */

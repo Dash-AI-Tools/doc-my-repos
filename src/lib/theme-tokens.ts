@@ -6,6 +6,16 @@
  *
  * Palette: neutral zinc greys, blue for primary/links/focus, with tinted badge pairs. Dark is a
  * near-black surface with lighter accents rather than an inversion, so contrast is tuned per theme.
+ *
+ * Worst-case contrast ratios as of task 8.3 (see CONTRAST_PAIRS; the unit test fails on any pair
+ * under its minimum):
+ *   text pairs (min 4.5), light: link/muted 6.10, link/code-background 6.10, link/card 6.42,
+ *     destructive-foreground/destructive 6.47, primary-foreground/primary 6.70
+ *   text pairs (min 4.5), dark: selection-foreground/selection 6.70, muted-foreground/muted 6.91,
+ *     destructive-foreground/destructive 7.19, muted-foreground/card 7.36
+ *   UI pairs (min 3), light: input/card 4.63, ring/muted 4.70; dark: input/card 3.90, input/background 4.12
+ *   Shiki comment color #6a737d on code-background: 4.38 light, 3.68 dark, so highlight.ts mixes
+ *     any token color under 4.5 toward black/white until it passes (ensureCodeContrast).
  */
 
 export const TOKEN_NAMES = [

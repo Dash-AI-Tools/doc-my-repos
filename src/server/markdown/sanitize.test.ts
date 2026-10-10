@@ -215,8 +215,8 @@ describe("legitimate content survives", () => {
   it("task lists, as disabled checkboxes", async () => {
     const out = await html("- [x] done\n- [ ] todo\n");
     expect(out).toContain('<ul class="contains-task-list">');
-    expect(out).toContain('<input type="checkbox" checked disabled> done');
-    expect(out).toContain('<input type="checkbox" disabled> todo');
+    expect(out).toContain('<input type="checkbox" checked disabled aria-label="Task item"> done');
+    expect(out).toContain('<input type="checkbox" disabled aria-label="Task item"> todo');
   });
 
   it("footnotes with back-links", async () => {

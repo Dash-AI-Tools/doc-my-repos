@@ -59,7 +59,8 @@ import { MAX_SLUG_CHARS } from "../docs/extract";
  *    absolute sources, so a third-party image host does not learn the page URL (which names
  *    private repositories).
  *  - `input`: `type="checkbox"`, `checked`, `disabled` only, and `type` and `disabled` are
- *    forced. Any other `<input>` becomes an inert disabled checkbox.
+ *    forced, plus a fixed `aria-label` (task 8.3). Any other `<input>` becomes an inert disabled
+ *    checkbox.
  *  - Task lists, footnotes, tables: `contains-task-list`, `task-list-item`, `footnotes`,
  *    `sr-only` (footnote heading), `data-footnotes`, `colspan`, `rowspan`, `scope`, `start`.
  *  - `blockquote`, `q`, `del`, `ins`: `cite` (http, https or relative); `del`, `ins` also
@@ -113,6 +114,9 @@ export const MERMAID_CLASS = "dmr-mermaid";
 export const RENAMED_ID_PREFIX = "user-content-";
 
 /** `code` class from a fence's info string; one that does not match is dropped. */
+/** Accessible name forced on task-list checkboxes. */
+export const TASK_LABEL = "Task item";
+
 export const LANGUAGE_CLASS = /^language-[A-Za-z0-9_+#.-]{1,32}$/;
 
 /** A github-slugger slug: what a heading id may look like. */
@@ -281,7 +285,9 @@ export const SANITIZE_SCHEMA: SanitizeSchema = {
     src: ["http", "https"],
     cite: ["http", "https"],
   },
-  required: { input: { type: "checkbox", disabled: true } },
+  // `ariaLabel` gives the disabled task-list checkbox an accessible name (axe rule `label`); the
+  // list item text next to it is not associated with the input, and the checked state is native.
+  required: { input: { type: "checkbox", disabled: true, ariaLabel: TASK_LABEL } },
   clobber: [],
   clobberPrefix: "",
 };
