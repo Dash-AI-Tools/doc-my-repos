@@ -1,0 +1,458 @@
+import { createHash } from "node:crypto";
+import { DEFAULT_DOCS_PATHS } from "../config/schema";
+import { pickCodeownersPath } from "../docs/codeowners-location";
+import { findDocsFolder, normalizeDocsPath } from "../docs/docs-folder";
+import { GitHubError, type CallOptions, type GitHubClient, type TreeEntry } from "../github/client";
+
+/**
+ * Tree planning: the first step of a repository sync (design decision on the sync engine).
+ *
+ * `planTree` reads the default-branch head and either short-circuits (nothing to do) or fetches the
+ * recursive tree once and decides which files the sync needs: the Markdown docs under the docs
+ * folder, the root README, and the CODEOWNERS file. It fetches no file contents; blob fetching and
+ * diffing by blob SHA (task 5.5) and persistence (task 5.6) come after it.
+ *
+ * Short-circuit rule: the tree SHA alone is not enough, because a config change (docs folder
+ * override, extensions, size cap, ignored folders) changes the selection without changing the
+ * tree. So the plan is `unchanged` only when the tree SHA AND the selection fingerprint both equal
+ * the stored ones. The caller persists `selectionFingerprint` next to `tree_sha` after a successful
+ * sync, and must leave both untouched after a failed one.
+ *
+ * Failures:
+ * - GitHub errors (including `not_found` on the branch head) are thrown as `GitHubError`; they are
+ *   never turned into an empty plan, so the caller cannot mistake them for "no docs".
+ * - A truncated recursive tree is `tree_truncated`, and more docs than `maxFiles` is
+ *   `too_many_files`. Both are typed outcomes the caller records as a repo error while keeping the
+ *   stored content. The design calls for one recursive tree call per repo, so there is no
+ *   per-directory fallback; a partial tree is never planned from, because it would delete the docs
+ *   the truncated listing left out.
+ */
+
+/** Bump when the selection rules in this file change, so every repo is re-planned once. */
+export const SELECTION_RULES_VERSION = 1;
+
+/** Doc file extensions (spec: `.md`, `.mdx`), matched case-insensitively. */
+export const DEFAULT_DOC_EXTENSIONS = [".md", ".mdx"] as const;
+/** Per-file size cap (design: 256 KB, well below the 1 MB tsvector limit). */
+export const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
+/** Folder names skipped anywhere below the docs folder, matched case-insensitively. */
+export const DEFAULT_IGNORED_FOLDERS = ["node_modules"] as const;
+/** Most doc files planned for one repository. */
+export const DEFAULT_MAX_FILES = 2000;
+/** Longest accepted path; matches the GitHub client's own limit. */
+const MAX_PATH_LENGTH = 1024;
+
+const SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+const CONTROL_RE = /[\u0000-\u001f\u007f]/;
+const CONTROL_RE_GLOBAL = /[\u0000-\u001f\u007f]/g;
+/** Regular files only: symlinks (120000) and submodules (160000) are never read. */
+const REGULAR_FILE_MODES = new Set(["100644", "100755"]);
+/** Root README names in order of preference; the spec stores the root README as Markdown. */
+const README_EXTENSIONS = [".md", ".markdown", ".mdx", ""] as const;
+
+export interface SelectionOptions {
+  /** Per-repo `docsPath` override. Authoritative when set (no fallback to the defaults). */
+  readonly docsPath?: string | null;
+  /** `defaults.docsPaths` from the config. */
+  readonly docsPaths?: readonly string[];
+  readonly extensions?: readonly string[];
+  readonly maxFileBytes?: number;
+  /** Folder names to skip below the docs folder. When set it replaces the default list. */
+  readonly ignoredFolders?: readonly string[];
+  readonly maxFiles?: number;
+}
+
+/** Options with defaults applied and values normalized, so equal settings fingerprint equally. */
+interface ResolvedSelection {
+  /** Normalized override; null when there is none. */
+  docsPath: string | null;
+  /** An override was set but is unusable: nothing is selected, with no fallback. */
+  docsPathInvalid: boolean;
+  docsPaths: string[];
+  extensions: string[];
+  maxFileBytes: number;
+  ignoredFolders: string[];
+  maxFiles: number;
+}
+
+export interface PlannedFile {
+  path: string;
+  blobSha: string;
+  size: number;
+  mode: string;
+}
+
+export type SkipReason =
+  /** Larger than `maxFileBytes`. */
+  | "too_large"
+  /** The tree did not report a size, so the cap cannot be checked before fetching. */
+  | "size_unknown"
+  /** Below an ignored folder such as `node_modules`. */
+  | "ignored_folder"
+  /** A dot-prefixed file or folder below the docs folder. */
+  | "hidden"
+  /** A symlink or submodule with a doc-like name. */
+  | "not_regular_file"
+  /** Traversal, empty segments, backslashes, control characters, or an over-long path. */
+  | "invalid_path"
+  /** The entry's object id is not a SHA. */
+  | "invalid_entry";
+
+export interface SkippedFile {
+  /** Path as found, with control characters replaced so it is safe to store and display. */
+  path: string;
+  reason: SkipReason;
+}
+
+export interface RepoLevelFiles {
+  /** Root README, or null when there is none (or it was skipped). */
+  readme: PlannedFile | null;
+  /** CODEOWNERS in GitHub's precedence, or null. */
+  codeowners: PlannedFile | null;
+}
+
+export interface Selection {
+  docsFolder: string | null;
+  /** Sorted by path (code unit order), so plans are deterministic. */
+  files: PlannedFile[];
+  /** Sorted by path. Only files that would otherwise have been docs, README or CODEOWNERS. */
+  skipped: SkippedFile[];
+  repoLevelFiles: RepoLevelFiles;
+}
+
+/** Normalizes and validates options. Throws `TypeError` on a programming error (bad numbers). */
+function resolveSelection(options: SelectionOptions): ResolvedSelection {
+  const positiveInt = (value: number, name: string) => {
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new TypeError(`${name} must be a positive integer`);
+    }
+    return value;
+  };
+  const extensions = [...(options.extensions ?? DEFAULT_DOC_EXTENSIONS)].map((e) => {
+    const lower = e.trim().toLowerCase();
+    if (!/^\.[a-z0-9]+$/.test(lower)) throw new TypeError("extensions must look like '.md'");
+    return lower;
+  });
+  if (extensions.length === 0) throw new TypeError("extensions must not be empty");
+  const ignoredFolders = [...(options.ignoredFolders ?? DEFAULT_IGNORED_FOLDERS)].map((f) => {
+    const lower = f.trim().toLowerCase();
+    if (lower === "" || lower.includes("/")) {
+      throw new TypeError("ignoredFolders must be folder names");
+    }
+    return lower;
+  });
+  const docsPaths = (options.docsPaths ?? DEFAULT_DOCS_PATHS)
+    .map((p) => normalizeDocsPath(p))
+    .filter((p): p is string => p !== null);
+  const docsPath = options.docsPath == null ? null : normalizeDocsPath(options.docsPath);
+  return {
+    docsPath,
+    docsPathInvalid: options.docsPath != null && docsPath === null,
+    docsPaths,
+    extensions: [...new Set(extensions)].sort(),
+    maxFileBytes: positiveInt(options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES, "maxFileBytes"),
+    ignoredFolders: [...new Set(ignoredFolders)].sort(),
+    maxFiles: positiveInt(options.maxFiles ?? DEFAULT_MAX_FILES, "maxFiles"),
+  };
+}
+
+/**
+ * A stable hash of every input that affects which files are selected, plus the rules version.
+ * Default lists and explicit lists with the same content hash the same; `docsPaths` order matters
+ * (it is a preference order), extension and ignored-folder order does not.
+ */
+export function selectionFingerprint(options: SelectionOptions = {}): string {
+  const r = resolveSelection(options);
+  const canonical = JSON.stringify([
+    SELECTION_RULES_VERSION,
+    r.docsPath,
+    r.docsPathInvalid,
+    r.docsPaths,
+    r.extensions,
+    r.maxFileBytes,
+    r.ignoredFolders,
+    r.maxFiles,
+  ]);
+  return `v${SELECTION_RULES_VERSION}:${createHash("sha256").update(canonical).digest("hex")}`;
+}
+
+function displayPath(path: string): string {
+  return path.replace(CONTROL_RE_GLOBAL, "�");
+}
+
+/** True for a repo-relative path with no traversal, empty segments, backslashes or controls. */
+export function isSafeTreePath(path: unknown): path is string {
+  if (typeof path !== "string" || path.length === 0 || path.length > MAX_PATH_LENGTH) return false;
+  if (CONTROL_RE.test(path) || path.includes("\\")) return false;
+  return path.split("/").every((s) => s !== "" && s !== "." && s !== "..");
+}
+
+function extensionOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot <= 0 ? "" : name.slice(dot).toLowerCase();
+}
+
+function byPath<T extends { path: string }>(a: T, b: T): number {
+  return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+}
+
+/**
+ * Picks the root README: `README.md`, then `.markdown`, `.mdx`, then no extension, matched
+ * case-insensitively; exact `README` spelling first, else lexicographic.
+ */
+function pickReadme(candidates: TreeEntry[]): TreeEntry | null {
+  for (const ext of README_EXTENSIONS) {
+    const matches = candidates.filter((e) => e.path.toLowerCase() === `readme${ext}`);
+    if (matches.length === 0) continue;
+    const exact = matches.find((e) => e.path === `README${ext}`);
+    return exact ?? [...matches].sort(byPath)[0] ?? null;
+  }
+  return null;
+}
+
+/**
+ * Pure selection over a recursive tree listing. Never throws on odd entries: they are skipped,
+ * and reported when they would otherwise have been selected.
+ *
+ * A doc is a regular-file blob below the docs folder, with an allowed extension, a valid SHA, a
+ * safe path, a known size at or under the cap, and no ignored or dot-prefixed segment below the
+ * docs folder. The README and CODEOWNERS follow the same file, path and size rules.
+ */
+export function selectDocFiles(
+  entries: readonly TreeEntry[],
+  options: SelectionOptions = {},
+): Selection {
+  const r = resolveSelection(options);
+  const skipped: SkippedFile[] = [];
+  const skip = (path: string, reason: SkipReason) =>
+    skipped.push({ path: displayPath(path), reason });
+
+  const safe = entries.filter((e) => isSafeTreePath(e.path));
+  const docsFolder = r.docsPathInvalid
+    ? null
+    : findDocsFolder(
+        safe.filter(
+          (e) => e.type === "tree" || (e.type === "blob" && REGULAR_FILE_MODES.has(e.mode)),
+        ),
+        r.docsPath === null ? { defaults: r.docsPaths } : { docsPath: r.docsPath },
+      );
+
+  /** Shared checks for a candidate file; returns the planned file or records why not. */
+  const rejection = (entry: TreeEntry): SkipReason | null => {
+    if (!isSafeTreePath(entry.path)) return "invalid_path";
+    if (entry.type !== "blob" || !REGULAR_FILE_MODES.has(entry.mode)) return "not_regular_file";
+    if (typeof entry.sha !== "string" || !SHA_RE.test(entry.sha)) return "invalid_entry";
+    if (entry.size === null || !Number.isSafeInteger(entry.size) || entry.size < 0) {
+      return "size_unknown";
+    }
+    if (entry.size > r.maxFileBytes) return "too_large";
+    return null;
+  };
+  const accept = (entry: TreeEntry): PlannedFile | null => {
+    const reason = rejection(entry);
+    if (reason !== null) {
+      skip(entry.path, reason);
+      return null;
+    }
+    return { path: entry.path, blobSha: entry.sha, size: entry.size ?? 0, mode: entry.mode };
+  };
+
+  const files: PlannedFile[] = [];
+  if (docsFolder !== null) {
+    const prefix = `${docsFolder}/`;
+    for (const entry of entries) {
+      if (typeof entry.path !== "string" || entry.type === "tree") continue;
+      if (!entry.path.startsWith(prefix)) continue;
+      const rest = entry.path.slice(prefix.length).split("/");
+      const name = rest[rest.length - 1] ?? "";
+      if (!r.extensions.includes(extensionOf(name))) continue;
+      if (!isSafeTreePath(entry.path)) {
+        skip(entry.path, "invalid_path");
+        continue;
+      }
+      if (rest.slice(0, -1).some((s) => r.ignoredFolders.includes(s.toLowerCase()))) {
+        skip(entry.path, "ignored_folder");
+        continue;
+      }
+      if (rest.some((s) => s.startsWith("."))) {
+        skip(entry.path, "hidden");
+        continue;
+      }
+      const planned = accept(entry);
+      if (planned) files.push(planned);
+    }
+  }
+
+  // README and CODEOWNERS: only regular files are candidates, so a symlinked CODEOWNERS is not
+  // used (GitHub ignores it too). Path-sane entries only.
+  const regular = safe.filter((e) => e.type === "blob" && REGULAR_FILE_MODES.has(e.mode));
+  const readmeEntry = pickReadme(regular.filter((e) => !e.path.includes("/")));
+  const codeownersPath = pickCodeownersPath(regular);
+  const codeownersEntry =
+    codeownersPath === null ? null : (regular.find((e) => e.path === codeownersPath) ?? null);
+
+  const readme = readmeEntry ? accept(readmeEntry) : null;
+  const codeowners = codeownersEntry ? accept(codeownersEntry) : null;
+
+  return {
+    docsFolder,
+    files: files.sort(byPath),
+    skipped: skipped.sort(byPath),
+    repoLevelFiles: { readme, codeowners },
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// planTree
+
+export type TreeClient = Pick<GitHubClient, "getBranchHead" | "getTree">;
+
+export interface PlanRepo {
+  owner: string;
+  name: string;
+  /** "" for an empty repository (GitHub reports no default branch). */
+  defaultBranch: string;
+  config: { docsPath?: string };
+}
+
+/** What the last successful sync stored for this repo; all null for a first sync. */
+export interface StoredTreeState {
+  treeSha: string | null;
+  selectionFingerprint: string | null;
+  /** ETag of the branch-head response, if the caller keeps one. */
+  headEtag?: string | null;
+  commitSha?: string | null;
+}
+
+export interface PlanOptions extends CallOptions {
+  /** Selection settings other than the per-repo override, which comes from `repo.config`. */
+  selection?: Omit<SelectionOptions, "docsPath">;
+}
+
+interface HeadState {
+  treeSha: string;
+  commitSha: string | null;
+  headEtag: string | null;
+  selectionFingerprint: string;
+}
+
+export type TreePlan =
+  | ({ unchanged: true; outcome: "unchanged" } & HeadState)
+  | ({
+      unchanged: false;
+      /** `no_docs`: no docs folder; still a successful sync showing README, owners, empty docs. */
+      outcome: "changed" | "no_docs";
+    } & HeadState &
+      Selection)
+  | ({
+      unchanged: false;
+      outcome: "failed";
+      /** Recorded as the repo's error; stored content is kept. */
+      reason: "tree_truncated" | "too_many_files";
+      /** For `too_many_files`: how many docs were found, and the limit. */
+      count?: number;
+      limit?: number;
+    } & HeadState)
+  | {
+      /** The repository has no default branch (no commits). A successful, empty sync. */
+      unchanged: false;
+      outcome: "empty_repo";
+      treeSha: null;
+      commitSha: null;
+      headEtag: null;
+      selectionFingerprint: string;
+      docsFolder: null;
+      files: [];
+      skipped: [];
+      repoLevelFiles: { readme: null; codeowners: null };
+    };
+
+/**
+ * Plans one repository's sync from its default-branch tree. Makes at most two GitHub calls (branch
+ * head, recursive tree) and none at all past the head when the plan is `unchanged`.
+ */
+export async function planTree(
+  client: TreeClient,
+  repo: PlanRepo,
+  stored: StoredTreeState,
+  options: PlanOptions = {},
+): Promise<TreePlan> {
+  const { signal } = options;
+  const selection: SelectionOptions = {
+    ...options.selection,
+    docsPath: repo.config.docsPath ?? null,
+  };
+  const fingerprint = selectionFingerprint(selection);
+
+  if (repo.defaultBranch === "") {
+    return {
+      unchanged: false,
+      outcome: "empty_repo",
+      treeSha: null,
+      commitSha: null,
+      headEtag: null,
+      selectionFingerprint: fingerprint,
+      docsFolder: null,
+      files: [],
+      skipped: [],
+      repoLevelFiles: { readme: null, codeowners: null },
+    };
+  }
+
+  // A 304 only tells us the head is what we stored, so only send the ETag when a tree SHA is stored.
+  const etag = stored.treeSha && stored.headEtag ? stored.headEtag : undefined;
+  const head = await client.getBranchHead(repo.owner, repo.name, repo.defaultBranch, {
+    etag,
+    signal,
+  });
+
+  let state: HeadState;
+  if (head.notModified) {
+    if (!stored.treeSha || !etag) throw new GitHubError("invalid_response", 304);
+    state = {
+      treeSha: stored.treeSha,
+      commitSha: stored.commitSha ?? null,
+      headEtag: etag,
+      selectionFingerprint: fingerprint,
+    };
+  } else {
+    state = {
+      treeSha: head.data.treeSha,
+      commitSha: head.data.commitSha,
+      headEtag: head.etag,
+      selectionFingerprint: fingerprint,
+    };
+  }
+
+  if (state.treeSha === stored.treeSha && fingerprint === stored.selectionFingerprint) {
+    return { unchanged: true, outcome: "unchanged", ...state };
+  }
+
+  const tree = await client.getTree(repo.owner, repo.name, state.treeSha, {
+    recursive: true,
+    signal,
+  });
+  if (tree.notModified) throw new GitHubError("invalid_response", 304);
+  if (tree.data.truncated) {
+    return { unchanged: false, outcome: "failed", reason: "tree_truncated", ...state };
+  }
+
+  const selected = selectDocFiles(tree.data.entries, selection);
+  const limit = resolveSelection(selection).maxFiles;
+  if (selected.files.length > limit) {
+    return {
+      unchanged: false,
+      outcome: "failed",
+      reason: "too_many_files",
+      count: selected.files.length,
+      limit,
+      ...state,
+    };
+  }
+  return {
+    unchanged: false,
+    outcome: selected.docsFolder === null ? "no_docs" : "changed",
+    ...state,
+    ...selected,
+  };
+}
