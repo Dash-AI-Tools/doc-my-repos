@@ -60,3 +60,11 @@ The system SHALL validate the config file and required environment variables (da
 #### Scenario: Empty list
 - **WHEN** the config declares `repos` or `exclude` as an empty list, or leaves the key with no value
 - **THEN** startup fails with an error that identifies the field, so an empty list is never read as "show nothing" or "no narrowing"
+
+#### Scenario: Config file location
+- **WHEN** the `CONFIG_PATH` environment variable is set
+- **THEN** the system reads the config file from that path, and startup fails with an error naming `CONFIG_PATH` if the file cannot be read
+
+#### Scenario: No config file
+- **WHEN** `CONFIG_PATH` is not set and `docmyrepos.config.yml` does not exist in the working directory
+- **THEN** the system behaves as if the file declared neither a repository list nor exclusions, so every accessible repository is shown
