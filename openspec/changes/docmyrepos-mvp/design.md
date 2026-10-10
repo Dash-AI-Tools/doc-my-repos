@@ -25,6 +25,7 @@ Greenfield project: `/Users/davidc/code/phdv/doc-my-repo` contains no code. See 
 Pages query Postgres directly; only interactive bits (theme toggle, Mermaid, filters, command palette) are client components. Alternatives: Astro (static-first, weaker for dynamic multi-repo app), Vite SPA + separate API (more moving parts).
 
 **2. Postgres with Drizzle ORM and migrations; search via native full-text search.**
+The target is Postgres 17: the compose `db` service, CI services, and test databases all use `postgres:17`, and the app assumes nothing newer.
 A generated `tsvector` column with weights (title A, headings B, description/tags C, body D) and a GIN index, queried with `websearch_to_tsquery` (safe for arbitrary input) and `ts_headline` for snippets. Alternatives: SQLite FTS5 (simpler self-hosting but the user chose Postgres), external engines like Meilisearch (extra service, not needed at this scale). Drizzle is chosen over Prisma for transparent SQL and easy use of generated columns/GIN indexes.
 
 **3. Sync stores the parsed doc, not raw GitHub responses.**
