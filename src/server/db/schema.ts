@@ -48,15 +48,37 @@ const searchVectorExpression = sql`setweight(to_tsvector(${searchConfig}, coales
 export type Heading = { depth: number; text: string; slug: string };
 export type CodeOwnerRef = { handle: string; kind: (typeof codeOwnerKinds)[number] };
 export type SyncWarning = { path: string | null; message: string };
+/**
+ * One repository's outcome in `sync_runs.results` (task 5.7, `src/server/sync/runs.ts`). Lists are
+ * capped; the `*Total` fields keep the real counts. Messages are fixed texts, never raw errors.
+ */
 export type SyncRepoResult = {
+  /** "owner/name" at the time of the run. */
   repo: string;
-  status: "ok" | "error" | "unchanged";
+  githubId: number;
+  /** `skipped`: not attempted (another sync held the repo, or the run stopped on a fatal error). */
+  status: "ok" | "error" | "unchanged" | "skipped";
   error: string | null;
+  /** Stable error kind (a GitHubError/PersistError/RepoSyncError kind), null when ok. */
+  errorKind: string | null;
+  /** True when the same sync is expected to succeed later without a change upstream. */
+  retryable: boolean;
+  /** ISO time after which a rate-limited request can be retried, when GitHub said so. */
+  retryAfter: string | null;
   added: number;
   updated: number;
+  identical: number;
   removed: number;
+  /** Documents skipped (persist skips plus tree-selection skips). */
   skipped: number;
+  skippedFiles: { path: string; reason: string }[];
+  /** Paths kept as stored because their fetch failed. */
+  failedFiles: string[];
+  failedFilesTotal: number;
   warnings: SyncWarning[];
+  warningsTotal: number;
+  /** Stale rows replaced because they held this repo's owner/name ("owner/name"). */
+  replacedRepos: string[];
 };
 
 export const repos = pgTable(

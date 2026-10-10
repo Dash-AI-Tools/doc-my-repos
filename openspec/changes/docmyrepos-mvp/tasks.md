@@ -37,7 +37,7 @@
 - [x] 5.4 Implement tree fetch + tree-SHA short-circuit + doc file selection (extensions, size cap, ignored folders) and verify tests that an unchanged tree causes no blob fetches
 - [x] 5.5 Implement bounded-concurrency blob fetching and diffing by blob SHA, and verify a test where one changed file triggers one fetch
 - [x] 5.6 Implement persistence: upsert documents, delete missing paths, replace code owners, update README, repo metadata and `visibility`, and verify integration tests against the test database including a private-to-public change
-- [ ] 5.7 Implement per-repo status/error recording and `sync_runs` stats, and verify a failing repo does not stop others and keeps stored content
+- [x] 5.7 Implement per-repo status/error recording and `sync_runs` stats, and verify a failing repo does not stop others and keeps stored content
 - [ ] 5.8 Implement the end-to-end `syncRepo`/`syncAll` functions and verify an integration test against a fixture-backed fake GitHub (non-OKF repo + OKF repo)
 - [ ] 5.9 Handle removal of repos dropped from config, removed from the installation, or deleted on GitHub, and verify they disappear from queries
 
