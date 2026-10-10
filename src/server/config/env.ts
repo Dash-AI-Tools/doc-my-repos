@@ -94,8 +94,9 @@ const ACCEPTED_LABELS = new Set(["RSA PRIVATE KEY", "PRIVATE KEY"]);
 /**
  * Checks that `pem` is an unencrypted RSA private key (GitHub App keys are RSA) and returns a
  * problem description, or `null` when it is usable. Descriptions never include any part of the key.
+ * Also used by the GitHub token provider to fail fast on a key that did not come through `parseEnv`.
  */
-function pemProblem(pem: string): string | null {
+export function pemProblem(pem: string): string | null {
   const match = PEM_PATTERN.exec(pem);
   if (!match) {
     return "is not a PEM private key (expected a -----BEGIN ... PRIVATE KEY----- block)";

@@ -3,10 +3,15 @@ import { z } from "zod";
 /**
  * A small GitHub REST client for the sync engine, built on an injected `fetch`.
  *
- * - Authentication is injected as `getToken`; the token provider (task 5.2) plugs in there. The
- *   token is read before every attempt, so a refreshed token is picked up by a retry. It lives
- *   only in the closure of `createGitHubClient`: it is not a property of the client, never put in
- *   an error, and never logged.
+ * - Authentication is injected as `getToken`; the installation token provider (`app-auth.ts`)
+ *   plugs in there. The token is read before every attempt, so a refreshed token is picked up by a
+ *   retry. It lives only in the closure of `createGitHubClient`: it is not a property of the
+ *   client, never put in an error, and never logged.
+ * - A 401 is retried exactly once per request, asking `getToken` for a token other than the one
+ *   GitHub just rejected (`rejectedToken`). That retry does not count against `maxAttempts`. A
+ *   second 401 fails with `unauthorized`.
+ * - A `GitHubError` thrown by `getToken` (such as `installation_unavailable`) reaches the caller
+ *   unchanged; any other provider error becomes `unauthorized`, without its message.
  * - Rate limits: a 429, or a 403 with `retry-after` or `x-ratelimit-remaining: 0`, is waited out
  *   when the wait fits `maxWaitMs`, otherwise it fails at once with `rate_limited` and
  *   `retryAfterMs`, so the caller can record a retryable error. Any other 403 is `forbidden` and
@@ -32,7 +37,13 @@ export type GitHubErrorKind =
   /** A 2xx response that is not the expected shape, or a listing that cannot be completed. */
   | "invalid_response"
   /** An owner, repo, ref, sha or path that failed validation. Nothing was sent. */
-  | "invalid_input";
+  | "invalid_input"
+  /** The App installation is gone (uninstalled) or suspended. Stored content must be kept. */
+  | "installation_unavailable"
+  /** GitHub rejected the App's own credentials (App id or private key) when minting a token. */
+  | "app_credentials"
+  /** The configured private key is not a usable PEM RSA private key. Nothing was sent. */
+  | "invalid_private_key";
 
 const MESSAGES: Record<GitHubErrorKind, string> = {
   rate_limited: "github: rate limit exhausted",
@@ -45,6 +56,10 @@ const MESSAGES: Record<GitHubErrorKind, string> = {
   client_error: "github: request rejected",
   invalid_response: "github: unexpected response",
   invalid_input: "github: invalid request input",
+  installation_unavailable:
+    "github: GitHub App installation unavailable (uninstalled or suspended)",
+  app_credentials: "github: GitHub App credentials rejected (check the App id and private key)",
+  invalid_private_key: "github: GitHub App private key is not a valid PEM RSA private key",
 };
 
 /** A fixed-message error. It never carries tokens, headers, or GitHub response bodies. */
@@ -68,9 +83,17 @@ export function isRetryableKind(kind: GitHubErrorKind): boolean {
   return kind === "rate_limited" || kind === "server" || kind === "network";
 }
 
+export interface GetTokenOptions {
+  /**
+   * A token GitHub just answered 401 to. The provider must not return it again; it discards it
+   * if it is still cached and returns a fresh one (or one another caller already refreshed).
+   */
+  rejectedToken?: string;
+}
+
 export interface GitHubClientOptions {
   /** Returns a current token. Called before every attempt. */
-  getToken: () => Promise<string>;
+  getToken: (options?: GetTokenOptions) => Promise<string>;
   fetch?: typeof fetch;
   /** Resolves after `ms`, or earlier when `signal` aborts. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
@@ -321,7 +344,7 @@ function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /** Milliseconds GitHub asks us to wait, from `retry-after` or the reset time, or null. */
-function rateLimitWaitMs(headers: Headers, now: number): number | null {
+export function rateLimitWaitMs(headers: Headers, now: number): number | null {
   const retryAfter = headers.get("retry-after");
   if (retryAfter !== null) {
     const seconds = Number(retryAfter);
@@ -340,7 +363,7 @@ function rateLimitWaitMs(headers: Headers, now: number): number | null {
   return null;
 }
 
-function isRateLimited(status: number, headers: Headers): boolean {
+export function isRateLimited(status: number, headers: Headers): boolean {
   if (status === 429) return true;
   return (
     status === 403 &&
@@ -384,17 +407,23 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
     const { signal } = spec;
     const url = `${baseUrl}${spec.path}${spec.query ? `?${spec.query}` : ""}`;
 
+    let rejectedToken: string | undefined;
+    let retriedUnauthorized = false;
+
     for (let attempt = 0; ; attempt++) {
       if (signal?.aborted) throw new GitHubError("aborted");
       const last = attempt >= maxAttempts - 1;
 
       let token: string;
       try {
-        token = await getToken();
-      } catch {
-        // The provider's error is dropped: it may mention credentials.
+        token = await getToken(rejectedToken === undefined ? undefined : { rejectedToken });
+      } catch (error) {
+        // Our own errors carry fixed messages only. Anything else is dropped: it may mention
+        // credentials.
+        if (error instanceof GitHubError) throw error;
         throw new GitHubError("unauthorized");
       }
+      rejectedToken = undefined;
 
       const headers: Record<string, string> = {
         Authorization: `Bearer ${token}`,
@@ -429,7 +458,14 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
         await pause(wait, signal);
         continue;
       }
-      if (status === 401) throw new GitHubError("unauthorized", status);
+      if (status === 401) {
+        if (retriedUnauthorized) throw new GitHubError("unauthorized", status);
+        // Expired or revoked token: retry once at once with a fresh one, outside `maxAttempts`.
+        retriedUnauthorized = true;
+        rejectedToken = token;
+        attempt--;
+        continue;
+      }
       if (status === 403) throw new GitHubError("forbidden", status);
       if (status === 404) throw new GitHubError("not_found", status);
       if (status >= 500) {

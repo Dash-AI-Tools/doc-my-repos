@@ -148,13 +148,47 @@ describe("errors and retries", () => {
     expect(s.calls).toHaveLength(1);
   });
 
-  it("maps 401 and other 4xx without retrying", async () => {
-    expect((await catchError(setup([status(401)]).client.getRepo("o", "r"))).kind).toBe(
-      "unauthorized",
-    );
-    expect((await catchError(setup([status(422)]).client.getRepo("o", "r"))).kind).toBe(
-      "client_error",
-    );
+  it("maps other 4xx without retrying", async () => {
+    const s = setup([status(422)]);
+    expect((await catchError(s.client.getRepo("o", "r"))).kind).toBe("client_error");
+    expect(s.calls).toHaveLength(1);
+  });
+
+  it("retries a 401 once, naming the rejected token, then fails with unauthorized", async () => {
+    const asked: unknown[] = [];
+    let n = 0;
+    const s = setup([status(401)], {
+      getToken: async (opts) => {
+        asked.push(opts);
+        return `tok${++n}`;
+      },
+      maxAttempts: 1,
+    });
+    const err = await catchError(s.client.getRepo("o", "r"));
+    expect(err.kind).toBe("unauthorized");
+    expect(err.status).toBe(401);
+    // The 401 retry happens even with maxAttempts 1, and only once.
+    expect(s.calls).toHaveLength(2);
+    expect(asked).toEqual([undefined, { rejectedToken: "tok1" }]);
+    expect(s.sleeps).toEqual([]);
+  });
+
+  it("succeeds when the token after a 401 is accepted", async () => {
+    const s = setup([status(401), json(repoBody())]);
+    expect((await s.client.getRepo("o", "r")).notModified).toBe(false);
+    expect(s.calls).toHaveLength(2);
+  });
+
+  it("passes a GitHubError from the token provider through unchanged", async () => {
+    const client = createGitHubClient({
+      getToken: async () => {
+        throw new GitHubError("installation_unavailable", 404);
+      },
+      fetch: (async () => json(repoBody())) as typeof fetch,
+    });
+    const err = await catchError(client.getRepo("o", "r"));
+    expect(err.kind).toBe("installation_unavailable");
+    expect(err.status).toBe(404);
   });
 
   it("retries 5xx with exponential backoff, then succeeds", async () => {
