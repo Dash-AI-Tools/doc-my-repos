@@ -68,9 +68,9 @@ import {
  */
 
 const FOCUS_RING =
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:focus-visible:outline-blue-400";
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
-const TOOL_BUTTON = `cursor-pointer rounded border border-gray-300 bg-white px-2.5 py-1 text-sm font-medium text-gray-800 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800 ${FOCUS_RING}`;
+const TOOL_BUTTON = `cursor-pointer rounded border border-input bg-secondary px-2.5 py-1 text-sm font-medium text-secondary-foreground hover:bg-accent hover:text-accent-foreground ${FOCUS_RING}`;
 
 const RENDER_FAILED_MESSAGE = "The enlarged diagram could not be rendered.";
 
@@ -109,7 +109,7 @@ export function MermaidViewer({
       >
         <span
           aria-hidden="true"
-          className="absolute top-2 right-2 rounded border border-gray-300 bg-white/90 p-1 text-gray-700 opacity-70 group-hover:opacity-100 group-focus-within:opacity-100 dark:border-gray-600 dark:bg-gray-900/90 dark:text-gray-200"
+          className="absolute top-2 right-2 rounded border border-input bg-card p-1 text-card-foreground opacity-80 group-hover:opacity-100 group-focus-within:opacity-100"
         >
           <ExpandIcon />
         </span>
@@ -350,10 +350,10 @@ function ViewerDialog({
         if (event.target === event.currentTarget && backdropDown.current) onClose();
         backdropDown.current = false;
       }}
-      className="dmr-mermaid-dialog fixed inset-0 m-0 h-full max-h-none w-full max-w-none items-center justify-center bg-black/60 p-3 text-gray-900 backdrop:bg-transparent open:flex sm:p-6 dark:text-gray-100"
+      className="dmr-mermaid-dialog fixed inset-0 m-0 h-full max-h-none w-full max-w-none items-center justify-center bg-background/80 p-3 text-foreground backdrop:bg-transparent open:flex sm:p-6"
     >
-      <div className="flex h-full max-h-[60rem] w-full max-w-7xl flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900">
-        <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+      <div className="flex h-full max-h-[60rem] w-full max-w-7xl flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
           <h2 id={titleId} className="mr-auto text-sm font-semibold">
             Diagram
           </h2>
@@ -401,7 +401,7 @@ function ViewerDialog({
           onPointerCancel={onPointerEnd}
           className={`dmr-mermaid-stage min-h-0 flex-1 touch-none overflow-hidden select-none ${
             dragging ? "cursor-grabbing" : "cursor-grab"
-          } -outline-offset-2 focus-visible:outline-2 focus-visible:outline-blue-600 dark:focus-visible:outline-blue-400`}
+          } -outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring`}
         >
           {loaded.status === "ready" ? (
             <div
@@ -415,11 +415,11 @@ function ViewerDialog({
               dangerouslySetInnerHTML={{ __html: loaded.svg }}
             />
           ) : loaded.status === "error" ? (
-            <p role="alert" className="p-4 text-sm font-medium text-red-900 dark:text-red-100">
+            <p role="alert" className="p-4 text-sm font-medium text-destructive-muted-foreground">
               {RENDER_FAILED_MESSAGE}
             </p>
           ) : (
-            <p aria-busy="true" className="p-4 text-sm text-gray-600 dark:text-gray-400">
+            <p aria-busy="true" className="p-4 text-sm text-muted-foreground">
               Rendering diagram&hellip;
             </p>
           )}

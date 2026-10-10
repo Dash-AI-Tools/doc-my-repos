@@ -25,8 +25,11 @@ beforeEach(() => {
   mock.resolvedTheme = "light";
   // The SVG text records which theme was initialized when it was rendered.
   mock.render.mockImplementation(async (_id: string, source: string) => {
-    const theme = (mock.initialize.mock.lastCall?.[0] as { theme: string }).theme;
-    return { svg: svgFor(`${source}:${theme}`) };
+    const label = (mock.initialize.mock.lastCall?.[0] as { themeVariables: { darkMode: boolean } })
+      .themeVariables.darkMode
+      ? "dark"
+      : "light";
+    return { svg: svgFor(`${source}:${label}`) };
   });
   resetMermaidForTests();
 });
@@ -34,13 +37,21 @@ beforeEach(() => {
 afterEach(cleanup);
 
 const initTheme = (call: number) =>
-  (mock.initialize.mock.calls[call]?.[0] as { theme: string; securityLevel: string }) ?? {};
+  (mock.initialize.mock.calls[call]?.[0] as {
+    theme: string;
+    themeVariables: { darkMode: boolean };
+    securityLevel: string;
+  }) ?? {};
 
 describe("theme-aware diagrams", () => {
   it("initializes with the light theme and strict security", async () => {
     render(<MermaidDiagram source="a" />);
-    expect((await screen.findByRole("img")).textContent).toBe("a:default");
-    expect(initTheme(0)).toMatchObject({ theme: "default", securityLevel: "strict" });
+    expect((await screen.findByRole("img")).textContent).toBe("a:light");
+    expect(initTheme(0)).toMatchObject({
+      theme: "base",
+      themeVariables: { darkMode: false },
+      securityLevel: "strict",
+    });
   });
 
   it("re-initializes and re-renders when the resolved theme becomes dark", async () => {
@@ -50,7 +61,11 @@ describe("theme-aware diagrams", () => {
     rerender(<MermaidDiagram source="a" />);
     await waitFor(() => expect(screen.getByRole("img").textContent).toBe("a:dark"));
     expect(mock.initialize).toHaveBeenCalledTimes(2);
-    expect(initTheme(1)).toMatchObject({ theme: "dark", securityLevel: "strict" });
+    expect(initTheme(1)).toMatchObject({
+      theme: "base",
+      themeVariables: { darkMode: true },
+      securityLevel: "strict",
+    });
     expect(mock.render).toHaveBeenCalledTimes(2);
   });
 
@@ -60,8 +75,8 @@ describe("theme-aware diagrams", () => {
     await waitFor(() => expect(screen.getByRole("img").textContent).toBe("a:dark"));
     mock.resolvedTheme = "light";
     rerender(<MermaidDiagram source="a" />);
-    await waitFor(() => expect(screen.getByRole("img").textContent).toBe("a:default"));
-    expect(initTheme(1).theme).toBe("default");
+    await waitFor(() => expect(screen.getByRole("img").textContent).toBe("a:light"));
+    expect(initTheme(1).themeVariables.darkMode).toBe(false);
   });
 
   it("keeps the previous SVG on screen until the new one is ready", async () => {
@@ -72,7 +87,7 @@ describe("theme-aware diagrams", () => {
     mock.resolvedTheme = "dark";
     rerender(<MermaidDiagram source="a" />);
     await waitFor(() => expect(mock.render).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole("img").textContent).toBe("a:default");
+    expect(screen.getByRole("img").textContent).toBe("a:light");
     expect(document.querySelector("[aria-busy=true]")).toBeNull();
     await act(async () => {
       release({ svg: svgFor("a:dark") });
@@ -121,7 +136,7 @@ describe("theme-aware diagrams", () => {
     mock.resolvedTheme = undefined;
     render(<MermaidDiagram source="a" />);
     await screen.findByRole("img");
-    expect(initTheme(0).theme).toBe("default");
+    expect(initTheme(0).themeVariables.darkMode).toBe(false);
   });
 
   it("an explicit theme prop wins over the hook", async () => {
@@ -165,6 +180,6 @@ describe("theme-aware diagrams", () => {
         />
       </MermaidEnhancer>,
     );
-    expect((await screen.findByRole("img")).textContent).toBe("x:default");
+    expect((await screen.findByRole("img")).textContent).toBe("x:light");
   });
 });

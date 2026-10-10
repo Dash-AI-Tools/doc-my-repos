@@ -56,7 +56,8 @@ describe("MermaidDiagram", () => {
     const config = mock.initialize.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(config.securityLevel).toBe("strict");
     expect(config.startOnLoad).toBe(false);
-    expect(config.theme).toBe("default");
+    expect(config.theme).toBe("base");
+    expect(config.themeVariables).toMatchObject({ darkMode: false });
     expect(config.maxTextSize).toBeGreaterThan(0);
     expect(config.maxEdges).toBeGreaterThan(0);
     expect(config.htmlLabels).toBe(false);
@@ -77,7 +78,8 @@ describe("MermaidDiagram", () => {
     expect(
       mock.initialize.mock.calls[1]?.[0] as { theme: string; securityLevel: string },
     ).toMatchObject({
-      theme: "dark",
+      theme: "base",
+      themeVariables: { darkMode: true },
       securityLevel: "strict",
     });
     await waitFor(() => expect(mock.render).toHaveBeenCalledTimes(2));

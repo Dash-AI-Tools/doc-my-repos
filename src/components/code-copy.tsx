@@ -73,7 +73,7 @@ function CopyButton({ code }: { readonly code: HTMLElement }) {
         type="button"
         aria-label="Copy code"
         onClick={() => void onClick()}
-        className="cursor-pointer rounded border border-gray-300 bg-white/80 px-2 py-1 text-xs font-medium text-gray-800 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-gray-600 dark:bg-gray-900/80 dark:text-gray-100 dark:hover:bg-gray-800 dark:focus-visible:outline-blue-400"
+        className="cursor-pointer rounded border border-input bg-card px-2 py-1 text-xs font-medium text-card-foreground hover:bg-muted"
       >
         {state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : "Copy"}
       </button>

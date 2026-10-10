@@ -21,7 +21,8 @@ describe("without a ThemeProvider", () => {
     render(<MermaidDiagram source="a" />);
     await screen.findByRole("img");
     expect(mock.initialize.mock.calls[0]?.[0]).toMatchObject({
-      theme: "default",
+      theme: "base",
+      themeVariables: { darkMode: false },
       securityLevel: "strict",
     });
   });

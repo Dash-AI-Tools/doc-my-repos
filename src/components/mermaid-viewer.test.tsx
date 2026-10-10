@@ -38,8 +38,11 @@ beforeEach(() => {
   mock.render.mockReset();
   mock.resolvedTheme = "light";
   mock.render.mockImplementation(async (id: string, source: string) => {
-    const theme = (mock.initialize.mock.lastCall?.[0] as { theme: string }).theme;
-    return { svg: svgFor(`${source}:${theme}:${id}`) };
+    const label = (mock.initialize.mock.lastCall?.[0] as { themeVariables: { darkMode: boolean } })
+      .themeVariables.darkMode
+      ? "dark"
+      : "light";
+    return { svg: svgFor(`${source}:${label}:${id}`) };
   });
   resetMermaidForTests();
   document.documentElement.style.overflow = "";
@@ -284,7 +287,8 @@ describe.each([
     await openDialog();
     expect(content().textContent).toContain("a:dark");
     expect(mock.initialize.mock.lastCall?.[0]).toMatchObject({
-      theme: "dark",
+      theme: "base",
+      themeVariables: { darkMode: true },
       securityLevel: "strict",
     });
   });
@@ -338,7 +342,7 @@ describe("enlarge button states", () => {
     await renderReady();
     const img = screen.getByRole("img", { name: "Mermaid diagram" });
     expect(img.matches("div.dmr-mermaid-diagram")).toBe(true);
-    expect(img.innerHTML).toMatch(/^<svg[^>]*><text>a:default:dmr-mermaid-[\w-]+<\/text><\/svg>$/);
+    expect(img.innerHTML).toMatch(/^<svg[^>]*><text>a:light:dmr-mermaid-[\w-]+<\/text><\/svg>$/);
     expect(img.parentElement?.classList.contains("dmr-mermaid-viewer")).toBe(true);
   });
 });
@@ -379,7 +383,7 @@ describe("with the enhancer", () => {
     const { rerender } = render(<MermaidEnhancer theme="light">{doc}</MermaidEnhancer>);
     await screen.findByRole("img", { name: "Mermaid diagram" });
     await openDialog();
-    expect(content().textContent).toContain(":default:");
+    expect(content().textContent).toContain(":light:");
     rerender(<MermaidEnhancer theme="dark">{doc}</MermaidEnhancer>);
     await waitFor(() => expect(content().textContent).toContain(":dark:"));
   });

@@ -48,14 +48,15 @@ describe("error fallback", () => {
     expect(screen.queryByRole("img")).toBeNull();
   });
 
-  it("uses theme-aware classes for both light and dark", async () => {
+  it("uses theme tokens for both light and dark", async () => {
     mock.render.mockRejectedValue(new Error("bad"));
     render(<MermaidDiagram source="x" />);
     await screen.findByRole("alert");
     const box = document.querySelector(".dmr-mermaid-error");
-    expect(box?.className).toMatch(/bg-red-50/);
-    expect(box?.className).toMatch(/dark:bg-red-950/);
-    expect(box?.className).toMatch(/dark:text-red-100/);
+    // Tokens switch with the theme, so no `dark:` variants are needed.
+    expect(box?.className).toMatch(/bg-destructive-muted\b/);
+    expect(box?.className).toMatch(/text-destructive-muted-foreground/);
+    expect(box?.className).not.toMatch(/dark:/);
   });
 
   it("renders HTML-looking error text as text", async () => {

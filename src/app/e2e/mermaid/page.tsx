@@ -66,7 +66,7 @@ const IMAGE_SHAPE = mermaidDoc("Image shape fixture", [
 const STYLE_URL = mermaidDoc("Style url fixture", [
   "graph TD",
   "  A[Styled] --> B[Plain]",
-  "  style A fill:url(https://example.invalid/fill.png),stroke:#333",
+  "  style A fill:url(https://example.invalid/fill.png),stroke:black",
   "  classDef bg background:url(https://example.invalid/bg.png),fill:url(//example.invalid/c.png)",
   "  class B bg",
 ]);

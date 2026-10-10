@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useId, useState } from "react";
 
+import { mermaidThemeVariables } from "@/lib/theme-tokens";
+
 import { MermaidSvgError, sanitizeMermaidSvg } from "./mermaid-svg";
 import { MermaidViewer } from "./mermaid-viewer";
 import { useMermaidTheme } from "./use-mermaid-theme";
@@ -29,9 +31,8 @@ import { useMermaidTheme } from "./use-mermaid-theme";
  *
  * Theme (task 7.7)
  *  - The theme comes from `next-themes` through `useMermaidTheme` unless a `theme` prop is given.
- *    Light maps to Mermaid's `default` theme and dark to `dark`. The app has no CSS color tokens
- *    yet (group 8), so the built-in themes are used instead of `base` + `themeVariables`; switch
- *    to `base` there once tokens exist.
+ *    Both themes use Mermaid's `base` theme with `themeVariables` derived from the design tokens
+ *    (`mermaidThemeVariables`, task 8.1), so diagrams match the page palette.
  *  - A theme change re-renders the diagram. The previous SVG (or error) stays on screen until the
  *    new result is ready, so there is no flash of the source and no layout jump. Each render call
  *    configures its own theme inside the queue, so a late result for the old theme is dropped by
@@ -103,7 +104,10 @@ function configure(mermaid: MermaidApi, theme: MermaidTheme): void {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
-    theme: theme === "dark" ? "dark" : "default",
+    // `base` is the only Mermaid theme that honors `themeVariables`; they come from the design
+    // tokens (src/lib/theme-tokens.ts) so diagrams match the page in both themes.
+    theme: "base",
+    themeVariables: mermaidThemeVariables(theme),
     maxTextSize: MAX_TEXT_SIZE,
     maxEdges: MAX_EDGES,
     suppressErrorRendering: true,
@@ -301,11 +305,7 @@ export function MermaidDiagram({
   }, [source, theme, baseId, key, empty, tooLarge]);
 
   if (empty) {
-    return (
-      <p className="dmr-mermaid-empty my-4 text-sm text-gray-600 dark:text-gray-400">
-        Empty diagram.
-      </p>
-    );
+    return <p className="dmr-mermaid-empty my-4 text-sm text-muted-foreground">Empty diagram.</p>;
   }
 
   if (tooLarge) return <ErrorBox source={source} message={TOO_LARGE_MESSAGE} />;
@@ -333,7 +333,7 @@ export function MermaidDiagram({
 
   return (
     <div className="dmr-mermaid-loading my-4" aria-busy="true">
-      <pre className="overflow-x-auto rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+      <pre className="overflow-x-auto rounded border border-border bg-code-background p-3 text-sm text-code-foreground">
         <code>{source}</code>
       </pre>
     </div>
@@ -345,9 +345,9 @@ function ErrorBox({ source, message }: { readonly source: string; readonly messa
     <div
       role="group"
       aria-label="Diagram could not be rendered"
-      className="dmr-mermaid-error my-4 rounded border border-red-300 bg-red-50 p-3 text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-100"
+      className="dmr-mermaid-error my-4 rounded border border-destructive-muted-border bg-destructive-muted p-3 text-destructive-muted-foreground"
     >
-      <pre className="overflow-x-auto rounded border border-red-200 bg-white p-3 text-sm text-gray-800 dark:border-red-900 dark:bg-gray-900 dark:text-gray-200">
+      <pre className="overflow-x-auto rounded border border-destructive-muted-border bg-code-background p-3 text-sm text-code-foreground">
         <code>{source}</code>
       </pre>
       <p role="alert" className="mt-2 text-sm font-medium whitespace-pre-wrap">
