@@ -168,6 +168,8 @@ export default async function DocPage({
       })
     : null;
   const showCard = okfMeta !== null && doc.reserved === null && okfMeta.hasContent;
+  // Reserved index.md/log.md are not typed concepts: no card and no status or staleness notices.
+  const noticeMeta = doc.reserved === null ? okfMeta : null;
   const isChangeLog = repo.isOkf && doc.reserved === "log";
   // The card has a Description row, so the header does not repeat it.
   const description =
@@ -255,7 +257,7 @@ export default async function DocPage({
             ) : null}
 
             <div className="mt-6">
-              {okfMeta !== null ? <OkfNotices meta={okfMeta} now={loadedAt} /> : null}
+              {noticeMeta !== null ? <OkfNotices meta={noticeMeta} now={loadedAt} /> : null}
               {isChangeLog ? (
                 <ChangeLog>
                   <DocBody body={body} />

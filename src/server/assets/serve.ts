@@ -4,6 +4,7 @@ import { GitHubError, type GitHubClient } from "../github/client";
 import { errorFields, logger, type Logger } from "../log";
 import type { AssetRepo } from "../queries/assets";
 import { assetCacheKey, type AssetCache, type AssetOutcome } from "./cache";
+import { DEFAULT_QUEUE_TIMEOUT_MS, type FetchGate } from "./fetch-gate";
 import { bytesMatchType, CONTENT_TYPES, imageTypeForPath } from "./image-types";
 import { parseAssetTarget, rawAssetSegments } from "./path";
 
@@ -29,7 +30,11 @@ import { parseAssetTarget, rawAssetSegments } from "./path";
  *  5. Cache (`cache.ts`), else GitHub: `getFile` on the default branch with the installation
  *     token, at most `maxBytes` (10 MiB, else 413), within `timeoutMs` (15 s, else 504), aborted
  *     when the client goes away. Not found or forbidden upstream: 404. Rate limited: 503 with
- *     `Retry-After`. Anything else: 502.
+ *     `Retry-After`. Anything else: 502. When the deps carry a `gate` (`fetch-gate.ts`, always
+ *     the case in the running app), cache misses go through it: concurrent requests for the same
+ *     image share one upstream fetch (the fetch is aborted only when all of them have gone), at
+ *     most 6 fetches run at once within a 64 MiB in-flight byte budget, up to 50 more wait, and
+ *     beyond that (or after waiting 10 s) the answer is 503 with `Retry-After`.
  *  6. The bytes must be an image of the type the extension claims (`bytesMatchType`), else 415.
  *
  * Responses. `Content-Type` is set from the verified type, never taken from GitHub. Every
@@ -60,6 +65,9 @@ export const ASSET_TIMEOUT_MS = 15_000;
 /** `Retry-After` when GitHub rate-limits without saying for how long. */
 const DEFAULT_RETRY_AFTER_SECONDS = 60;
 
+/** `Retry-After` when this server's own fetch queue is full. */
+const OVERLOADED_RETRY_AFTER_SECONDS = 5;
+
 export const ALLOWED_METHODS = "GET, HEAD";
 
 export interface AssetDeps {
@@ -69,6 +77,8 @@ export interface AssetDeps {
   isConfigured(name: string): boolean;
   github: Pick<GitHubClient, "getFile">;
   cache?: AssetCache | null;
+  /** Bounds and merges upstream fetches. Without one every cache miss fetches on its own. */
+  gate?: FetchGate | null;
 }
 
 export interface AssetRequestLike {
@@ -89,6 +99,8 @@ export interface ServeAssetOptions {
   timeoutMs?: number;
   /** Structured log; only outcome words, kinds and statuses are passed. Default `logger`. */
   log?: Logger;
+  /** Longest wait for a fetch slot when the gate is busy. Default 10 s. */
+  queueTimeoutMs?: number;
 }
 
 const BASE_CSP = "default-src 'none'; sandbox";
@@ -185,7 +197,7 @@ type FetchResult =
   | { kind: "failure"; status: 400 | 502 | 503 | 504; retryAfterSeconds?: number };
 
 async function fetchAsset(
-  request: AssetRequestLike,
+  parent: AbortSignal | undefined,
   repo: AssetRepo,
   path: string,
   deps: AssetDeps,
@@ -195,7 +207,7 @@ async function fetchAsset(
   if (claimed === null) return { kind: "outcome", outcome: refused(415), cacheable: false };
 
   const timeout = AbortSignal.timeout(options.timeoutMs);
-  const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
+  const signal = parent ? AbortSignal.any([parent, timeout]) : timeout;
   let bytes: Uint8Array;
   try {
     const result = await deps.github.getFile(repo.owner, repo.name, path, {
@@ -299,11 +311,35 @@ export async function serveAsset(
   let outcome = deps.cache?.get(key);
   const cached = outcome !== undefined;
   if (outcome === undefined) {
-    const fetched = await fetchAsset(request, repo, target.path, deps, {
+    const fetchOptions = {
       maxBytes: options.maxBytes ?? MAX_ASSET_BYTES,
       timeoutMs: options.timeoutMs ?? ASSET_TIMEOUT_MS,
       log,
-    });
+    };
+    // One call is cached once, however many requests wait for it.
+    const fetchAndCache = async (signal: AbortSignal | undefined): Promise<FetchResult> => {
+      const result = await fetchAsset(signal, repo, target.path, deps, fetchOptions);
+      if (result.kind === "outcome" && result.cacheable) deps.cache?.set(key, result.outcome);
+      return result;
+    };
+    let fetched: FetchResult;
+    if (deps.gate) {
+      const gated = await deps.gate.run(key, fetchOptions.maxBytes, fetchAndCache, {
+        signal: request.signal,
+        queueTimeoutMs: options.queueTimeoutMs ?? DEFAULT_QUEUE_TIMEOUT_MS,
+      });
+      if (gated.kind === "done") fetched = gated.value;
+      else if (gated.kind === "overloaded") {
+        log.warn("asset.upstream_failed", { reason: "overloaded" });
+        fetched = {
+          kind: "failure",
+          status: 503,
+          retryAfterSeconds: OVERLOADED_RETRY_AFTER_SECONDS,
+        };
+      } else fetched = { kind: "failure", status: 504 };
+    } else {
+      fetched = await fetchAndCache(request.signal);
+    }
     if (fetched.kind === "failure") {
       log.debug("asset.served", { githubId: repo.githubId, httpStatus: fetched.status, cached });
       return errorResponse(
@@ -315,7 +351,6 @@ export async function serveAsset(
       );
     }
     outcome = fetched.outcome;
-    if (fetched.cacheable) deps.cache?.set(key, outcome);
   }
 
   if (outcome.kind === "refused") {

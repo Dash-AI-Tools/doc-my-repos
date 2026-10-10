@@ -1,9 +1,10 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { CommandPalette } from "@/components/command-palette";
 import { THEME_STORAGE_KEY } from "@/components/theme-provider";
+import { E2E_CRASH_HEADER } from "@/lib/e2e-fixtures";
 import { THEME_TOKENS } from "@/lib/theme-tokens";
 
 import RootLayout, { viewport } from "./layout";
@@ -122,5 +123,28 @@ describe("viewport", () => {
       { media: "(prefers-color-scheme: light)", color: THEME_TOKENS.light.background },
       { media: "(prefers-color-scheme: dark)", color: THEME_TOKENS.dark.background },
     ]);
+  });
+});
+
+describe("root layout, forced crash for the e2e suite", () => {
+  const original = process.env.E2E_FIXTURES;
+  afterEach(() => {
+    if (original === undefined) delete process.env.E2E_FIXTURES;
+    else process.env.E2E_FIXTURES = original;
+  });
+
+  it("throws only with E2E_FIXTURES=1 and the crash header", async () => {
+    requestHeaders.current = new Headers({ [E2E_CRASH_HEADER]: "1" });
+    process.env.E2E_FIXTURES = "1";
+    await expect(RootLayout({ children: page })).rejects.toThrow("forced root layout crash");
+
+    // the header alone does nothing on a server without the switch
+    delete process.env.E2E_FIXTURES;
+    await expect(RootLayout({ children: page })).resolves.toBeDefined();
+
+    // the switch alone does nothing without the header
+    process.env.E2E_FIXTURES = "1";
+    requestHeaders.current = new Headers();
+    await expect(RootLayout({ children: page })).resolves.toBeDefined();
   });
 });

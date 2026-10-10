@@ -153,6 +153,10 @@ describe("docmyrepos.config.example.yml", () => {
     expect(parse(SPLIT.active)).toMatchObject({
       limits: { maxDocsPerRepo: 2000, maxFileBytes: 262144 },
     });
+    expect(loaded.config.sync).toEqual(configSchema.parse({}).sync);
+    expect(parse(SPLIT.active)).toMatchObject({
+      sync: { intervalMinutes: 60, onStartup: true },
+    });
   });
 
   it("has an active part that validates without any alternative", () => {

@@ -41,6 +41,8 @@
  *   whitespace; the status is still displayed as authored.
  */
 
+import { normalizeFilterValues } from "./search";
+
 export const MAX_TEXT = 500;
 export const MAX_KEY = 120;
 export const MAX_ITEMS = 20;
@@ -521,6 +523,16 @@ export interface OkfMeta {
   readonly type: string | null;
   readonly status: string | null;
   readonly tags: readonly string[];
+  /**
+   * What a filter link must carry, as stored (not cleaned): the table of contents groups and
+   * matches documents by the exact stored value, so a link built from the cleaned text of a value
+   * with zero-width marks, double spaces or over 120 characters would point at another group or
+   * at none. Null when the stored value cannot be a filter value at all (over `MAX_FILTER_CHARS`
+   * characters, empty): then there is no group to link to. `tagFilters[i]` belongs to `tags[i]`.
+   */
+  readonly typeFilter: string | null;
+  readonly statusFilter: string | null;
+  readonly tagFilters: readonly (string | null)[];
   readonly tagsOmitted: number;
   readonly description: string | null;
   readonly resource: OkfRefs;
@@ -542,6 +554,11 @@ export interface OkfColumns {
   readonly description: string | null;
 }
 
+/** `value` as a filter value of the table of contents, exactly as stored, or null if it cannot be one. */
+function filterValue(value: string): string | null {
+  return normalizeFilterValues([value])?.[0] ?? null;
+}
+
 const NO_REFS: OkfRefs = { items: [], omitted: 0 };
 
 function allStrings(list: readonly unknown[]): boolean {
@@ -557,20 +574,23 @@ export function buildOkfMeta(frontmatter: unknown, columns: OkfColumns): OkfMeta
   const fm: Record<string, unknown> = isObject(frontmatter) ? frontmatter : {};
   const consumed = new Set<string>();
 
-  const textField = (key: string, column: string | null): string | null => {
+  const textField = (
+    key: string,
+    column: string | null,
+  ): { readonly text: string | null; readonly source: string | null } => {
     const fromFm = nonBlankString(own(fm, key));
     const source = column !== null && column.trim() !== "" ? column : fromFm;
     // A blank or null value has nothing to show; any other non-string value is listed instead.
     const authored = own(fm, key);
     if (authored === null || typeof authored === "string") consumed.add(key);
-    if (source === null) return null;
+    if (source === null) return { text: null, source: null };
     const { text } = cleanText(source, MAX_TEXT, key === "description");
-    return text === "" ? null : text;
+    return text === "" ? { text: null, source: null } : { text, source };
   };
 
-  const type = textField("type", columns.type);
-  const status = textField("status", columns.status);
-  const description = textField("description", columns.description);
+  const { text: type, source: typeSource } = textField("type", columns.type);
+  const { text: status, source: statusSource } = textField("status", columns.status);
+  const { text: description } = textField("description", columns.description);
 
   // `tags` is shown from the column (what the filters use); the key is consumed when its value is
   // a string or a list of strings, else it is listed with the unknown keys so nothing is hidden.
@@ -584,12 +604,16 @@ export function buildOkfMeta(frontmatter: unknown, columns: OkfColumns): OkfMeta
   }
   const columnTags: readonly unknown[] = Array.isArray(columns.tags) ? columns.tags : [];
   const tagList: string[] = [];
+  const tagFilterList: (string | null)[] = [];
   for (const tag of columnTags) {
     if (typeof tag !== "string") continue;
     const text = shortText(tag, MAX_KEY);
-    if (text !== "") tagList.push(text);
+    if (text === "") continue;
+    tagList.push(text);
+    tagFilterList.push(filterValue(tag));
   }
   const tags = tagList.slice(0, MAX_UNKNOWN);
+  const tagFilters = tagFilterList.slice(0, MAX_UNKNOWN);
 
   const refs = (key: string): OkfRefs => {
     const value = own(fm, key);
@@ -640,6 +664,9 @@ export function buildOkfMeta(frontmatter: unknown, columns: OkfColumns): OkfMeta
     type,
     status,
     tags,
+    typeFilter: typeSource === null ? null : filterValue(typeSource),
+    statusFilter: statusSource === null ? null : filterValue(statusSource),
+    tagFilters,
     tagsOmitted: Math.max(0, tagList.length - tags.length),
     description,
     resource,

@@ -3,6 +3,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildOkfMeta, MAX_ITEMS, type OkfColumns } from "@/lib/okf-meta";
+import { parseTocFilters } from "@/lib/toc-filters";
 
 import { OkfMetadataCard } from "./okf-metadata-card";
 
@@ -347,5 +348,73 @@ describe("OkfMetadataCard, status chips", () => {
     expect(row.querySelectorAll("a")).toHaveLength(50);
     expect(within(row).getByText("Show 42 more")).toBeTruthy();
     expect(row.textContent).toContain("and 50 more");
+  });
+});
+
+describe("OkfMetadataCard, filter links carry the stored values", () => {
+  const ZWSP = String.fromCharCode(0x200b);
+  const query = (testId: string, index = 0): URLSearchParams => {
+    const href = screen.getAllByTestId(testId)[index]?.getAttribute("href") ?? "";
+    expect(href.startsWith("/acme/kb?")).toBe(true);
+    return new URLSearchParams(href.slice("/acme/kb?".length));
+  };
+
+  it("links a type with zero-width characters by its stored value, showing the cleaned text", () => {
+    const type = `Run${ZWSP}book`;
+    card({ type }, { type });
+    expect(screen.getByTestId("okf-type").textContent).toBe("Runbook");
+    expect(query("okf-type").get("type")).toBe(type);
+    expect(screen.getByTestId("okf-type").getAttribute("href")).toContain("%E2%80%8B");
+  });
+
+  it("links a value with double spaces and edge whitespace as stored", () => {
+    const type = "  Decision   record ";
+    const status = "in  review";
+    const tags = ["two  words", " padded "];
+    card({ type, status, tags }, { type, status, tags });
+    expect(screen.getByTestId("okf-type").textContent).toBe("Decision record");
+    expect(query("okf-type").get("type")).toBe(type);
+    expect(screen.getByTestId("okf-status").textContent).toBe("in review");
+    expect(query("okf-status").get("status")).toBe(status);
+    expect(screen.getAllByTestId("okf-tag").map((a) => a.textContent)).toEqual([
+      "two words",
+      "padded",
+    ]);
+    expect(query("okf-tag", 0).get("tag")).toBe("two  words");
+    expect(query("okf-tag", 1).get("tag")).toBe(" padded ");
+  });
+
+  it("links a tag over 120 characters by the whole stored tag", () => {
+    const tag = `${"long-tag-".repeat(20)}end`;
+    expect(tag.length).toBeGreaterThan(120);
+    card({ type: "Note", tags: [tag] }, { type: "Note", tags: [tag] });
+    const shown = screen.getByTestId("okf-tag").textContent ?? "";
+    expect(shown.endsWith("…")).toBe(true);
+    expect(shown.length).toBeLessThan(tag.length);
+    expect(query("okf-tag").get("tag")).toBe(tag);
+  });
+
+  it("round-trips through the table of contents parser to the same group", () => {
+    const type = `Odd${ZWSP}  type`;
+    const tag = `${ZWSP}t  ${"y".repeat(130)}`;
+    card({ type, tags: [tag] }, { type, tags: [tag] });
+    const typeHref = screen.getByTestId("okf-type").getAttribute("href") ?? "";
+    const tagHref = screen.getByTestId("okf-tag").getAttribute("href") ?? "";
+    expect(parseTocFilters(new URLSearchParams(typeHref.split("?")[1])).types).toEqual([type]);
+    expect(parseTocFilters(new URLSearchParams(tagHref.split("?")[1])).tags).toEqual([tag]);
+  });
+
+  it("shows a stored value that cannot be a filter (over 256 characters) as plain text", () => {
+    const type = "T".repeat(300);
+    card({ type }, { type });
+    const chip = screen.getByTestId("okf-type");
+    expect(chip.tagName).toBe("SPAN");
+    expect(chip.getAttribute("href")).toBeNull();
+    expect(chip.textContent).toBe(type);
+  });
+
+  it("takes the link value from the column, not from the frontmatter", () => {
+    card({ type: "from-frontmatter" }, { type: "from-column" });
+    expect(query("okf-type").get("type")).toBe("from-column");
   });
 });

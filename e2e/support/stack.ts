@@ -139,5 +139,8 @@ export function serverEnv(name: "seeded" | "empty" | "unreachable"): Record<stri
     GITHUB_APP_PRIVATE_KEY_PATH: keyPath,
     GITHUB_WEBHOOK_SECRET: "e2e-webhook-secret-not-a-real-secret",
     SYNC_SECRET: "e2e-sync-secret-not-a-real-secret",
+    // The production build would otherwise start the background sync (src/instrumentation.ts) and
+    // mark every seeded repository as failed: the GitHub App credentials here are not real.
+    SYNC_SCHEDULER: "0",
   };
 }

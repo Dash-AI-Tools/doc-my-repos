@@ -4,8 +4,11 @@ import {
   DEFAULT_DOCS_PATHS,
   DEFAULT_MAX_DOCS_PER_REPO,
   DEFAULT_MAX_FILE_BYTES,
+  DEFAULT_SYNC_INTERVAL_MINUTES,
   MAX_DOCS_PER_REPO_LIMIT,
+  MAX_SYNC_INTERVAL_MINUTES,
   MIN_FILE_BYTES_LIMIT,
+  MIN_SYNC_INTERVAL_MINUTES,
   configSchema,
   formatConfigIssues,
 } from "./schema";
@@ -213,5 +216,54 @@ describe("configSchema limits (task 12.3)", () => {
     ]);
     expect(issues({ limits: { maxFiles: 5 } })).toEqual(["limits.maxFiles: unknown field"]);
     expect(issues({ limits: null })).toEqual([expect.stringMatching(/^limits: /)]);
+  });
+});
+
+describe("configSchema sync schedule", () => {
+  it("defaults to an hourly full sync and a startup sync", () => {
+    expect(configSchema.parse({}).sync).toEqual({
+      intervalMinutes: DEFAULT_SYNC_INTERVAL_MINUTES,
+      onStartup: true,
+    });
+    expect(DEFAULT_SYNC_INTERVAL_MINUTES).toBe(60);
+    expect(configSchema.parse({ sync: {} }).sync).toEqual({ intervalMinutes: 60, onStartup: true });
+    expect(configSchema.parse({ sync: { onStartup: false } }).sync).toEqual({
+      intervalMinutes: 60,
+      onStartup: false,
+    });
+  });
+
+  it("accepts 0 (periodic runs off) and the bounds", () => {
+    expect(configSchema.parse({ sync: { intervalMinutes: 0 } }).sync.intervalMinutes).toBe(0);
+    expect(
+      configSchema.parse({ sync: { intervalMinutes: MIN_SYNC_INTERVAL_MINUTES } }).sync
+        .intervalMinutes,
+    ).toBe(5);
+    expect(
+      configSchema.parse({ sync: { intervalMinutes: MAX_SYNC_INTERVAL_MINUTES } }).sync
+        .intervalMinutes,
+    ).toBe(10080);
+  });
+
+  it("rejects intervals between 0 and 5, negatives, fractions, oversize values and unknown keys", () => {
+    for (const minutes of [1, 4, -5]) {
+      expect(issues({ sync: { intervalMinutes: minutes } })).toEqual([
+        "sync.intervalMinutes: intervalMinutes must be 0 (off) or at least 5",
+      ]);
+    }
+    expect(issues({ sync: { intervalMinutes: 7.5 } })).toEqual([
+      "sync.intervalMinutes: intervalMinutes must be a whole number of minutes",
+    ]);
+    expect(issues({ sync: { intervalMinutes: "60" } })).toEqual([
+      "sync.intervalMinutes: intervalMinutes must be a whole number of minutes",
+    ]);
+    expect(issues({ sync: { intervalMinutes: 10081 } })).toEqual([
+      "sync.intervalMinutes: intervalMinutes must be at most 10080 (one week)",
+    ]);
+    expect(issues({ sync: { onStartup: "yes" } })).toEqual([
+      "sync.onStartup: onStartup must be true or false",
+    ]);
+    expect(issues({ sync: { cron: "* * * * *" } })).toEqual(["sync.cron: unknown field"]);
+    expect(issues({ sync: null })).toEqual([expect.stringMatching(/^sync: /)]);
   });
 });

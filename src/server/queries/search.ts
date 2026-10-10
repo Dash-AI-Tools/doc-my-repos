@@ -74,6 +74,13 @@ const HEADLINE_OPTIONS = [
 /** Body characters `ts_headline` looks at. Bounds its CPU on long documents. */
 export const MAX_HEADLINE_SOURCE_CHARS = 100_000;
 
+/**
+ * Headings of one document considered when picking the best heading of a hit: the first N in
+ * document order. A heading past the cap is never linked to from search, which keeps the cost of
+ * a page of hits bounded on heading-heavy documents.
+ */
+export const MAX_HEADINGS_CONSIDERED = 200;
+
 /** Search request. Arrays allow several values per filter; a single value may be given bare. */
 export interface SearchParams {
   /** Query text, websearch syntax (`"exact phrase"`, `-exclude`, `or`). */
@@ -187,6 +194,11 @@ const FALSE = sql`false`;
  * absent: they never match a type, tag or status filter, never add to a facet count and carry no
  * chips in the results. They are still found by the text of their title and body.
  */
+// Performance note: the `case` wrappers hide the bare columns from the planner, so a future index
+// on `documents.type` or a GIN index on `documents.tags` could not serve these filters (`reserved
+// is null and tags && ...` would). None exists today: the full-text GIN index finds the matches
+// first and the filters run on that set, so this costs nothing yet. Rewrite the filters (not the
+// selected columns) if such an index is ever added; the semantics must stay the same.
 const TYPE_OF = sql`(case when ${documents.reserved} is null then ${documents.type} end)`;
 const STATUS_OF = sql`(case when ${documents.reserved} is null then ${documents.status} end)`;
 const TAGS_OF = sql`(case when ${documents.reserved} is null then ${documents.tags} else '{}'::text[] end)`;
@@ -333,8 +345,8 @@ export async function searchDocuments(
   // Query lexemes, to rank headings by how many terms they contain. Negated terms cannot occur in
   // a matching document, so counting them is harmless.
   const queryLexemes = sql`tsvector_to_array(to_tsvector(${searchConfig}, ${p.query}))`;
-  const headingText = sql`(h.value ->> 'text')`;
-  const headingVector = sql`to_tsvector(${searchConfig}, ${headingText})`;
+  // Built once per heading (the `v` column of the inner select), not once per use.
+  const headingVector = sql`to_tsvector(${searchConfig}, h.value ->> 'text')`;
 
   // The inner query ranks and pages using only small columns; the outer one reads body and
   // headings and runs ts_headline for the page's rows only.
@@ -366,21 +378,26 @@ export async function searchDocuments(
     ) as page
     inner join ${documents} on ${documents.id} = page."id"
     inner join ${repos} on ${repos.id} = ${documents.repoId}
+    cross join (select ${queryLexemes} as "q") as ql
     left join lateral (
-      select h.value
-      from jsonb_array_elements(case when jsonb_typeof(${documents.headings}) = 'array'
-        then ${documents.headings} else '[]'::jsonb end) with ordinality as h(value, ord)
-      where jsonb_typeof(h.value) = 'object'
-        and jsonb_typeof(h.value -> 'text') = 'string'
-        and jsonb_typeof(h.value -> 'slug') = 'string'
-        and (h.value ->> 'slug') <> ''
-        and jsonb_typeof(h.value -> 'depth') = 'number'
-        and (h.value ->> 'depth')::numeric in (1, 2, 3, 4, 5, 6)
-        and tsvector_to_array(${headingVector}) && ${queryLexemes}
-      order by (${headingVector} @@ ${p.tsQuery}) desc,
-        (select count(*) from unnest(tsvector_to_array(${headingVector})) as l(x)
-          where l.x = any(${queryLexemes})) desc,
-        h.ord
+      select c."value"
+      from (
+        select h.value, h.ord, ${headingVector} as "v"
+        from jsonb_array_elements(case when jsonb_typeof(${documents.headings}) = 'array'
+          then ${documents.headings} else '[]'::jsonb end) with ordinality as h(value, ord)
+        where h.ord <= ${MAX_HEADINGS_CONSIDERED}
+          and jsonb_typeof(h.value) = 'object'
+          and jsonb_typeof(h.value -> 'text') = 'string'
+          and jsonb_typeof(h.value -> 'slug') = 'string'
+          and (h.value ->> 'slug') <> ''
+          and case when jsonb_typeof(h.value -> 'depth') = 'number'
+            then (h.value ->> 'depth')::numeric in (1, 2, 3, 4, 5, 6) else false end
+      ) as c
+      cross join lateral (select tsvector_to_array(c."v") as "lex") as l
+      where l."lex" && ql."q"
+      order by (c."v" @@ ${p.tsQuery}) desc,
+        (select count(*) from unnest(l."lex") as u(x) where u.x = any(ql."q")) desc,
+        c.ord
       limit 1
     ) as best_heading on true
     where ${visibleRepos(options)}

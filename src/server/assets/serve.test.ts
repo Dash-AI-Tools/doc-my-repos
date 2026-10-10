@@ -13,6 +13,7 @@ import {
   type RecordingLogger,
 } from "../test-logger";
 import { createAssetCache, type AssetCache } from "./cache";
+import { createFetchGate, type FetchGate } from "./fetch-gate";
 import {
   assetEtag,
   type AssetDeps,
@@ -523,6 +524,260 @@ describe("serveAsset: upstream failures", () => {
       },
     });
     expect((await u.serve("acme/handbook/docs/img/arch.png")).status).toBe(500);
+  });
+});
+
+/** A `getFile` whose calls the test releases one by one. */
+function controlledGithub() {
+  interface Call {
+    path: string;
+    signal: AbortSignal | undefined;
+    maxBytes: number | undefined;
+    finish(bytes: Uint8Array): void;
+    fail(error: unknown): void;
+  }
+  const calls: Call[] = [];
+  let running = 0;
+  let peak = 0;
+  const github: AssetDeps["github"] = {
+    getFile: (_owner, _repo, path, options) =>
+      new Promise((resolve, reject) => {
+        running += 1;
+        peak = Math.max(peak, running);
+        const settle = () => {
+          running -= 1;
+        };
+        const call: Call = {
+          path,
+          signal: options?.signal,
+          maxBytes: options?.maxBytes,
+          finish: (bytes) => {
+            settle();
+            resolve({ notModified: false, data: bytes, etag: null });
+          },
+          fail: (error) => {
+            settle();
+            reject(error);
+          },
+        };
+        options?.signal?.addEventListener("abort", () => call.fail(new GitHubError("aborted")), {
+          once: true,
+        });
+        calls.push(call);
+      }),
+  };
+  return { github, calls, running: () => running, peak: () => peak };
+}
+
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+describe("serveAsset: upstream fetch gate", () => {
+  function gated(gate: FetchGate = createFetchGate()) {
+    const upstream = controlledGithub();
+    const s = setup({ github: upstream.github, gate });
+    return { ...s, upstream, gate };
+  }
+
+  it("shares one upstream fetch between concurrent requests for the same image", async () => {
+    const t = gated();
+    const requests = Array.from({ length: 12 }, () => t.serve("acme/handbook/docs/img/arch.png"));
+    await settle();
+    expect(t.upstream.calls).toHaveLength(1);
+    t.upstream.calls[0]!.finish(PNG);
+    const responses = await Promise.all(requests);
+    expect(responses.map((r) => r.status)).toEqual(Array.from({ length: 12 }, () => 200));
+    for (const res of responses) {
+      expect(res.headers["content-type"]).toBe("image/png");
+      expect(res.headers.etag).toBe(assetEtag(PNG));
+      expectSecurityHeaders(res);
+    }
+    // cached once: the next request needs no upstream call
+    expect((await t.serve("acme/handbook/docs/img/arch.png")).status).toBe(200);
+    expect(t.upstream.calls).toHaveLength(1);
+    expect(t.gate.stats()).toEqual({ inFlight: 0, queued: 0, reservedBytes: 0, flights: 0 });
+  });
+
+  it("does not merge different images or different repositories with the same path", async () => {
+    const t = gated();
+    const a = t.serve("acme/handbook/docs/img/arch.png");
+    const b = t.serve("acme/handbook/docs/img/photo.jpg");
+    const c = t.serve("acme/site/docs/img/arch.png");
+    await settle();
+    expect(t.upstream.calls.map((call) => call.path)).toEqual([
+      "docs/img/arch.png",
+      "docs/img/photo.jpg",
+      "docs/img/arch.png",
+    ]);
+    t.upstream.calls[0]!.finish(PNG);
+    t.upstream.calls[1]!.finish(JPEG);
+    const otherPng = new Uint8Array([...PNG, 0]);
+    t.upstream.calls[2]!.finish(otherPng);
+    const [ra, rb, rc] = await Promise.all([a, b, c]);
+    expect([ra, rb, rc].map((r) => r.headers["content-type"])).toEqual([
+      "image/png",
+      "image/jpeg",
+      "image/png",
+    ]);
+    expect(rc.headers.etag).toBe(assetEtag(otherPng));
+    expect(rc.headers.etag).not.toBe(ra.headers.etag);
+  });
+
+  it("gives every merged request the same failure, and does not cache it", async () => {
+    const t = gated();
+    const requests = [1, 2, 3].map(() => t.serve("acme/handbook/docs/img/arch.png"));
+    await settle();
+    t.upstream.calls[0]!.fail(new GitHubError("server", 502));
+    const responses = await Promise.all(requests);
+    expect(responses.map((r) => r.status)).toEqual([502, 502, 502]);
+    expect(t.gate.stats().inFlight).toBe(0);
+    const retry = t.serve("acme/handbook/docs/img/arch.png");
+    await settle();
+    expect(t.upstream.calls).toHaveLength(2);
+    t.upstream.calls[1]!.finish(PNG);
+    expect((await retry).status).toBe(200);
+  });
+
+  it("runs at most the configured number of upstream fetches and queues the rest", async () => {
+    const t = gated(createFetchGate({ maxInFlight: 3, maxQueue: 50 }));
+    const requests = Array.from({ length: 10 }, (_, i) =>
+      t.serve(`acme/handbook/docs/img/p${i}.png`),
+    );
+    await settle();
+    expect(t.upstream.running()).toBe(3);
+    expect(t.gate.stats()).toMatchObject({ inFlight: 3, queued: 7 });
+    for (let done = 0; done < 10; done++) {
+      await settle();
+      t.upstream.calls[done]!.finish(PNG);
+    }
+    const responses = await Promise.all(requests);
+    expect(responses.map((r) => r.status)).toEqual(Array.from({ length: 10 }, () => 200));
+    expect(t.upstream.peak()).toBe(3);
+    expect(t.upstream.calls).toHaveLength(10);
+  });
+
+  it("bounds in-flight bytes: the size limit is reserved for each running fetch", async () => {
+    const t = gated(createFetchGate({ maxInFlight: 6, byteBudget: 20 * 1024 * 1024 }));
+    const requests = Array.from({ length: 5 }, (_, i) =>
+      t.serve(`acme/handbook/docs/img/p${i}.png`, {}, { maxBytes: 10 * 1024 * 1024 }),
+    );
+    await settle();
+    expect(t.upstream.running()).toBe(2);
+    expect(t.gate.stats().reservedBytes).toBe(20 * 1024 * 1024);
+    expect(t.upstream.calls.every((call) => call.maxBytes === 10 * 1024 * 1024)).toBe(true);
+    for (let done = 0; done < 5; done++) {
+      await settle();
+      t.upstream.calls[done]!.finish(PNG);
+    }
+    await Promise.all(requests);
+    expect(t.upstream.peak()).toBe(2);
+  });
+
+  it("answers 503 with Retry-After when the queue is full, without calling GitHub", async () => {
+    const t = gated(createFetchGate({ maxInFlight: 1, maxQueue: 2 }));
+    const accepted = [0, 1, 2].map((i) => t.serve(`acme/handbook/docs/img/p${i}.png`));
+    await settle();
+    expect(t.gate.stats()).toMatchObject({ inFlight: 1, queued: 2 });
+    const refused = await t.serve("acme/handbook/docs/img/overflow.png");
+    expect(refused.status).toBe(503);
+    expect(Number(refused.headers["retry-after"])).toBeGreaterThanOrEqual(1);
+    expect(refused.headers["cache-control"]).toBe("no-store");
+    expect(bodyText(refused)).toBe("The image is temporarily unavailable. Try again later.");
+    expectSecurityHeaders(refused);
+    expect(t.upstream.calls.map((call) => call.path)).toEqual(["docs/img/p0.png"]);
+    expect(t.logs.find("asset.upstream_failed")).toEqual([
+      expect.objectContaining({ reason: "overloaded" }),
+    ]);
+    // a refusal is not cached: once there is room the same image is fetched
+    for (let done = 0; done < 3; done++) {
+      await settle();
+      t.upstream.calls[done]!.finish(PNG);
+    }
+    await Promise.all(accepted);
+    const later = t.serve("acme/handbook/docs/img/overflow.png");
+    await settle();
+    t.upstream.calls[3]!.finish(PNG);
+    expect((await later).status).toBe(200);
+  });
+
+  it("answers 503 for a request that waited too long for a slot", async () => {
+    const t = gated(createFetchGate({ maxInFlight: 1, maxQueue: 5 }));
+    const first = t.serve("acme/handbook/docs/img/a.png");
+    await settle();
+    const res = await t.serve("acme/handbook/docs/img/b.png", {}, { queueTimeoutMs: 20 });
+    expect(res.status).toBe(503);
+    expect(res.headers["retry-after"]).toBeDefined();
+    expect(t.upstream.calls).toHaveLength(1);
+    t.upstream.calls[0]!.finish(PNG);
+    await first;
+  });
+
+  it("releases the slot when the upstream fetch fails", async () => {
+    const t = gated(createFetchGate({ maxInFlight: 1, maxQueue: 5 }));
+    const first = t.serve("acme/handbook/docs/img/a.png");
+    const second = t.serve("acme/handbook/docs/img/b.png");
+    await settle();
+    t.upstream.calls[0]!.fail(new Error("socket hang up"));
+    expect((await first).status).toBe(502);
+    await settle();
+    expect(t.upstream.calls).toHaveLength(2);
+    t.upstream.calls[1]!.finish(PNG);
+    expect((await second).status).toBe(200);
+    expect(t.gate.stats()).toEqual({ inFlight: 0, queued: 0, reservedBytes: 0, flights: 0 });
+  });
+
+  it("releases the slot when the upstream fetch times out", async () => {
+    const t = gated(createFetchGate({ maxInFlight: 1, maxQueue: 5 }));
+    const res = await t.serve("acme/handbook/docs/img/a.png", {}, { timeoutMs: 20 });
+    expect(res.status).toBe(504);
+    expect(t.gate.stats().inFlight).toBe(0);
+    const next = t.serve("acme/handbook/docs/img/b.png");
+    await settle();
+    t.upstream.calls[1]!.finish(PNG);
+    expect((await next).status).toBe(200);
+  });
+
+  it("aborts the upstream fetch and frees its slot when the only client goes away", async () => {
+    const t = gated(createFetchGate({ maxInFlight: 1, maxQueue: 5 }));
+    const client = new AbortController();
+    const gone = t.serve("acme/handbook/docs/img/a.png", { signal: client.signal });
+    const waiting = t.serve("acme/handbook/docs/img/b.png");
+    await settle();
+    expect(t.upstream.calls).toHaveLength(1);
+    client.abort();
+    expect((await gone).status).toBe(504);
+    expect(t.upstream.calls[0]!.signal?.aborted).toBe(true);
+    await settle();
+    expect(t.upstream.calls).toHaveLength(2);
+    t.upstream.calls[1]!.finish(PNG);
+    expect((await waiting).status).toBe(200);
+    expect(t.gate.stats()).toEqual({ inFlight: 0, queued: 0, reservedBytes: 0, flights: 0 });
+  });
+
+  it("keeps the shared fetch alive when one of several clients goes away", async () => {
+    const t = gated();
+    const client = new AbortController();
+    const impatient = t.serve("acme/handbook/docs/img/a.png", { signal: client.signal });
+    const patient = t.serve("acme/handbook/docs/img/a.png");
+    await settle();
+    client.abort();
+    expect((await impatient).status).toBe(504);
+    expect(t.upstream.calls[0]!.signal?.aborted).toBe(false);
+    t.upstream.calls[0]!.finish(PNG);
+    expect((await patient).status).toBe(200);
+    expect(t.upstream.calls).toHaveLength(1);
+  });
+
+  it("does not touch the gate for cache hits, refused paths or unknown repositories", async () => {
+    const t = gated();
+    const first = t.serve("acme/handbook/docs/img/a.png");
+    await settle();
+    t.upstream.calls[0]!.finish(PNG);
+    await first;
+    const spy = vi.spyOn(t.gate, "run");
+    expect((await t.serve("acme/handbook/docs/img/a.png")).status).toBe(200);
+    expect((await t.serve("acme/handbook/docs/notes.txt")).status).toBe(415);
+    expect((await t.serve("nobody/nothing/x.png")).status).toBe(404);
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 

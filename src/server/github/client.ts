@@ -207,6 +207,14 @@ const API_VERSION = "2022-11-28";
 /// Added to a wait derived from GitHub's reset time, which is in whole seconds.
 const RESET_MARGIN_MS = 1000;
 const PER_PAGE = 100;
+/** Walks of the installation listing before an inconsistent one fails (see `listOnce`). */
+const LISTING_ATTEMPTS = 2;
+
+/** Whether a `Link` response header has a `rel="next"` entry. */
+function hasNextLink(link: string | null): boolean {
+  if (link === null) return false;
+  return link.split(",").some((part) => /;\s*rel="?([^"]*\s)?next(\s[^"]*)?"?\s*(;|$)/i.test(part));
+}
 
 // ---------------------------------------------------------------------------------------------
 // Input validation
@@ -603,6 +611,55 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
     return { notModified: false, data, etag: res.headers.get("etag") };
   }
 
+  /**
+   * One walk over `GET /installation/repositories` (offset pagination). The walk is only
+   * `consistent` when its pages add up: every page reports the same `total_count`, the number of
+   * distinct repository ids equals that total, and a short last page does not carry a
+   * `rel="next"` link. Otherwise the installation's set changed between pages (a repository added
+   * or removed shifts later pages, so one can be skipped or seen twice), and the walk is reported
+   * inconsistent instead of being returned as a complete listing. Hitting `maxPages` throws.
+   * Duplicate ids keep their first occurrence.
+   */
+  async function listOnce(
+    signal: AbortSignal | undefined,
+  ): Promise<
+    | { consistent: true; repos: RepoInfo[] }
+    | { consistent: false; reason: "total_changed" | "count_mismatch" | "next_after_short" }
+  > {
+    const repos: RepoInfo[] = [];
+    const seen = new Set<number>();
+    let total: number | undefined;
+    for (let page = 1; page <= maxPages; page++) {
+      const res = await send({
+        path: "/installation/repositories",
+        query: `per_page=${PER_PAGE}&page=${page}`,
+        accept: "application/vnd.github+json",
+        signal,
+      });
+      if (res.status === 304) throw new GitHubError("invalid_response", 304);
+      const data = parse(listSchema, await readJson(res), res.status);
+      if (page === 1) total = data.total_count;
+      else if (data.total_count !== total) return { consistent: false, reason: "total_changed" };
+      for (const raw of data.repositories) {
+        if (seen.has(raw.id)) continue;
+        seen.add(raw.id);
+        repos.push(toRepoInfo(raw));
+      }
+      const short = data.repositories.length < PER_PAGE;
+      const reachedTotal = total !== undefined && seen.size >= total;
+      if (!short && !reachedTotal) continue;
+      if (short && hasNextLink(res.headers.get("link"))) {
+        return { consistent: false, reason: "next_after_short" };
+      }
+      if (total !== undefined && seen.size !== total) {
+        return { consistent: false, reason: "count_mismatch" };
+      }
+      return { consistent: true, repos };
+    }
+    // Never hand back a partial listing as if it were complete.
+    throw new GitHubError("invalid_response");
+  }
+
   const repoPath = (owner: string, repo: string) =>
     `/repos/${encodeURIComponent(checkOwner(owner))}/${encodeURIComponent(checkRepo(repo))}`;
 
@@ -621,24 +678,14 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
     },
 
     async listInstallationRepositories(opts = {}) {
-      const repos: RepoInfo[] = [];
-      for (let page = 1; page <= maxPages; page++) {
-        const result = await getJson(
-          {
-            path: "/installation/repositories",
-            query: `per_page=${PER_PAGE}&page=${page}`,
-            signal: opts.signal,
-          },
-          listSchema,
-          (data) => data,
-        );
-        const data = unwrap(result, 304);
-        for (const raw of data.repositories) repos.push(toRepoInfo(raw));
-        if (data.repositories.length < PER_PAGE) return repos;
-        if (data.total_count !== undefined && repos.length >= data.total_count) return repos;
+      // A listing whose pages do not add up (see `listOnce`) is walked once more from page 1;
+      // a second inconsistent walk throws, so a shifting set is never handed back as complete.
+      for (let attempt = 1; ; attempt++) {
+        const listed = await listOnce(opts.signal);
+        if (listed.consistent) return listed.repos;
+        log.warn("github.listing.inconsistent", { attempt, reason: listed.reason });
+        if (attempt >= LISTING_ATTEMPTS) throw new GitHubError("invalid_response");
       }
-      // Never hand back a partial listing as if it were complete.
-      throw new GitHubError("invalid_response");
     },
 
     async getTree(owner, repo, treeSha, opts = {}) {

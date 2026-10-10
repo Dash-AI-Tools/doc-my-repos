@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 import { withRepoSyncLock } from "../db/advisory-lock";
 import type { Db } from "../db/client";
 import { documents, repos, type RepoRemovalReason, type SyncRepoResult } from "../db/schema";
+import { errorFields, type Logger } from "../log";
 import type { DiscoveryConfig, DiscoveryResult } from "./discovery";
 import { describeSyncError, failureEntry, removalEntry, type SyncErrorInfo } from "./runs";
 
@@ -24,6 +25,9 @@ import { describeSyncError, failureEntry, removalEntry, type SyncErrorInfo } fro
  *   listedAt`; every successful persist sets `updated_at = now()`, and so does a `privatized`
  *   webhook), so a repo re-added, re-synced or privatized concurrently by a webhook is not deleted
  *   on stale information.
+ * - `confirmRemovals` (between the two) re-lists the installation once when a repo is planned as
+ *   `not_in_installation`, and keeps every candidate the second listing still has (or all of
+ *   them when it fails): offset pagination can miss a repo in one listing.
  * - `removeRepo` deletes one repo on an authoritative signal (task 6.3 webhooks).
  *
  * Archived repos: config-and-sources says every NON-archived accessible repo is "synced and
@@ -36,6 +40,8 @@ export const REMOVAL_BUSY_MESSAGE =
 export const REMOVAL_CHANGED_MESSAGE =
   "repository changed during the run; removal re-checked on the next sync";
 export const REMOVAL_ABORTED_MESSAGE = "sync aborted before the repository was removed";
+export const REMOVAL_UNCONFIRMED_MESSAGE =
+  "repository not confirmed gone by a second installation listing; removal re-checked on the next sync";
 
 /** A stored repo as the planner needs it. */
 export interface StoredRepoRef {
@@ -113,6 +119,11 @@ export type RemovalStatus =
   | "changed"
   /** The run was aborted before this repo. */
   | "aborted"
+  /**
+   * Planned as `not_in_installation`, but a second listing still had it (or could not be taken),
+   * so the first listing may have missed it: left alone, re-planned next run.
+   */
+  | "unconfirmed"
   /** The lock or the delete failed (database problem). */
   | "error";
 
@@ -212,6 +223,55 @@ export async function executeRemovals(
   return outcomes;
 }
 
+export interface ConfirmedRemovals {
+  /** Planned removals that may go ahead, in plan order. */
+  confirmed: PlannedRemoval[];
+  /** `unconfirmed` outcomes for the `not_in_installation` candidates a second listing kept. */
+  unconfirmed: RemovalOutcome[];
+}
+
+/**
+ * Confirms `not_in_installation` candidates against a second, independent installation listing
+ * before anything is deleted. The listing is offset-paginated, so a repository can be missed when
+ * the installation's set shifts between pages while the counts still agree; deleting on that
+ * one listing would drop a live repo until the next run restores it. A candidate is confirmed
+ * only when it is absent from BOTH listings. When the second listing fails, every such candidate
+ * is left alone. Other reasons (excluded, archived, dropped from config) come from what the
+ * listing did return, so they need no confirmation.
+ *
+ * Bounded cost: `listAgain` is called at most once, and only when there is a candidate to
+ * confirm. `log` gets one `sync.removal.unconfirmed` line per kept repo (GitHub id only).
+ */
+export async function confirmRemovals(
+  planned: readonly PlannedRemoval[],
+  listAgain: () => Promise<readonly { id: number }[]>,
+  log: Logger,
+): Promise<ConfirmedRemovals> {
+  const candidates = planned.filter((p) => p.reason === "not_in_installation");
+  if (candidates.length === 0) return { confirmed: [...planned], unconfirmed: [] };
+  let listed: ReadonlySet<number> | null;
+  try {
+    listed = new Set((await listAgain()).map((r) => r.id));
+  } catch (error) {
+    log.warn("sync.removal.confirm_failed", errorFields(error));
+    listed = null;
+  }
+  const confirmed: PlannedRemoval[] = [];
+  const unconfirmed: RemovalOutcome[] = [];
+  for (const repo of planned) {
+    if (repo.reason !== "not_in_installation" || (listed !== null && !listed.has(repo.githubId))) {
+      confirmed.push(repo);
+      continue;
+    }
+    log.warn("sync.removal.unconfirmed", {
+      githubId: repo.githubId,
+      reason: listed === null ? "listing_failed" : "listed_again",
+    });
+    unconfirmed.push({ repo, status: "unconfirmed", documentsRemoved: 0, error: null });
+  }
+  return { confirmed, unconfirmed };
+}
+
 function skippedEntry(repo: PlannedRemoval, kind: string, message: string): SyncRepoResult {
   const entry = failureEntry(
     repo,
@@ -238,6 +298,8 @@ export function removalOutcomeEntry(outcome: RemovalOutcome): SyncRepoResult {
       return skippedEntry(repo, "changed", REMOVAL_CHANGED_MESSAGE);
     case "aborted":
       return skippedEntry(repo, "aborted", REMOVAL_ABORTED_MESSAGE);
+    case "unconfirmed":
+      return skippedEntry(repo, "unconfirmed", REMOVAL_UNCONFIRMED_MESSAGE);
     case "error": {
       const entry = failureEntry(repo, outcome.error ?? describeSyncError(undefined));
       entry.removalReason = repo.reason;

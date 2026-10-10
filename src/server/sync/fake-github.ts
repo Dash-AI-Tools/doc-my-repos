@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
  * rules can make matching requests answer with any status and headers.
  *
  * Endpoints: `POST /app/installations/{id}/access_tokens`, `GET /installation/repositories`,
+ * (offset-paginated, `per_page`/`page`, with `total_count` and a `Link` header),
  * `GET /repos/{o}/{r}`, `.../branches/{b}` (ETag + `If-None-Match` -> 304), `.../git/trees/{sha}`,
  * `.../git/blobs/{sha}` (base64, wrapped like GitHub's) and `.../contents/{path}` (raw).
  */
@@ -270,10 +271,20 @@ export class FakeGitHub {
       const perPage = Number(url.searchParams.get("per_page") ?? 30);
       const page = Number(url.searchParams.get("page") ?? 1);
       const slice = this.repos.slice((page - 1) * perPage, page * perPage);
-      return json(200, {
-        total_count: this.repos.length,
-        repositories: slice.map((r) => this.repoJson(r)),
-      });
+      // Offset pagination with a `Link` header, as GitHub does: a repo added or removed between
+      // two page requests shifts the later pages (tests mutate the fixture in `onRequest`).
+      const last = Math.max(1, Math.ceil(this.repos.length / perPage));
+      const link = (p: number, rel: string) =>
+        `<https://api.github.com/installation/repositories?per_page=${perPage}&page=${p}>; rel="${rel}"`;
+      const links = [
+        ...(page < last ? [link(page + 1, "next"), link(last, "last")] : []),
+        ...(page > 1 ? [link(1, "first"), link(page - 1, "prev")] : []),
+      ];
+      return json(
+        200,
+        { total_count: this.repos.length, repositories: slice.map((r) => this.repoJson(r)) },
+        links.length > 0 ? { link: links.join(", ") } : {},
+      );
     }
 
     const m = /^\/repos\/([^/]+)\/([^/]+)(\/.*)?$/.exec(path);

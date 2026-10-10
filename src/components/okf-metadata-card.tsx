@@ -25,6 +25,10 @@ import { DateText, daysPhrase } from "./okf-notices";
  *   show renders nothing.
  * - `type` is shown exactly as authored, as a chip; `type`, `status` and each tag link to the
  *   repository page with that filter on (the same URL grammar as the table of contents filters).
+ *   The text is the cleaned value but the link carries the value as stored (`meta.typeFilter`,
+ *   `statusFilter`, `tagFilters`), so it selects the real group even for a value with zero-width
+ *   marks, double spaces or over 120 characters; a stored value that cannot be a filter value at
+ *   all is plain text.
  *   A status of `deprecated` or `draft` is tinted like its notice.
  * - Every value is untrusted text: React escapes it, nothing is injected as HTML. Only absolute
  *   http(s) URLs in `resource` and `sources` become links (`rel="noopener noreferrer"`); anything
@@ -254,21 +258,46 @@ function OtherFields({ meta }: { readonly meta: OkfMeta }) {
   );
 }
 
-function StatusChip({ status, href }: { readonly status: string; readonly href: string }) {
-  const notice = statusNotice(status);
-  const tint =
-    notice === "deprecated" ? CHIP_DEPRECATED : notice === "draft" ? CHIP_DRAFT : CHIP_NEUTRAL;
+/**
+ * A chip that filters the table of contents. The text is the cleaned value; `href` is built from
+ * the stored value, or null when that value cannot be a filter (then the chip is plain text).
+ */
+function FilterChip({
+  href,
+  label,
+  className,
+  title,
+  testId,
+}: {
+  readonly href: string | null;
+  readonly label: string;
+  readonly className: string;
+  readonly title: string;
+  readonly testId: string;
+}) {
+  if (href === null) {
+    return (
+      <span data-testid={testId} className={`${CHIP} ${className}`}>
+        <span className="min-w-0 break-all">{label}</span>
+      </span>
+    );
+  }
   return (
     <Link
       href={href}
       prefetch={false}
-      data-testid="okf-status"
-      className={`${CHIP} ${tint}`}
-      title="Show documents with this status"
+      data-testid={testId}
+      className={`${CHIP} ${className}`}
+      title={title}
     >
-      <span className="min-w-0 break-all">{status}</span>
+      <span className="min-w-0 break-all">{label}</span>
     </Link>
   );
+}
+
+function statusTint(status: string): string {
+  const notice = statusNotice(status);
+  return notice === "deprecated" ? CHIP_DEPRECATED : notice === "draft" ? CHIP_DRAFT : CHIP_NEUTRAL;
 }
 
 export interface OkfMetadataCardProps {
@@ -281,13 +310,16 @@ export interface OkfMetadataCardProps {
 
 export function OkfMetadataCard({ meta, now, repoPath }: OkfMetadataCardProps) {
   if (!meta.hasContent) return null;
-  const filterHref = (kind: "types" | "tags" | "statuses", value: string): string =>
-    buildFilterUrl(repoPath, {
-      repos: [],
-      types: kind === "types" ? [value] : [],
-      tags: kind === "tags" ? [value] : [],
-      statuses: kind === "statuses" ? [value] : [],
-    });
+  // `value` is the stored value (`meta.typeFilter` and friends), never the cleaned display text.
+  const filterHref = (kind: "types" | "tags" | "statuses", value: string | null): string | null =>
+    value === null
+      ? null
+      : buildFilterUrl(repoPath, {
+          repos: [],
+          types: kind === "types" ? [value] : [],
+          tags: kind === "tags" ? [value] : [],
+          statuses: kind === "statuses" ? [value] : [],
+        });
   const stale = staleness(meta, now);
   const staleExtra =
     stale.state === "stale" ? (
@@ -312,36 +344,38 @@ export function OkfMetadataCard({ meta, now, repoPath }: OkfMetadataCardProps) {
       <dl className="mt-3 flex flex-col gap-2">
         {meta.type !== null ? (
           <Row label="Type" testId="okf-row-type">
-            <Link
-              href={filterHref("types", meta.type)}
-              prefetch={false}
-              data-testid="okf-type"
-              className={`${CHIP} ${CHIP_TYPE}`}
+            <FilterChip
+              href={filterHref("types", meta.typeFilter)}
+              label={meta.type}
+              className={CHIP_TYPE}
               title="Show documents of this type"
-            >
-              <span className="min-w-0 break-all">{meta.type}</span>
-            </Link>
+              testId="okf-type"
+            />
           </Row>
         ) : null}
         {meta.status !== null ? (
           <Row label="Status" testId="okf-row-status">
-            <StatusChip status={meta.status} href={filterHref("statuses", meta.status)} />
+            <FilterChip
+              href={filterHref("statuses", meta.statusFilter)}
+              label={meta.status}
+              className={statusTint(meta.status)}
+              title="Show documents with this status"
+              testId="okf-status"
+            />
           </Row>
         ) : null}
         {meta.tags.length > 0 ? (
           <Row label="Tags" testId="okf-row-tags">
             <ListWithMore
               items={meta.tags.map((tag, i) => (
-                <Link
+                <FilterChip
                   key={i}
-                  href={filterHref("tags", tag)}
-                  prefetch={false}
-                  data-testid="okf-tag"
-                  className={`${CHIP} ${CHIP_NEUTRAL}`}
+                  href={filterHref("tags", meta.tagFilters[i] ?? null)}
+                  label={tag}
+                  className={CHIP_NEUTRAL}
                   title="Show documents with this tag"
-                >
-                  <span className="min-w-0 break-all">{tag}</span>
-                </Link>
+                  testId="okf-tag"
+                />
               ))}
               listClassName="flex flex-wrap gap-1.5"
             />

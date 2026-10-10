@@ -285,6 +285,8 @@ test.describe("OKF document page, seeded database", () => {
       await expect(log).toContainText("not a typed concept");
       await expect(log.getByRole("heading", { level: 2 })).toHaveText(["2026-03-20", "2026-03-10"]);
       await expect(card(page)).toHaveCount(0);
+      // its frontmatter says `status: deprecated`, but a reserved file is not a typed concept
+      await expect(page.getByTestId("okf-notices")).toHaveCount(0);
       expect(errors).toEqual([]);
     });
 
@@ -303,6 +305,8 @@ test.describe("OKF document page, seeded database", () => {
       await expect(page.getByRole("heading", { level: 1, name: "Showcase" })).toBeVisible();
       await expect(card(page)).toHaveCount(0);
       await expect(page.getByTestId("change-log")).toHaveCount(0);
+      // `status: draft` and a past `stale_after` in its frontmatter raise no notice
+      await expect(page.getByTestId("okf-notices")).toHaveCount(0);
     });
 
     test("keeps index.md and log.md out of the type counts and out of a type filter", async ({

@@ -1,5 +1,7 @@
-import { and, eq, getTableColumns, inArray, ne, sql, type SQL } from "drizzle-orm";
+import { and, eq, getTableColumns, inArray, ne, notInArray, sql, type SQL } from "drizzle-orm";
+import type { Pool } from "pg";
 
+import { AdvisoryLockError, withRepoSyncLock } from "../db/advisory-lock";
 import type { Db } from "../db/client";
 import { describeDbError } from "../db/client";
 import { codeOwners, documents, repos, type SyncWarning } from "../db/schema";
@@ -30,7 +32,11 @@ import { buildRepoSyncWarnings, type WarningSkip } from "./warnings";
  * - Renames: the same `github_id` with a new owner/name updates the row in place (documents
  *   kept). Any OTHER row whose owner/name equals the new one, ignoring case (GitHub names are
  *   case-insensitive, so two live repos cannot share one), is stale: it is deleted with its
- *   documents and code owners before the upsert, and reported in `replacedRepos`.
+ *   documents and code owners before the upsert, and reported in `replacedRepos`. With
+ *   `options.pool` (the sync engine) the stale row is deleted only under ITS repo's sync lock,
+ *   taken in try mode; when that repo is mid-sync the call fails with `name_conflict_busy` and
+ *   writes nothing (retried next sync). A `content` plan carrying `storedRepoId` must land in the
+ *   row it was diffed against, else `stale_plan` (the engine re-plans).
  * - Documents: `fetched` files are upserted by (repo_id, path); a row whose stored values already
  *   match is not touched (no write, `updated_at` kept), so the same input twice is a no-op.
  *   `removed` paths are deleted. `failed` paths and paths not mentioned are left as stored.
@@ -68,7 +74,7 @@ import { buildRepoSyncWarnings, type WarningSkip } from "./warnings";
  *   throws `PersistError('stale_plan')` and writes nothing, since marking an unverified row as
  *   synced could hide missing content.
  *
- * Not done here: taking the per-repo advisory lock (the caller wraps this in `withRepoSyncLock`,
+ * Not done here: taking this repo's own advisory lock (the caller wraps this in `withRepoSyncLock`,
  * task 5.8), `sync_runs` and error status (5.7), and removing repos (5.9).
  *
  * Errors: database failures are rethrown as `PersistError('database')` with only the SQLSTATE in
@@ -79,8 +85,18 @@ import { buildRepoSyncWarnings, type WarningSkip } from "./warnings";
 export type PersistErrorKind =
   /** The caller's signal aborted; the transaction was rolled back. */
   | "aborted"
-  /** An `unchanged` plan does not match the stored row (missing, or another tree/selection). */
+  /**
+   * An `unchanged` plan does not match the stored row (missing, or another tree/selection), or a
+   * `content` plan was computed against a stored row (`storedRepoId`) that is no longer the row
+   * this repo is stored in (deleted or replaced meanwhile).
+   */
   | "stale_plan"
+  /**
+   * Another stored repository holds this repo's new owner/name and its sync lock is busy (it is
+   * being synced or removed right now), so its row cannot be replaced safely. Nothing was
+   * written; retryable on the next sync.
+   */
+  | "name_conflict_busy"
   /** A database statement failed; the transaction was rolled back. */
   | "database";
 
@@ -149,6 +165,15 @@ export type PersistPlan =
         readonly skipped: readonly WarningSkip[];
         readonly capped: { readonly found: number; readonly limit: number } | null;
       };
+      /**
+       * The `repos.id` of the stored row whose documents the plan was diffed against, or null when
+       * the plan was built with no stored row (a first sync: every selected file fetched). When
+       * set (including null), persist checks the row it writes is that same row and otherwise
+       * throws `stale_plan` without writing: a plan diffed against stored documents leaves the
+       * unchanged ones out of `fetched`, so writing it into a recreated row would drop them while
+       * marking the sync complete. Absent (handcrafted plans, seeding): not checked.
+       */
+      storedRepoId?: number | null;
     } & PersistHead);
 
 export interface PersistInput {
@@ -167,6 +192,14 @@ export interface PersistOptions {
    * Without it the visibility is written as listed (callers whose metadata is known fresh).
    */
   listedAt?: DbInstant;
+  /**
+   * The pool for repository sync locks. When given, a stale row holding this repo's new
+   * owner/name (another GitHub id) is deleted only while holding THAT repo's sync lock, taken in
+   * try mode before the transaction; a busy lock fails the call with `name_conflict_busy` and
+   * nothing is written. Without it the stale row is deleted unguarded: only for single-writer
+   * callers (seeding, tests). The sync engine always passes it.
+   */
+  pool?: Pool;
 }
 
 export type PersistSkipReason = "too_large" | "write_rejected";
@@ -513,8 +546,59 @@ export async function persistRepoSync(
   const heldPrivate = (stored: "public" | "private" | undefined) =>
     metadata.visibility === "public" && stored === "private";
 
+  // Rows of OTHER repositories holding this repo's new owner/name (deleted, recreated or renamed
+  // repos), matched ignoring case as GitHub does.
+  const nameConflict = and(
+    ne(repos.githubId, repo.githubId),
+    sql`lower(${repos.owner}) = lower(${metadata.owner})`,
+    sql`lower(${repos.name}) = lower(${metadata.name})`,
+  );
+  const { pool } = options;
+
+  /**
+   * Runs `fn` while holding the sync locks of `ids` (try mode, one after another). A busy lock
+   * throws `name_conflict_busy`: that repo is being synced or removed right now, and deleting its
+   * row under it could make its sync write a plan diffed against stored documents into a fresh
+   * row (see `storedRepoId`). Try mode cannot deadlock, even when two repos swap names.
+   */
+  async function holdingLocks<T>(ids: readonly number[], fn: () => Promise<T>): Promise<T> {
+    const [first, ...rest] = ids;
+    if (first === undefined || pool === undefined) return fn();
+    const lock = await withRepoSyncLock(pool, { githubId: first }, () => holdingLocks(rest, fn), {
+      signal,
+      waitMs: 0,
+    });
+    if (lock.acquired) return lock.value;
+    if (lock.reason === "aborted") throw new PersistError("aborted", "persist aborted");
+    throw new PersistError(
+      "name_conflict_busy",
+      "another repository with this name is being synced; retried on the next sync",
+    );
+  }
+
   try {
-    return await db.transaction(async (tx) => {
+    const conflicting =
+      pool === undefined
+        ? []
+        : (
+            await db
+              .select({ githubId: repos.githubId })
+              .from(repos)
+              .where(nameConflict)
+              .orderBy(repos.githubId)
+          ).map((r) => r.githubId);
+    return await holdingLocks(conflicting, () => writeTransaction(conflicting));
+  } catch (error) {
+    if (error instanceof PersistError || error instanceof AdvisoryLockError) throw error;
+    throw new PersistError(
+      "database",
+      `persist failed: ${describeDbError(error)}`,
+      sqlState(error),
+    );
+  }
+
+  async function writeTransaction(locked: readonly number[]): Promise<PersistResult> {
+    return db.transaction(async (tx) => {
       checkSignal(signal);
       const result: PersistResult = {
         repoId: 0,
@@ -533,17 +617,34 @@ export async function persistRepoSync(
       };
 
       // Stale rows holding the new owner/name under another GitHub id (deleted, recreated or
-      // renamed repos). Cascades to their documents and code owners.
-      result.replacedRepos = await tx
-        .delete(repos)
-        .where(
-          and(
-            ne(repos.githubId, repo.githubId),
-            sql`lower(${repos.owner}) = lower(${metadata.owner})`,
-            sql`lower(${repos.name}) = lower(${metadata.name})`,
-          ),
-        )
-        .returning({ githubId: repos.githubId, owner: repos.owner, name: repos.name });
+      // renamed repos). Cascades to their documents and code owners. With a pool, only rows whose
+      // sync lock this call holds are deleted; a conflicting row that appeared after the locks
+      // were taken fails the call (retried next sync) rather than being deleted unlocked.
+      if (pool === undefined) {
+        result.replacedRepos = await tx
+          .delete(repos)
+          .where(nameConflict)
+          .returning({ githubId: repos.githubId, owner: repos.owner, name: repos.name });
+      } else {
+        if (locked.length > 0) {
+          result.replacedRepos = await tx
+            .delete(repos)
+            .where(and(nameConflict, inArray(repos.githubId, [...locked])))
+            .returning({ githubId: repos.githubId, owner: repos.owner, name: repos.name });
+        }
+        const unlocked = tx.select({ id: repos.id }).from(repos);
+        const [late] = await (
+          locked.length > 0
+            ? unlocked.where(and(nameConflict, notInArray(repos.githubId, [...locked])))
+            : unlocked.where(nameConflict)
+        ).limit(1);
+        if (late !== undefined) {
+          throw new PersistError(
+            "name_conflict_busy",
+            "another repository with this name is being synced; retried on the next sync",
+          );
+        }
+      }
 
       if (plan.kind === "unchanged") {
         const [row] = await tx
@@ -592,8 +693,21 @@ export async function persistRepoSync(
           target: repos.githubId,
           set: { ...metadata, ...visibilitySet, updatedAt: sql`now()` },
         })
-        .returning({ id: repos.id, visibility: repos.visibility });
+        .returning({
+          id: repos.id,
+          visibility: repos.visibility,
+          inserted: sql<boolean>`(xmax = 0)`,
+        });
       const repoId = (upserted as { id: number }).id;
+      // The plan was diffed against another row than the one written now (or against none while
+      // a row exists): writing it would leave out the documents it took as unchanged.
+      if (plan.storedRepoId !== undefined) {
+        const stale =
+          plan.storedRepoId === null ? upserted?.inserted !== true : repoId !== plan.storedRepoId;
+        if (stale) {
+          throw new PersistError("stale_plan", "the stored repository does not match the plan");
+        }
+      }
       result.repoId = repoId;
       result.visibilityHeld = heldPrivate(upserted?.visibility);
 
@@ -662,12 +776,5 @@ export async function persistRepoSync(
         .where(eq(repos.id, repoId));
       return result;
     });
-  } catch (error) {
-    if (error instanceof PersistError) throw error;
-    throw new PersistError(
-      "database",
-      `persist failed: ${describeDbError(error)}`,
-      sqlState(error),
-    );
   }
 }

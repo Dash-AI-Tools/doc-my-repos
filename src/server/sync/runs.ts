@@ -228,6 +228,12 @@ export function describeSyncError(error: unknown, now: number = Date.now()): Syn
           "stored state changed during the sync; retried on the next sync",
           true,
         );
+      case "name_conflict_busy":
+        return info(
+          "name_conflict_busy",
+          "another repository with this name is being synced; retried on the next sync",
+          true,
+        );
       case "database": {
         const code =
           typeof error.code === "string" && SQLSTATE.test(error.code) ? error.code : null;

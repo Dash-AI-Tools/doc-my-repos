@@ -10,7 +10,7 @@ import {
 } from "@/lib/search-view";
 
 import { expectedFailureKind } from "./home";
-import { anchorId } from "./markdown/sanitize";
+import { anchorId, SLUG_ID } from "./markdown/sanitize";
 import { searchDocuments, searchFacets, type SearchHit } from "./queries";
 import { getRuntime } from "./runtime";
 import type { Db } from "./db/client";
@@ -39,7 +39,12 @@ export interface SearchPageDeps {
   readonly log?: LogFn;
 }
 
-/** The link to a document, with the best matching heading as a `#anchor` below the title. */
+/**
+ * The link to a document, with the best matching heading as a `#anchor` below the title. The
+ * anchor is added only when the doc page really gives that heading an id (the sanitizer keeps a
+ * heading id only if it matches `SLUG_ID`, then maps it through `anchorId`); otherwise the link
+ * goes to the top of the document, and the section label is still shown.
+ */
 export function searchResultItem(hit: SearchHit): ResultItemData {
   const { repo, doc, heading } = hit;
   const base =
@@ -49,10 +54,11 @@ export function searchResultItem(hit: SearchHit): ResultItemData {
   const section = heading !== null && heading.depth > 1 ? heading : null;
   // `index.md` and `log.md` are not typed concepts: no type, status or tag chips on their rows.
   const typed = doc.reserved === null;
+  const anchored = section !== null && SLUG_ID.test(section.slug);
   return {
     key: `${repo.id}:${doc.path}`,
     title: doc.title,
-    href: section === null ? base : `${base}#${encodeURIComponent(anchorId(section.slug))}`,
+    href: anchored ? `${base}#${encodeURIComponent(anchorId(section.slug))}` : base,
     repoLabel: `${repo.owner}/${repo.name}`,
     repoHref: repoUrl(repo.owner, repo.name),
     path: doc.path,

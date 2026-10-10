@@ -77,12 +77,42 @@ const limits = z
   })
   .prefault({});
 
+/**
+ * Background sync schedule (design: "Keep content fresh via webhooks, with a manual/scheduled
+ * fallback"). `intervalMinutes` is the period of the full sync that catches lost webhook
+ * deliveries: 0 turns periodic runs off, otherwise at least 5 minutes (each run lists the whole
+ * installation and checks every repo's head) and at most a week. `onStartup` runs one full sync
+ * shortly after the server starts. Whether the scheduler runs at all is an environment decision
+ * (`SYNC_SCHEDULER`, see `src/server/sync/schedule-runtime.ts`), not a config one.
+ */
+export const DEFAULT_SYNC_INTERVAL_MINUTES = 60;
+export const MIN_SYNC_INTERVAL_MINUTES = 5;
+export const MAX_SYNC_INTERVAL_MINUTES = 7 * 24 * 60;
+
+const syncSchedule = z
+  .strictObject({
+    intervalMinutes: z
+      .int("intervalMinutes must be a whole number of minutes")
+      .max(
+        MAX_SYNC_INTERVAL_MINUTES,
+        `intervalMinutes must be at most ${MAX_SYNC_INTERVAL_MINUTES} (one week)`,
+      )
+      .refine(
+        (minutes) => minutes === 0 || minutes >= MIN_SYNC_INTERVAL_MINUTES,
+        `intervalMinutes must be 0 (off) or at least ${MIN_SYNC_INTERVAL_MINUTES}`,
+      )
+      .default(DEFAULT_SYNC_INTERVAL_MINUTES),
+    onStartup: z.boolean("onStartup must be true or false").default(true),
+  })
+  .prefault({});
+
 export const configSchema = z
   .strictObject({
     repos: z.array(repoEntry).min(1, "repos must list at least one repository").optional(),
     exclude: z.array(repoName).min(1, "exclude must list at least one repository").optional(),
     defaults,
     limits,
+    sync: syncSchedule,
   })
   .superRefine((cfg, ctx) => {
     if (cfg.repos && cfg.exclude) {

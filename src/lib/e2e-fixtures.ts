@@ -12,3 +12,18 @@
 export function e2eFixturesEnabled(env: Readonly<Record<string, string | undefined>>): boolean {
   return env.E2E_FIXTURES === "1";
 }
+
+/**
+ * Request header with which the e2e suite asks the root layout to crash, so `global-error.tsx`
+ * can be exercised in a real browser (nothing else can make a root layout throw on demand). The
+ * layout honors it only when `E2E_FIXTURES` is `"1"` (`shouldCrashRootLayout`); a production
+ * server never has that variable, so a client sending the header gets a normal page.
+ */
+export const E2E_CRASH_HEADER = "x-e2e-crash-layout";
+
+export function shouldCrashRootLayout(
+  env: Readonly<Record<string, string | undefined>>,
+  headerValue: string | null,
+): boolean {
+  return e2eFixturesEnabled(env) && headerValue === "1";
+}

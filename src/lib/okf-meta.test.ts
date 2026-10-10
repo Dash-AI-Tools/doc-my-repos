@@ -534,6 +534,38 @@ describe("parseRefs", () => {
   });
 });
 
+describe("buildOkfMeta, filter values", () => {
+  const ZWSP = String.fromCharCode(0x200b);
+
+  it("keeps the stored value for the filter and the cleaned text for display", () => {
+    const type = `  Run${ZWSP}book  x `;
+    const status = "in  review";
+    const tags = ["a  b", "x".repeat(150)];
+    const meta = buildOkfMeta({}, cols({ type, status, tags }));
+    expect(meta.type).toBe("Runbook x");
+    expect(meta.typeFilter).toBe(type);
+    expect(meta.status).toBe("in review");
+    expect(meta.statusFilter).toBe(status);
+    expect(meta.tags[0]).toBe("a b");
+    expect(meta.tags[1]?.endsWith("…")).toBe(true);
+    expect(meta.tagFilters).toEqual(tags);
+  });
+
+  it("has no filter value when the stored value cannot be one", () => {
+    const meta = buildOkfMeta({}, cols({ type: "T".repeat(257), tags: ["ok", "t".repeat(300)] }));
+    expect(meta.type).toBe("T".repeat(257));
+    expect(meta.typeFilter).toBeNull();
+    expect(meta.tagFilters).toEqual(["ok", null]);
+    expect(buildOkfMeta({}, NONE).typeFilter).toBeNull();
+  });
+
+  it("keeps tags and tag filters parallel when a tag cleans to nothing", () => {
+    const meta = buildOkfMeta({}, cols({ tags: [ZWSP, "real", "  "] }));
+    expect(meta.tags).toEqual(["real"]);
+    expect(meta.tagFilters).toEqual(["real"]);
+  });
+});
+
 describe("buildOkfMeta", () => {
   it("builds a type-only document: just the type, nothing else", () => {
     const meta = buildOkfMeta({ type: "Note" }, cols({ type: "Note" }));
@@ -541,6 +573,9 @@ describe("buildOkfMeta", () => {
       type: "Note",
       status: null,
       tags: [],
+      typeFilter: "Note",
+      statusFilter: null,
+      tagFilters: [],
       tagsOmitted: 0,
       description: null,
       resource: { items: [], omitted: 0 },

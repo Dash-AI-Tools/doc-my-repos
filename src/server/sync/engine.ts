@@ -15,6 +15,7 @@ import {
 } from "./discovery";
 import { PersistError, persistRepoSync, type PersistPlan, type PersistRepo } from "./persist";
 import {
+  confirmRemovals,
   databaseNow,
   executeRemovals,
   planRemovals,
@@ -188,9 +189,56 @@ export function createSyncContext(input: CreateSyncContextInput): SyncContext {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Pool budget
+
+/**
+ * Pool connections one in-flight repository needs in a full run: its repo sync lock, the
+ * transaction and queries, and (shared across repos, counted per repo to stay on the safe side)
+ * the run lock or a lock taken while replacing a stale same-name row.
+ */
+export const CONNECTIONS_PER_REPO = 3;
+/** Connections kept free for page reads, webhooks and the scheduler's own lock. */
+export const POOL_HEADROOM = 2;
+/** node-postgres's default `max`. */
+const DEFAULT_POOL_MAX = 10;
+
+/** The pool's `max` option (node-postgres keeps it on `pool.options`), or the driver default. */
+export function poolMax(pool: Pool): number {
+  const max = (pool as { options?: { max?: unknown } }).options?.max;
+  return typeof max === "number" && Number.isSafeInteger(max) && max > 0 ? max : DEFAULT_POOL_MAX;
+}
+
+/**
+ * `repoConcurrency` clamped to what the pool can serve: floor((max - headroom) / per repo), at
+ * least 1. A larger setting would have repos wait on the pool's connection timeout and fail their
+ * lock with a database error instead of running.
+ */
+export function effectiveRepoConcurrency(requested: number, max: number): number {
+  const fits = Math.floor((max - POOL_HEADROOM) / CONNECTIONS_PER_REPO);
+  return Math.max(1, Math.min(requested, fits));
+}
+
+/** Contexts whose clamp was already logged: once per context, not once per run. */
+const clampLogged = new WeakSet<SyncContext>();
+
+/** The repo concurrency a full run uses for `ctx`; logs `sync.concurrency.clamped` once. */
+export function repoConcurrencyFor(ctx: SyncContext): number {
+  const requested = ctx.tuning.repoConcurrency;
+  const max = poolMax(ctx.pool);
+  const effective = effectiveRepoConcurrency(requested, max);
+  if (effective < requested && !clampLogged.has(ctx)) {
+    clampLogged.add(ctx);
+    ctx.log.warn("sync.concurrency.clamped", { requested, effective, poolMax: max });
+  }
+  return effective;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Stored state
 
 interface StoredRepoState {
+  /** The stored row's `repos.id`, or null for a first sync. */
+  repoId: number | null;
   tree: StoredTreeState;
   readmeSha: string | null;
   codeownersSha: string | null;
@@ -224,13 +272,14 @@ async function readStoredState(db: Db, githubId: number): Promise<StoredRepoStat
     .from(repos)
     .where(eq(repos.githubId, githubId));
   if (row === undefined) {
-    return { tree: NO_TREE, readmeSha: null, codeownersSha: null, docs: new Map() };
+    return { repoId: null, tree: NO_TREE, readmeSha: null, codeownersSha: null, docs: new Map() };
   }
   const docRows = await db
     .select({ path: documents.path, blobSha: documents.blobSha })
     .from(documents)
     .where(eq(documents.repoId, row.id));
   return {
+    repoId: row.id,
     tree: {
       treeSha: row.treeSha,
       selectionFingerprint: row.selectionFingerprint,
@@ -359,6 +408,7 @@ export async function syncRepo(
         readme: blobs.repoLevel.readme,
         codeowners: blobs.repoLevel.codeowners,
         selection: { skipped: plan.skipped, capped: plan.capped },
+        storedRepoId: stored.repoId,
       };
     }
 
@@ -366,7 +416,7 @@ export async function syncRepo(
       const persist = await persistRepoSync(
         ctx.db,
         { repo: persistRepoOf(repo), plan: persistPlan },
-        { signal, listedAt, maxDocumentBytes: limits.maxFileBytes },
+        { signal, listedAt, maxDocumentBytes: limits.maxFileBytes, pool: ctx.pool },
       );
       return {
         persist,
@@ -666,7 +716,7 @@ export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promis
         worker(ctx, since, storedAtListing),
         {
           signal,
-          concurrency: ctx.tuning.repoConcurrency,
+          concurrency: repoConcurrencyFor(ctx),
           lockWaitMs: ctx.tuning.lockWaitMs,
           listedAt: since,
           now: ctx.now,
@@ -686,11 +736,21 @@ export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promis
           discovery,
           config: ctx.config,
         });
-        removals = await executeRemovals(ctx.db, ctx.pool, planned, {
+        const { confirmed, unconfirmed } = await confirmRemovals(
+          planned,
+          () => ctx.github.listInstallationRepositories({ signal }),
+          ctx.log.child({ runId }),
+        );
+        const executed = await executeRemovals(ctx.db, ctx.pool, confirmed, {
           discoveredGithubIds: discovery.repos.map((r) => r.githubId),
           listedAt,
           signal,
         });
+        // Plan order, as before the confirmation step.
+        const byId = new Map(
+          [...executed, ...unconfirmed].map((o) => [o.repo.githubId, o] as const),
+        );
+        removals = planned.flatMap((p) => byId.get(p.githubId) ?? []);
         for (const outcome of removals) {
           const entry = removalOutcomeEntry(outcome);
           handled.push({ outcome, entry });

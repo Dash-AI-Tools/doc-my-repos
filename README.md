@@ -61,9 +61,14 @@ defaults:
 limits:
   maxDocsPerRepo: 2000 # more docs: only the first 2000 in path order are synced
   maxFileBytes: 262144 # larger files are skipped; 256 KB is also the maximum
+sync:
+  intervalMinutes: 60 # full sync period, the fallback for missed webhooks; 0 = off, else >= 5
+  onStartup: true # one full sync about 10 s after the server starts
 ```
 
 Files left out by these limits are listed as a warning in the repository header and on `/status`.
+
+The background scheduler runs the startup and periodic full syncs (with ±10 % jitter, retrying failed runs sooner with backoff up to 15 minutes) and, every minute, any per-repository syncs left waiting by busy repositories or a restart. It runs when `NODE_ENV=production` and is off in development and tests, so `pnpm dev` never calls GitHub on its own; `SYNC_SCHEDULER=1` or `SYNC_SCHEDULER=0` forces it on or off. With several instances only one runs a scheduled full sync at a time. Changes to `sync` apply after a restart.
 
 ### Sync status
 
@@ -78,6 +83,7 @@ Files left out by these limits are listed as a warning in the repository header 
 | `GITHUB_WEBHOOK_SECRET`      | Webhook secret (16+ characters) of the GitHub App, verifies signatures    |
 | `SYNC_SECRET`                | Secret (16+ characters) that protects the manual `/api/sync` endpoint     |
 | `LOG_LEVEL`                  | Optional: `debug`, `info` (default), `warn`, `error` or `silent`          |
+| `SYNC_SCHEDULER`             | Optional: `1` or `0` forces the background sync scheduler on or off       |
 
 ### GitHub App
 
@@ -98,7 +104,7 @@ pnpm db:up                                        # Postgres for the e2e databas
 pnpm test:e2e
 ```
 
-`pnpm test:e2e` builds the app once and starts four servers on ports 3100 to 3103: fixture pages without a database, a throwaway database seeded with public and private repositories (`e2e/support/seed-data.ts`), an empty one, and one whose database is unreachable. Each run creates `docmyrepos_e2e_<random>_seeded` and `_empty` databases on the server in `DATABASE_URL_E2E` (default: the compose database from `.env.example`) and drops them afterwards. The servers use a generated throwaway GitHub App key and placeholder secrets; GitHub is never contacted.
+`pnpm test:e2e` builds the app once and starts four servers on ports 3100 to 3103: fixture pages without a database, a throwaway database seeded with public and private repositories (`e2e/support/seed-data.ts`), an empty one, and one whose database is unreachable. Each run creates `docmyrepos_e2e_<random>_seeded` and `_empty` databases on the server in `DATABASE_URL_E2E` (default: the compose database from `.env.example`) and drops them afterwards. The servers use a generated throwaway GitHub App key and placeholder secrets and run with the sync scheduler off (`SYNC_SCHEDULER=0`; the fixture server via `E2E_FIXTURES=1`); GitHub is never contacted.
 
 Without a reachable Postgres the run fails at once and prints the command above. Set `E2E_SKIP_DB=1` to run only the specs that need no database; the others are skipped with a visible reason.
 

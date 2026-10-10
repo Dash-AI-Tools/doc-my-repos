@@ -12,8 +12,12 @@ import { codeOwners, documents, repos, syncRuns } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import { createInstallationTokenProvider } from "../github/app-auth";
 import { createGitHubClient } from "../github/client";
+import { recordingLogger } from "../test-logger";
 import {
   createSyncContext,
+  effectiveRepoConcurrency,
+  poolMax,
+  repoConcurrencyFor,
   syncAll,
   syncOne,
   syncRepo,
@@ -128,6 +132,41 @@ describe("createSyncContext", () => {
     ] as SyncTuning[]) {
       expect(() => createSyncContext({ ...base(), tuning })).toThrow(TypeError);
     }
+  });
+
+  it("clamps repoConcurrency to what the pool can serve, logging once per context", () => {
+    expect(poolMax({} as never)).toBe(10);
+    expect(poolMax({ options: { max: 25 } } as never)).toBe(25);
+    expect(poolMax({ options: { max: 0 } } as never)).toBe(10);
+    // floor((max - 2) / 3), at least 1, never above the request.
+    expect(effectiveRepoConcurrency(8, 10)).toBe(2);
+    expect(effectiveRepoConcurrency(1, 10)).toBe(1);
+    expect(effectiveRepoConcurrency(4, 1)).toBe(1);
+    expect(effectiveRepoConcurrency(4, 5)).toBe(1);
+    expect(effectiveRepoConcurrency(4, 14)).toBe(4);
+    expect(effectiveRepoConcurrency(10, 32)).toBe(10);
+
+    const rec = recordingLogger();
+    const ctx = createSyncContext({
+      ...base(),
+      pool: { options: { max: 8 } } as never,
+      tuning: { repoConcurrency: 4 },
+      log: rec.log,
+    });
+    expect(repoConcurrencyFor(ctx)).toBe(2);
+    expect(repoConcurrencyFor(ctx)).toBe(2);
+    expect(rec.find("sync.concurrency.clamped")).toEqual([
+      expect.objectContaining({ requested: 4, effective: 2, poolMax: 8, level: "warn" }),
+    ]);
+
+    const fits = createSyncContext({
+      ...base(),
+      pool: { options: { max: 20 } } as never,
+      tuning: { repoConcurrency: 4 },
+      log: rec.log,
+    });
+    expect(repoConcurrencyFor(fits)).toBe(4);
+    expect(rec.find("sync.concurrency.clamped")).toHaveLength(1);
   });
 
   it("accepts the frozen config shape loadConfig returns", () => {
@@ -349,6 +388,17 @@ describeDb("sync engine against a fixture-backed fake GitHub", () => {
   });
 
   // (2)
+  it("a repoConcurrency larger than the pool allows is clamped and the run still succeeds", async () => {
+    const fake = fixture();
+    // Pool max 10 -> at most 2 repos at once; 16 would exhaust the pool and fail lock takes.
+    const ctx = ctxFor(fake, { tuning: { repoConcurrency: 16 }, config: {} });
+    expect(repoConcurrencyFor(ctx)).toBe(2);
+    const result = await syncAll(ctx, { trigger: "manual" });
+    expect(result.fatal).toBeNull();
+    expect(result.run.ran && result.run.status).toBe("success");
+    expect(result.run.ran && result.run.value.map((e) => e.status)).toEqual(["ok", "ok", "ok"]);
+  });
+
   it("a second sync with no changes fetches no trees or blobs and leaves rows identical", async () => {
     const fake = fixture();
     const ctx = ctxFor(fake);

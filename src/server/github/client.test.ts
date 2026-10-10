@@ -405,6 +405,62 @@ describe("listInstallationRepositories", () => {
     expect(err.kind).toBe("invalid_response");
   });
 
+  const linked = (body: Response, link: string): Response => {
+    const res = new Response(body.body, { status: body.status, headers: body.headers });
+    res.headers.set("link", link);
+    return res;
+  };
+  const NEXT = '<https://api.github.com/installation/repositories?page=2>; rel="next"';
+
+  it("re-walks the listing once when total_count changes between pages", async () => {
+    const s = setup([
+      page(1, 100, 150),
+      page(101, 50, 151), // the set changed mid-walk
+      page(1, 100, 150),
+      page(101, 50, 150),
+    ]);
+    const repos = await s.client.listInstallationRepositories();
+    expect(repos).toHaveLength(150);
+    expect(s.calls).toHaveLength(4);
+    expect(s.calls[2]!.url).toContain("page=1");
+  });
+
+  it("throws invalid_response, not a short list, when two walks are inconsistent", async () => {
+    const s = setup([page(1, 100, 150), page(101, 50, 151), page(1, 100, 150), page(101, 50, 151)]);
+    const err = await catchError(s.client.listInstallationRepositories());
+    expect(err.kind).toBe("invalid_response");
+    expect(s.calls).toHaveLength(4);
+  });
+
+  it("treats a short page that still links to a next page as incomplete", async () => {
+    const s = setup([linked(page(1, 99, 99), NEXT)]);
+    const err = await catchError(s.client.listInstallationRepositories());
+    expect(err.kind).toBe("invalid_response");
+    expect(s.calls).toHaveLength(2);
+  });
+
+  it("treats a short last page below total_count as incomplete", async () => {
+    // Counts agree on both pages, but a repo moved from page 2 to page 1 between requests, so
+    // page 2 repeats one id and the walk ends one repo short.
+    const s = setup([page(1, 100, 150), page(100, 50, 150), page(1, 100, 150), page(101, 50, 150)]);
+    const repos = await s.client.listInstallationRepositories();
+    expect(repos).toHaveLength(150);
+    expect(new Set(repos.map((r) => r.id)).size).toBe(150);
+    expect(s.calls).toHaveLength(4);
+  });
+
+  it("accepts a last page without a next link", async () => {
+    const s = setup([
+      linked(page(1, 100, 150), NEXT),
+      linked(
+        page(101, 50, 150),
+        '<https://x/?page=1>; rel="first", <https://x/?page=1>; rel="prev"',
+      ),
+    ]);
+    expect(await s.client.listInstallationRepositories()).toHaveLength(150);
+    expect(s.calls).toHaveLength(2);
+  });
+
   it("maps internal and private visibility to private", async () => {
     const s = setup([
       json({

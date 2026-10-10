@@ -13,6 +13,7 @@ import * as schema from "../db/schema";
 import { documents, repos, type Heading } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import {
+  MAX_HEADINGS_CONSIDERED,
   MAX_HEADLINE_SOURCE_CHARS,
   RANK_WEIGHTS,
   searchDocuments,
@@ -423,6 +424,92 @@ describeDb("search on a real database", () => {
       expect(scalar).toBeDefined();
       expect(scalar?.heading).toBeNull();
     });
+  });
+
+  describe("best heading on heading-heavy documents", () => {
+    const HEADINGS = 5000;
+    const manyHeadings = (matches: Record<number, string>): Heading[] =>
+      Array.from({ length: HEADINGS }, (_, i) => ({
+        depth: 2,
+        text: matches[i] ?? `Topic ${i} filler`,
+        slug: `topic-${i}`,
+      }));
+
+    async function insertDocs(rows: (typeof documents.$inferInsert)[]): Promise<void> {
+      await t.db.insert(documents).values(rows);
+    }
+    const cleanup = () => t.db.delete(documents).where(sql`${documents.path} like 'docs/heavy/%'`);
+
+    it("caps the headings considered, in document order", async () => {
+      expect(MAX_HEADINGS_CONSIDERED).toBe(200);
+      try {
+        await insertDocs([
+          doc(s.long, "docs/heavy/early.md", "Early", {
+            body: "headingstorm body",
+            headings: manyHeadings({ 7: "Needle headingstorm", 4500: "Late headingstorm" }),
+          }),
+          doc(s.long, "docs/heavy/edge.md", "Edge", {
+            body: "headingstorm body",
+            headings: manyHeadings({ [MAX_HEADINGS_CONSIDERED - 1]: "Last headingstorm" }),
+          }),
+          doc(s.long, "docs/heavy/past-cap.md", "Past cap", {
+            body: "headingstorm body",
+            headings: manyHeadings({ [MAX_HEADINGS_CONSIDERED]: "First ignored headingstorm" }),
+          }),
+          doc(s.long, "docs/heavy/late-only.md", "Late only", {
+            body: "headingstorm body",
+            headings: manyHeadings({ 4999: "Final headingstorm" }),
+          }),
+        ]);
+        const r = await search({ q: "headingstorm", repo: "zeta/long" });
+        const slugOf = (path: string) => r.hits.find((h) => h.doc.path === path)?.heading?.slug;
+        expect(r.total).toBe(4);
+        expect(slugOf("docs/heavy/early.md")).toBe("topic-7");
+        expect(slugOf("docs/heavy/edge.md")).toBe(`topic-${MAX_HEADINGS_CONSIDERED - 1}`);
+        // A hit still shows up; only the deep-link to a heading past the cap is dropped.
+        expect(r.hits.find((h) => h.doc.path === "docs/heavy/past-cap.md")?.heading).toBeNull();
+        expect(r.hits.find((h) => h.doc.path === "docs/heavy/late-only.md")?.heading).toBeNull();
+      } finally {
+        await cleanup();
+      }
+    });
+
+    it("still prefers the heading with more query terms within the cap", async () => {
+      try {
+        await insertDocs([
+          doc(s.long, "docs/heavy/terms.md", "Terms", {
+            body: "alphaterm betaterm",
+            headings: manyHeadings({ 3: "alphaterm only", 90: "alphaterm betaterm both" }),
+          }),
+        ]);
+        const r = await search({ q: "alphaterm betaterm", repo: "zeta/long" });
+        expect(r.hits[0]?.heading?.slug).toBe("topic-90");
+      } finally {
+        await cleanup();
+      }
+    });
+
+    it("answers a page of 5000-heading documents in a sane time", async () => {
+      const rows = Array.from({ length: 20 }, (_, i) =>
+        doc(s.long, `docs/heavy/many-${i}.md`, `Many ${i}`, {
+          body: "headingstorm body",
+          headings: manyHeadings({ [i]: "Needle headingstorm" }),
+        }),
+      );
+      try {
+        await insertDocs(rows);
+        const started = performance.now();
+        const r = await search({ q: "headingstorm", repo: "zeta/long", limit: 20 });
+        const elapsed = performance.now() - started;
+        expect(r.total).toBe(20);
+        expect(r.hits.every((h) => h.heading?.text === "Needle headingstorm")).toBe(true);
+        // Generous: about 4000 tsvectors are built (20 x 200), not 300 000. Catches a regression
+        // to unbounded work per heading, not a slow machine.
+        expect(elapsed).toBeLessThan(5000);
+      } finally {
+        await cleanup();
+      }
+    }, 60_000);
   });
 
   describe("snippets", () => {

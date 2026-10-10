@@ -67,6 +67,8 @@
  *   guides/fresh                stale_after 2999-01-01: no warning
  *   guides/untyped-note         no frontmatter at all: no metadata card
  * and docs/log.md has two dated entries (the change log), docs/index.md is the folder summary.
+ * Both reserved files carry status/stale_after keys (index: draft + past stale_after; log:
+ * deprecated) to prove they raise no notice: they are not typed concepts.
  *
  * Search data (task 10.3). The word "deployment" (the spec's "Title outranks body") appears in:
  *   title (rank A)         search-lab "Deployment"
@@ -531,11 +533,11 @@ export const SEED_REPOS: readonly SeedRepo[] = [
     docs: [
       {
         path: "docs/index.md",
-        text: '---\nokf_version: "0.2"\ndescription: Entry point of the showcase.\n---\n\n# Showcase\n\nStart with the metrics.\n',
+        text: '---\nokf_version: "0.2"\ndescription: Entry point of the showcase.\nstatus: draft\nstale_after: 2020-01-01\n---\n\n# Showcase\n\nStart with the metrics.\n',
       },
       {
         path: "docs/log.md",
-        text: "# Log\n\n## 2026-03-20\n\nAdded the full metadata example.\n\n## 2026-03-10\n\nCreated the showcase.\n",
+        text: "---\nstatus: deprecated\n---\n\n# Log\n\n## 2026-03-20\n\nAdded the full metadata example.\n\n## 2026-03-10\n\nCreated the showcase.\n",
       },
       {
         path: "docs/concepts/full-metadata.md",

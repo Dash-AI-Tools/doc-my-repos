@@ -165,10 +165,19 @@ describe("searchResultItem", () => {
     const item = searchResultItem(
       hit({
         doc: { ...hit().doc, path: "docs/100% done.md" },
-        heading: { depth: 3, text: "a", slug: "a%b" },
+        heading: { depth: 3, text: "Überblick", slug: "über-blick_1" },
       }),
     );
-    expect(item.href).toBe("/acme/api/docs/100%25%20done#a%25b");
+    expect(item.href).toBe("/acme/api/docs/100%25%20done#%C3%BCber-blick_1");
+  });
+
+  it("omits the anchor when the slug would not be an id on the doc page, keeping the section label", () => {
+    const tooLong = "a".repeat(2000);
+    for (const slug of ["a%b", "two words", "a/b", "<x>", "", "a#b", tooLong]) {
+      const item = searchResultItem(hit({ heading: { depth: 3, text: "Odd section", slug } }));
+      expect(item.href, JSON.stringify(slug.slice(0, 20))).toBe("/acme/api/docs/guides/setup");
+      expect(item.section).toBe("Odd section");
+    }
   });
 
   it("falls back to the repository page for a document outside the docs folder", () => {

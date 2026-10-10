@@ -5,6 +5,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { ThemeProvider } from "@/components/theme-provider";
+import { E2E_CRASH_HEADER, shouldCrashRootLayout } from "@/lib/e2e-fixtures";
 import { NONCE_HEADER, isValidNonce } from "@/lib/security-headers";
 import { THEME_TOKENS } from "@/lib/theme-tokens";
 import "./globals.css";
@@ -33,13 +34,19 @@ export const viewport: Viewport = {
  * the theme script rather than trusting arbitrary text. Reading headers renders every page per
  * request, which a nonce requires.
  */
-async function requestNonce(): Promise<string | undefined> {
-  const nonce = (await headers()).get(NONCE_HEADER);
+function requestNonce(requestHeaders: Headers): string | undefined {
+  const nonce = requestHeaders.get(NONCE_HEADER);
   return isValidNonce(nonce) ? nonce : undefined;
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const nonce = await requestNonce();
+  const requestHeaders = await headers();
+  // E2E only (needs E2E_FIXTURES=1 in the server environment): lets the suite prove that
+  // `global-error.tsx` takes over when this layout throws.
+  if (shouldCrashRootLayout(process.env, requestHeaders.get(E2E_CRASH_HEADER))) {
+    throw new Error("e2e: forced root layout crash");
+  }
+  const nonce = requestNonce(requestHeaders);
   return (
     // suppressHydrationWarning: next-themes sets the `dark` class and color-scheme on <html>
     // before React hydrates, so the attributes differ from the server markup by design.

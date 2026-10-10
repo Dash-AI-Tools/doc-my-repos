@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
+import { repoUrl } from "@/lib/routes";
+
 import { ERROR_ACTION } from "./error-panel";
 
 /**
@@ -21,7 +23,7 @@ export function repoSpaceHref(params: { owner?: unknown; repo?: unknown }): stri
   const { owner, repo } = params;
   if (typeof owner !== "string" || typeof repo !== "string") return null;
   if (!NAME.test(owner) || !NAME.test(repo) || repo === "." || repo === "..") return null;
-  return `/${owner}/${repo}`;
+  return repoUrl(owner, repo);
 }
 
 export function DocNotFound() {

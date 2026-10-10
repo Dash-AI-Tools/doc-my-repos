@@ -4,6 +4,7 @@ import { findAssetRepo } from "../queries/assets";
 import { getRuntime } from "../runtime";
 import { repoNameSelection } from "../sync/discovery";
 import { createAssetCache, type AssetCache } from "./cache";
+import { createFetchGate, type FetchGate } from "./fetch-gate";
 import type { AssetDeps } from "./serve";
 
 /**
@@ -12,13 +13,21 @@ import type { AssetDeps } from "./serve";
  */
 
 const CACHE_KEY = Symbol.for("docmyrepos.assetCache");
-type Cache = { [CACHE_KEY]?: AssetCache };
+const GATE_KEY = Symbol.for("docmyrepos.assetFetchGate");
+type Cache = { [CACHE_KEY]?: AssetCache; [GATE_KEY]?: FetchGate };
 
 /** The process-wide asset cache (kept on `globalThis` across Next.js dev reloads). */
 export function sharedAssetCache(): AssetCache {
   const cache = globalThis as Cache;
   cache[CACHE_KEY] ??= createAssetCache();
   return cache[CACHE_KEY];
+}
+
+/** The process-wide limit on concurrent upstream fetches (also kept on `globalThis`). */
+export function sharedFetchGate(): FetchGate {
+  const holder = globalThis as Cache;
+  holder[GATE_KEY] ??= createFetchGate();
+  return holder[GATE_KEY];
 }
 
 /**
@@ -33,5 +42,6 @@ export function getAssetDeps(): AssetDeps {
     isConfigured: (name) => repoNameSelection(runtime.sync.config, name) === "selected",
     github: runtime.assets,
     cache: sharedAssetCache(),
+    gate: sharedFetchGate(),
   };
 }

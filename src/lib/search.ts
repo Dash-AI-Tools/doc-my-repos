@@ -32,10 +32,13 @@ export const MAX_FILTER_VALUES = 20;
 /** Longest filter value, in UTF-16 units. A longer one cannot be a stored value. */
 export const MAX_FILTER_CHARS = 256;
 
-// C0/C1 controls other than tab/newline/CR, lone surrogates, and the highlight markers.
+// C0/C1 controls other than tab/newline/CR. Lone surrogates and the highlight markers are
+// handled separately below.
 const UNSAFE_QUERY_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
 const LONE_SURROGATE_SOURCE =
   "[\\uD800-\\uDBFF](?![\\uDC00-\\uDFFF])|(?<![\\uD800-\\uDBFF])[\\uDC00-\\uDFFF]";
+// The highlight markers, built from the constants (they are invisible private-use characters).
+const HIGHLIGHT_MARKERS = new RegExp(`[${HIGHLIGHT_START}${HIGHLIGHT_END}]`, "g");
 const LONE_SURROGATES = new RegExp(LONE_SURROGATE_SOURCE, "g");
 const HAS_LONE_SURROGATE = new RegExp(LONE_SURROGATE_SOURCE);
 
@@ -52,6 +55,7 @@ export function normalizeSearchQuery(value: unknown): string {
   const cleaned = head
     .replace(LONE_SURROGATES, " ")
     .replace(UNSAFE_QUERY_CHARS, " ")
+    .replace(HIGHLIGHT_MARKERS, " ")
     .replace(/\s+/gu, " ")
     .trim();
   const points = Array.from(cleaned);

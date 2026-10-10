@@ -513,6 +513,50 @@ describe("document page, OKF metadata, notices and change log (tasks 11.4 to 11.
     expect(out).not.toContain('data-testid="change-log"');
   });
 
+  it("raises no deprecated, draft or stale notice on the reserved index.md and log.md", async () => {
+    for (const [reserved, path, status] of [
+      ["index", "docs/guides/index.md", "draft"],
+      ["index", "docs/index.md", "deprecated"],
+      ["log", "docs/log.md", "deprecated"],
+    ] as const) {
+      loadDocPage.mockResolvedValue(
+        page({
+          doc: {
+            path,
+            title: "Reserved",
+            reserved,
+            type: null,
+            status,
+            frontmatter: { status, stale_after: "2001-01-01" },
+          },
+        }),
+      );
+      const out = await html(
+        path
+          .replace(/^docs\//, "")
+          .replace(/\.md$/, "")
+          .split("/"),
+      );
+      expect(out, path).not.toContain("okf-notice");
+      expect(out, path).not.toContain("okf-metadata");
+    }
+  });
+
+  it("still raises the notices on a typed document with the same keys", async () => {
+    loadDocPage.mockResolvedValue(
+      page({
+        doc: {
+          ...typedDoc,
+          status: "draft",
+          frontmatter: { type: "Runbook", status: "draft", stale_after: "2001-01-01" },
+        },
+      }),
+    );
+    const out = await html();
+    expect(out).toContain('data-testid="okf-notice-draft"');
+    expect(out).toContain('data-testid="okf-notice-stale"');
+  });
+
   it("renders a log.md of a plain repository as an ordinary page", async () => {
     loadDocPage.mockResolvedValue(
       page({ repo, doc: { path: "docs/log.md", title: "Log", reserved: "log" } }),
