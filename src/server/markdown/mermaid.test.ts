@@ -120,3 +120,83 @@ describe("sanitizer and Mermaid blocks", () => {
     expect(html).toContain("dmr-mermaid");
   });
 });
+
+describe("dmr-mermaid cap holds end to end", () => {
+  const RAW = (src = "graph TD;A-->B") =>
+    `<pre class="dmr-mermaid"><code class="language-mermaid">${src}</code></pre>`;
+  const FENCE = (i: number) => "```mermaid\ngraph TD; N" + i + "\n```\n";
+  const count = (html: string) => (html.match(/dmr-mermaid/g) ?? []).length;
+
+  async function check(doc: string, expectedMax = MAX_DIAGRAMS) {
+    const { html, warnings } = await render(doc);
+    expect(count(html)).toBeLessThanOrEqual(expectedMax);
+    // Every survivor has the exact plugin shape and is the only form of the class.
+    expect(html.match(/class="dmr-mermaid"/g)?.length ?? 0).toBe(count(html));
+    for (const m of html.matchAll(/<pre class="dmr-mermaid">/g)) {
+      expect(html.slice((m.index ?? 0) + m[0].length)).toMatch(/^<code class="language-mermaid">/);
+    }
+    return { html, warnings };
+  }
+
+  it("caps 100 raw-HTML markers and warns", async () => {
+    const { html, warnings } = await check((RAW() + "\n\n").repeat(100));
+    expect(count(html)).toBe(MAX_DIAGRAMS);
+    expect(warnings).toContain(WARN_TOO_MANY_DIAGRAMS);
+  });
+
+  it("caps mixed fences and raw HTML adding up past the limit", async () => {
+    const doc = Array.from({ length: 15 }, (_, i) => FENCE(i) + "\n" + RAW() + "\n").join("\n");
+    const { html, warnings } = await check(doc);
+    expect(count(html)).toBe(MAX_DIAGRAMS);
+    expect(warnings).toEqual([WARN_TOO_MANY_DIAGRAMS]);
+  });
+
+  it("does not let a nested pre smuggle a marker", async () => {
+    const nested = `<pre><span>x</span>${RAW()}</pre>\n\n`;
+    const { html } = await check(nested.repeat(100), 0);
+    expect(count(html)).toBeLessThanOrEqual(MAX_DIAGRAMS);
+    const deep = `<pre><pre><pre class="dmr-mermaid"><code class="language-mermaid">a</code></pre></pre></pre>`;
+    expect(count((await check(deep.repeat(50))).html)).toBeLessThanOrEqual(MAX_DIAGRAMS);
+  });
+
+  it("caps markers inside blockquotes, lists, tables, details and footnotes", async () => {
+    const parts = [
+      `> ${RAW()}\n`,
+      `- item\n\n  ${RAW()}\n`,
+      `<table><tr><td>${RAW()}</td></tr></table>\n`,
+      `<details><summary>s</summary>${RAW()}</details>\n`,
+      `text[^1]\n\n[^1]: note\n\n    ${RAW()}\n`,
+    ];
+    const doc = Array.from({ length: 40 }, (_, i) => parts[i % parts.length]).join("\n");
+    await check(doc);
+  });
+
+  it("leaves a raw-HTML diagram over the byte cap as plain code", async () => {
+    const big = "A-->B\n".repeat(Math.ceil(MAX_SOURCE_BYTES / 6) + 1);
+    const { html, warnings } = await check(RAW(big), 0);
+    expect(count(html)).toBe(0);
+    expect(html).toContain("language-mermaid");
+    expect(warnings).toEqual([WARN_DIAGRAM_TOO_LARGE]);
+  });
+
+  it("drops odd class spellings", async () => {
+    const odd = [
+      `<pre class="DMR-Mermaid"><code class="language-mermaid">a</code></pre>`,
+      `<pre class="foo dmr-mermaid"><code class="language-mermaid">a</code></pre>`,
+      `<pre class="dmr-mermaid foo"><code>a</code></pre>`,
+      `<pre class="dmr-mermaid"><code>a</code><code>b</code></pre>`,
+      `<pre class="mermaid"><code class="language-mermaid">a</code></pre>`,
+    ].join("\n\n");
+    const { html } = await check(odd.repeat(1));
+    expect(html).not.toMatch(/class="[^"]*foo[^"]*dmr|dmr-mermaid foo/);
+    // Only the well-formed marker shapes (normalized by the plugin) can survive.
+    expect(count(html)).toBeLessThanOrEqual(MAX_DIAGRAMS);
+    const bad = await check(`<pre class="dmr-mermaid"><code>a</code><code>b</code></pre>`, 0);
+    expect(count(bad.html)).toBe(0);
+  });
+
+  it("still tags fences within the caps next to hostile raw HTML", async () => {
+    const { html } = await check(FENCE(1) + "\n" + RAW("x") + "\n");
+    expect(count(html)).toBe(2);
+  });
+});

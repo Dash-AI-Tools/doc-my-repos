@@ -18,6 +18,13 @@ import { MERMAID_CLASS } from "./sanitize";
  *
  * Rendering costs client CPU, so a block over `MAX_SOURCE_BYTES` and every block past
  * `MAX_DIAGRAMS` stays an ordinary code block (with a warning in `file.data.warnings`).
+ *
+ * INVARIANT: at most MAX_DIAGRAMS `pre.dmr-mermaid` per rendered document, and every one was
+ * created by this plugin. `rehypeMermaid` is the ONLY source of the class: first it strips every
+ * mermaid-ish class from every `pre` in the tree (any depth, nested `pre`, raw HTML), then it
+ * tags at most MAX_DIAGRAMS blocks. A hand-written marker `<pre class="dmr-mermaid"><code
+ * class="language-mermaid">` within the caps is therefore just normalized like a fence (simplest
+ * option); past the caps it is plain code. `MermaidEnhancer` can rely on this invariant.
  */
 
 /** Largest diagram source, in UTF-8 bytes. */
@@ -97,9 +104,42 @@ function findBlocks(tree: Root): { parent: Element | Root; index: number; code: 
   return blocks;
 }
 
+function isMermaidClass(c: unknown): boolean {
+  return (
+    String(c).toLowerCase().includes("mermaid") && !String(c).toLowerCase().startsWith("language-")
+  );
+}
+
+/** Removes `dmr-mermaid`-like classes from every `pre`, at any depth (iterative). */
+function stripMermaidClasses(tree: Root): void {
+  const stack: (Element | Root)[] = [tree];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === undefined) break;
+    for (const child of node.children as ElementContent[]) {
+      if (child.type !== "element") continue;
+      if (child.tagName === "pre") {
+        const cls: unknown = child.properties.className;
+        const list: unknown[] = Array.isArray(cls)
+          ? cls
+          : typeof cls === "string"
+            ? cls.split(/\s+/)
+            : [];
+        const kept = list.filter((c) => !isMermaidClass(c)).map(String);
+        if (kept.length !== list.length || typeof cls === "string") {
+          if (kept.length > 0) child.properties.className = kept;
+          else delete child.properties.className;
+        }
+      }
+      stack.push(child);
+    }
+  }
+}
+
 /** Rehype plugin: tags Mermaid fences. Never throws. */
 export function rehypeMermaid() {
   return (tree: Root, file: VFile): void => {
+    stripMermaidClasses(tree);
     const blocks = findBlocks(tree);
     let count = 0;
     for (const block of blocks) {
