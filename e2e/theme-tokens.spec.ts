@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import {
   THEME_TOKENS,
@@ -7,6 +7,7 @@ import {
   type ThemeName,
   type TokenName,
 } from "../src/lib/theme-tokens";
+import { expect, test } from "./support/csp";
 
 /**
  * Task 8.1: both palettes render. Loads the token showcase (`/e2e/theme`,

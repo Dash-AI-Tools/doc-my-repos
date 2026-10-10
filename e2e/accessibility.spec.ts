@@ -1,8 +1,9 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { THEME_TOKENS, contrastRatio, type ThemeName } from "../src/lib/theme-tokens";
 import { stubAssets } from "./support/assets";
+import { expect, test } from "./support/csp";
 import { SKIP_DB, SKIP_DB_REASON, stackUrl, type StackName } from "./support/stack";
 
 /**

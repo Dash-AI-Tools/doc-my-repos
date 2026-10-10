@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
+import { expect, test } from "./support/csp";
 
 /**
  * Task 7.8: enlarge, pan and zoom view for Mermaid diagrams, in both themes.

@@ -1,6 +1,7 @@
-import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
+import type { Browser, Locator, Page } from "@playwright/test";
 
 import { THEME_TOKENS, type ThemeName } from "../src/lib/theme-tokens";
+import { expect, test } from "./support/csp";
 
 /**
  * Task 8.2: theme switching in a real browser (Chromium).

@@ -1,12 +1,23 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { CommandPalette } from "@/components/command-palette";
 import { THEME_STORAGE_KEY } from "@/components/theme-provider";
 import { THEME_TOKENS } from "@/lib/theme-tokens";
 
 import RootLayout, { viewport } from "./layout";
+
+/** The request headers `headers()` returns; each test sets what the proxy would have sent. */
+const requestHeaders = vi.hoisted(() => ({ current: new Headers() }));
+vi.mock("next/headers", () => ({ headers: async () => requestHeaders.current }));
+
+const NONCE = "AAECAwQFBgcICQoLDA0ODw==";
+
+async function renderLayout(nonce?: string): Promise<ReactElement> {
+  requestHeaders.current = new Headers(nonce === undefined ? {} : { "x-nonce": nonce });
+  return (await RootLayout({ children: page })) as ReactElement;
+}
 
 const page = <p data-testid="page">Page content</p>;
 
@@ -19,17 +30,19 @@ function countElements(node: ReactNode, type: unknown): number {
 }
 
 describe("root layout", () => {
+  let html = "";
+  let tree: ReactElement;
+  beforeAll(async () => {
+    tree = await renderLayout(NONCE);
+    html = renderToStaticMarkup(tree);
+  });
+
   it("marks <html> with suppressHydrationWarning and a language", () => {
-    const root = RootLayout({ children: page }) as ReactElement<{
-      lang: string;
-      suppressHydrationWarning?: boolean;
-    }>;
+    const root = tree as ReactElement<{ lang: string; suppressHydrationWarning?: boolean }>;
     expect(root.type).toBe("html");
     expect(root.props.lang).toBe("en");
     expect(root.props.suppressHydrationWarning).toBe(true);
   });
-
-  const html = renderToStaticMarkup(RootLayout({ children: page }));
 
   it("renders the theme toggle in the header and the page content", () => {
     expect(html).toMatch(
@@ -48,7 +61,7 @@ describe("root layout", () => {
   });
 
   it("mounts the command palette exactly once, in the root layout", () => {
-    expect(countElements(RootLayout({ children: page }), CommandPalette)).toBe(1);
+    expect(countElements(tree, CommandPalette)).toBe(1);
   });
 
   it("mounts the command palette closed: no dialog and no second search form in the markup", () => {
@@ -66,6 +79,23 @@ describe("root layout", () => {
     // Blocking: not async or deferred, and not an external file.
     const tag = body.slice(script, body.indexOf(">", script));
     expect(tag).not.toMatch(/\b(async|defer|src)\b/);
+  });
+
+  it("puts the request nonce from the proxy on the theme script", () => {
+    const tag = /<script[^>]*>/.exec(html)?.[0] ?? "";
+    expect(tag).toContain(`nonce="${NONCE}"`);
+  });
+
+  it.each([
+    ["no x-nonce header", undefined],
+    ["an empty header", ""],
+    ["a value that is not a generated nonce", "abc"],
+    ["a value that would break out of the attribute", `${NONCE}" onload="alert(1)`],
+  ])("renders no nonce for %s", async (_label, nonce) => {
+    const markup = renderToStaticMarkup(await renderLayout(nonce));
+    const tag = /<script[^>]*>/.exec(markup)?.[0] ?? "";
+    expect(tag).not.toContain("nonce");
+    expect(markup).not.toContain("onload");
   });
 
   it("configures the script for the class attribute, system default and system detection", () => {

@@ -96,6 +96,17 @@ Without a reachable Postgres the run fails at once and prints the command above.
 
 The MVP is single-tenant and has no login. The GitHub App installation reads every repository you grant it, so **anyone who can reach the app can read everything it has synced**. Install the App only on repositories you want shown. If those include private repos, deploy privately or put authentication in front of the app. Private repos are marked with a badge, and the app records each repo's visibility, so per-user access through GitHub OAuth can be added later.
 
+### Security headers and CSP
+
+The app sets its own security headers (`src/proxy.ts`, values in `src/lib/security-headers.ts`); a reverse proxy does not need to add them.
+
+- **Content-Security-Policy**, per request: `default-src 'none'`, scripts only with that request's nonce (`'strict-dynamic'`, no `'unsafe-inline'`, no `eval`), `img-src 'self' https:`, `connect-src 'self'`, no frames, no plugins, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`. Every page is rendered per request because of the nonce.
+- **Styles allow `'unsafe-inline'`.** Shiki colours code with `style` attributes and Mermaid draws diagrams with their own `<style>` elements in the browser, where no nonce can be attached. Injected CSS cannot run script, but it could restyle or hide parts of a page. Markdown is sanitized, so documents cannot add `<style>` elements and `style` attributes are limited to code colours; Mermaid sanitizes the styling options a diagram may set.
+- **External images load directly** from any `https:` host (badges, diagrams hosted elsewhere), without a referrer. That host then sees the reader's IP address. To forbid them, change `img-src` to `'self'`. Plain `http:` images are blocked.
+- Also: `Referrer-Policy: same-origin` (portal URLs name private repositories), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, a `Permissions-Policy` that denies camera, microphone, geolocation and other features except clipboard writes, `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy: same-origin`. `X-Powered-By` is not sent. The image proxy `/api/asset` keeps its own stricter sandbox policy.
+- **HTTPS:** terminate TLS at your reverse proxy and forward `X-Forwarded-Proto: https`. When a request arrives over HTTPS, a production build adds `Strict-Transport-Security: max-age=63072000; includeSubDomains` (no `preload`; add it at the proxy if you want your domain on the preload list) and `upgrade-insecure-requests`.
+- **Loading from a CDN** (fonts, a script): add the origin to the one directive that needs it, for example `font-src 'self' https://fonts.example.com`, in `buildContentSecurityPolicy`. Never widen `default-src` or `script-src`.
+
 ## Project status
 
 The work is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) in `openspec/`:

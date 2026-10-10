@@ -21,13 +21,10 @@ import type { ReactNode } from "react";
  * parser is still at the top of the body, before any visible content is parsed or painted, and
  * sets the `dark` class from `localStorage` or `matchMedia`. Nothing waits for hydration.
  *
- * CSP SEAM (group 12): the script is inline, so a strict `script-src` needs a nonce or hash for
- * it. `nonce` is passed straight through to next-themes, which puts it on the script (and on the
- * transition-blocking `<style>` it injects). Group 12 should read the per-request nonce in the
- * layout (for example from the `x-nonce` request header set by the CSP proxy) and pass it as
- * `<ThemeProvider nonce={nonce}>`. Reading headers makes the layout dynamic, so that is a
- * deliberate group 12 decision; today no nonce is passed and the prop is undefined. A hash also
- * works: the script text depends only on the options below, so it is stable per build.
+ * CSP (task 12.1): the script is inline, so the strict `script-src` needs a nonce for it. The
+ * root layout reads the per-request nonce (`x-nonce`, set by `src/proxy.ts`) and passes it as
+ * `nonce`; next-themes puts it on the script (and on the transition-blocking `<style>` it
+ * injects, which `style-src 'unsafe-inline'` would allow anyway).
  */
 
 /** `localStorage` key holding `light`, `dark` or `system`. Tests and docs refer to it. */
@@ -35,7 +32,7 @@ export const THEME_STORAGE_KEY = "docmyrepos-theme";
 
 export interface ThemeProviderProps {
   readonly children: ReactNode;
-  /** CSP nonce for next-themes' inline script. Unused until group 12 (see above). */
+  /** Per-request CSP nonce for next-themes' inline script (see above). */
   readonly nonce?: string | undefined;
 }
 
