@@ -146,6 +146,75 @@ const PAGES: readonly PageCase[] = [
     },
   },
   {
+    name: "repo page, no documentation files (seeded)",
+    path: "/acme/empty-docs",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("docs-nav-empty")).toBeVisible();
+    },
+  },
+  {
+    name: "repo page, table of contents with folder summaries (seeded)",
+    path: "/acme/doc-showcase",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("folder-summary").first()).toBeVisible();
+      await expect(page.getByRole("button", { name: "Collapse all" })).toBeVisible();
+    },
+  },
+  {
+    name: "document page (seeded)",
+    path: "/acme/api-service/docs/guides/setup",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByRole("heading", { level: 1, name: "Setup" })).toBeVisible();
+      await expect(page.locator("pre.shiki").first()).toBeVisible();
+      await expect(page.getByTestId("doc-pager")).toBeVisible();
+    },
+  },
+  {
+    name: "document page, code, table, task list, footnote, image and diagram (seeded)",
+    path: "/acme/doc-showcase/docs/guides/getting-started",
+    stack: "seeded",
+    prepare: async (page) => {
+      await stubAssets(page);
+    },
+    ready: async (page) => {
+      await expect(page.getByTestId("outline")).toBeVisible();
+      await expect(page.locator("section.footnotes")).toBeVisible();
+      await expect(page.locator(".dmr-mermaid-diagram svg").first()).toBeVisible({
+        timeout: 30_000,
+      });
+    },
+  },
+  {
+    name: "document page, long outline with the current section marked (seeded)",
+    path: "/acme/doc-showcase/docs/guides/long-outline#section-9",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("outline").locator('[aria-current="location"]')).toHaveText(
+        "Section 9",
+      );
+    },
+  },
+  {
+    name: "document page, folder index (seeded)",
+    path: "/acme/doc-showcase/docs/guides/index",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByRole("heading", { level: 1, name: "Guides" })).toBeVisible();
+      await expect(page.getByTestId("folder-summary").first()).toBeVisible();
+    },
+  },
+  {
+    name: "document page, not found (seeded)",
+    path: "/acme/api-service/docs/does-not-exist",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("doc-not-found")).toBeVisible();
+    },
+  },
+  {
     name: "theme showcase",
     path: "/e2e/theme",
     ready: async (page) => {

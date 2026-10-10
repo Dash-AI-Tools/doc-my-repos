@@ -19,6 +19,11 @@
  *   acme/no-codeowners     public, README, NO CODEOWNERS, 1 doc                  (task 9.3 to 9.5)
  *   acme/rich-readme       public, README with a mermaid diagram, code blocks, a link to a synced
  *                          doc, a broken link and an image; 1 doc                (task 9.4)
+ *   acme/doc-showcase      public, 8 docs for the document page: a folder index with a description,
+ *                          a doc with code, table, task list, footnote, image and diagram, a doc
+ *                          with a long outline, a frontmatter title, odd characters in a file name
+ *                          (task 9.6 and 9.7)
+ *   acme/empty-docs        public, README, synced, NO docs                       (task 9.6 and 9.7)
  */
 
 export interface SeedDoc {
@@ -78,6 +83,73 @@ const RICH_README = [
   "Read the [guide](docs/guide.md), the [missing page](docs/does-not-exist.md) or the",
   "[source file](src/index.ts).",
   "",
+].join("\n");
+
+const SHOWCASE_GETTING_STARTED = [
+  "# Getting started",
+  "",
+  "Install the tool, then follow the checklist.[^1] See the [long outline](long-outline.md) and the",
+  "[API reference](../reference/api.md).",
+  "",
+  "## Install",
+  "",
+  "```bash",
+  "npm install docmyrepos",
+  "```",
+  "",
+  "```ts",
+  "export const answer: number = 42;",
+  "```",
+  "",
+  "## Checklist",
+  "",
+  "- [x] Install the tool",
+  "- [ ] Configure the GitHub App",
+  "",
+  "## Options",
+  "",
+  "| Option | Default |",
+  "| ------ | ------- |",
+  "| `docs` | `docs/` |",
+  "| `port` | `3000`  |",
+  "",
+  "### Environment",
+  "",
+  "Set `DATABASE_URL` before the first start.",
+  "",
+  "## Architecture",
+  "",
+  "```mermaid",
+  "graph TD",
+  "  A[Client] --> B{Portal}",
+  "  B --> C[(Postgres)]",
+  "```",
+  "",
+  "![Architecture overview](../assets/architecture.png)",
+  "",
+  "[^1]: Footnotes are part of GitHub-flavoured Markdown.",
+  "",
+].join("\n");
+
+const SHOWCASE_LONG_OUTLINE = [
+  "# Long outline",
+  "",
+  ...Array.from({ length: 14 }, (_, i) => [
+    `## Section ${i + 1}`,
+    "",
+    ...Array.from(
+      { length: 6 },
+      (_, j) => `Paragraph ${j + 1} of section ${i + 1}. `.repeat(12) + "\n",
+    ),
+    `### Detail ${i + 1}.1`,
+    "",
+    "Details for the section. ".repeat(20),
+    "",
+    `#### Note ${i + 1}.1.1`,
+    "",
+    "A short note.",
+    "",
+  ]).flat(),
 ].join("\n");
 
 export const SEED_REPOS: readonly SeedRepo[] = [
@@ -245,6 +317,48 @@ export const SEED_REPOS: readonly SeedRepo[] = [
     readme: RICH_README,
     docs: [{ path: "docs/guide.md", text: "# Guide\n\nThe guide the README links to.\n" }],
   },
+  {
+    githubId: 1011,
+    owner: "acme",
+    name: "doc-showcase",
+    description: "Documents that exercise the document page.",
+    visibility: "public",
+    state: "synced",
+    lastSyncedAt: "2026-03-04T09:00:00.000Z",
+    readme: "# doc-showcase\n\nSee the [getting started guide](docs/guides/getting-started.md).\n",
+    docs: [
+      { path: "docs/overview.md", text: "# Overview\n\nThe first page of the showcase.\n" },
+      {
+        path: "docs/guides/index.md",
+        text: "---\ntitle: Guides\ndescription: How-to guides for operators.\n---\n\n# Guides\n\nPick a guide from the list.\n",
+      },
+      { path: "docs/guides/getting-started.md", text: SHOWCASE_GETTING_STARTED },
+      { path: "docs/guides/long-outline.md", text: SHOWCASE_LONG_OUTLINE },
+      {
+        path: "docs/notes/custom-title.md",
+        text: "---\ntitle: A custom title\ndescription: The title comes from the frontmatter.\n---\n\n# A different heading\n\n## Details\n\nBody of the note.\n",
+      },
+      { path: "docs/reference/api.md", text: "# API reference\n\n## Endpoints\n\nNone yet.\n" },
+      {
+        path: "docs/special/100% done.md",
+        text: "# 100% done\n\nA file name with a space and a percent sign.\n",
+      },
+      {
+        path: "docs/special/tail.md",
+        text: "# Zzz last page\n\nThe last page in table-of-contents order.\n",
+      },
+    ],
+  },
+  {
+    githubId: 1012,
+    owner: "acme",
+    name: "empty-docs",
+    description: "Synced, but without any documentation files.",
+    visibility: "public",
+    state: "synced",
+    lastSyncedAt: "2026-03-05T09:00:00.000Z",
+    readme: "# empty-docs\n\nThis repository has a README and no docs folder.\n",
+  },
 ];
 
 /** Names used by specs. */
@@ -259,6 +373,8 @@ export const SEEDED = {
   noReadme: { owner: "acme", name: "no-readme" },
   noCodeowners: { owner: "acme", name: "no-codeowners" },
   richReadme: { owner: "acme", name: "rich-readme" },
+  showcase: { owner: "acme", name: "doc-showcase" },
+  emptyDocs: { owner: "acme", name: "empty-docs" },
 } as const;
 
 /** `owner/name` of every private seeded repository. */

@@ -73,8 +73,8 @@
 - [x] 9.3 Build the repo page shell with header (GitHub link, last synced) and not-found handling, and verify a Playwright test for known and unknown repos
 - [x] 9.4 Render the README section (using the pipeline) with an empty state, and verify a test for present and missing README
 - [x] 9.5 Build the code owners panel (grouped by owner, patterns, profile/team links, empty state), and verify a component test with the spec's example
-- [ ] 9.6 Build the collapsible docs table-of-contents tree (ordered, titles, folder `index.md` summaries), and verify a component test with nested folders
-- [ ] 9.7 Build the document page (rendered body, "on this page" outline, source link, prev/next, not-found), and verify a Playwright test navigating between docs
+- [x] 9.6 Build the collapsible docs table-of-contents tree (ordered, titles, folder `index.md` summaries), and verify a component test with nested folders
+- [x] 9.7 Build the document page (rendered body, "on this page" outline, source link, prev/next, not-found), and verify a Playwright test navigating between docs
 
 ## 10. Search (search)
 

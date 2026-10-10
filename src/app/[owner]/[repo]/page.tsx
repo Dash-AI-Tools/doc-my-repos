@@ -12,7 +12,7 @@ import { loadRepoPage } from "@/server/repo-page";
 
 /**
  * Repository space `/<owner>/<repo>` (tasks 9.3 to 9.5): header, README, code owners and, in the
- * sidebar, the docs table of contents (a placeholder until task 9.6). Read from Postgres only
+ * sidebar, the docs table of contents (task 9.6). Read from Postgres only
  * (never GitHub). The content changes whenever a sync finishes, so the page is rendered per
  * request.
  *
@@ -49,7 +49,7 @@ export default async function RepoPage({ params }: { params: Params }) {
   if (data.status === "not_found") notFound();
   if (data.status === "error") return <RepoLoadError href={repoUrl(owner, name)} />;
 
-  const { repo, readme, loadedAt } = data;
+  const { repo, readme, tree, loadedAt } = data;
   if (repo.owner !== owner || repo.name !== name) redirect(repoUrl(repo.owner, repo.name));
   const awaitingSync = repo.syncStatus === "pending" || repo.lastSyncedAt === null;
 
@@ -63,7 +63,13 @@ export default async function RepoPage({ params }: { params: Params }) {
           awaitingSync={awaitingSync}
         />
         <div className="flex min-w-0 flex-col gap-6">
-          <DocsNavSlot docCount={repo.docCount} />
+          <DocsNavSlot
+            docCount={repo.docCount}
+            tree={tree}
+            owner={repo.owner}
+            repo={repo.name}
+            awaitingSync={awaitingSync}
+          />
           <CodeOwnersPanel rules={repo.codeOwners} awaitingSync={awaitingSync} />
         </div>
       </div>

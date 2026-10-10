@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { githubRepoUrl, ownerKey, ownerLink, stripAt } from "./github-links";
+import { githubBlobUrl, githubRepoUrl, ownerKey, ownerLink, stripAt } from "./github-links";
 
 describe("ownerLink", () => {
   it("links a user to the profile, without the @", () => {
@@ -127,5 +127,86 @@ describe("githubRepoUrl", () => {
 
   it("encodes the owner and name in the fallback", () => {
     expect(githubRepoUrl(null, "a/b", "c d?")).toBe("https://github.com/a%2Fb/c%20d%3F");
+  });
+});
+
+describe("githubBlobUrl", () => {
+  const url = (path: string, branch: string | null = "main", htmlUrl: string | null = null) =>
+    githubBlobUrl(htmlUrl, "acme", "api", branch, path);
+
+  it("links a file on the default branch", () => {
+    expect(url("docs/guides/setup.md")).toBe(
+      "https://github.com/acme/api/blob/main/docs/guides/setup.md",
+    );
+  });
+
+  it("encodes every segment, so a file name cannot start a fragment or a query", () => {
+    expect(url("docs/100% done #1?.md")).toBe(
+      "https://github.com/acme/api/blob/main/docs/100%25%20done%20%231%3F.md",
+    );
+    expect(url("docs/a\\b.md")).toBe("https://github.com/acme/api/blob/main/docs/a%5Cb.md");
+    expect(url("docs/ü/é.md")).toBe("https://github.com/acme/api/blob/main/docs/%C3%BC/%C3%A9.md");
+  });
+
+  it("keeps the slashes of a branch name and encodes the rest", () => {
+    expect(url("docs/a.md", "feature/new docs")).toBe(
+      "https://github.com/acme/api/blob/feature/new%20docs/docs/a.md",
+    );
+  });
+
+  it("uses HEAD for an empty branch", () => {
+    expect(url("docs/a.md", "")).toBe("https://github.com/acme/api/blob/HEAD/docs/a.md");
+    expect(url("docs/a.md", null)).toBe("https://github.com/acme/api/blob/HEAD/docs/a.md");
+  });
+
+  it("refuses paths that would be normalized away or are not text", () => {
+    for (const bad of [
+      "",
+      "../secrets.md",
+      "docs/../../x.md",
+      "docs/./a.md",
+      "/docs/a.md",
+      "docs//a.md",
+      "docs/a.md/",
+      "docs/a\u0000.md",
+      "docs/a\nb.md",
+      "docs/\u007f.md",
+      `docs/${"a".repeat(2100)}.md`,
+    ]) {
+      expect(url(bad), JSON.stringify(bad)).toBeNull();
+    }
+    expect(url("docs/a.md", "../main")).toBeNull();
+    expect(url("docs/a.md", "main\n")).toBeNull();
+  });
+
+  it("never lets path text change the host or the scheme", () => {
+    const out = url("javascript:alert(1).md") ?? "";
+    expect(out.startsWith("https://github.com/acme/api/blob/main/")).toBe(true);
+    expect(out).toContain("javascript%3Aalert(1)");
+    expect(new URL(out).host).toBe("github.com");
+    const other = url("@evil.example/x.md") ?? "";
+    expect(new URL(other).host).toBe("github.com");
+  });
+
+  it("takes only the origin from a reported https URL (GitHub Enterprise), never its path", () => {
+    expect(url("docs/a.md", "main", "https://ghe.example.com/other/path?x=1#y")).toBe(
+      "https://ghe.example.com/acme/api/blob/main/docs/a.md",
+    );
+  });
+
+  it("falls back to github.com for an unusable reported URL", () => {
+    for (const bad of [
+      "javascript:alert(1)",
+      "http://github.com/a/b",
+      "https://u:p@github.com/a/b",
+    ]) {
+      expect(url("docs/a.md", "main", bad)).toBe("https://github.com/acme/api/blob/main/docs/a.md");
+    }
+  });
+
+  it("encodes the owner and repository name", () => {
+    expect(githubBlobUrl(null, "a/b", "c d", "main", "x.md")).toBe(
+      "https://github.com/a%2Fb/c%20d/blob/main/x.md",
+    );
   });
 });

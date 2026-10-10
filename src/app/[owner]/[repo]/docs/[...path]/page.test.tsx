@@ -1,0 +1,244 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { buildDocsTree, type DocsTreeRow } from "@/lib/docs-tree";
+import type { DocPageData, DocPageOk } from "@/server/doc-page";
+import type { RepoDetail } from "@/server/queries";
+
+const loadDocPage =
+  vi.fn<(owner: string, name: string, segments: readonly string[]) => Promise<DocPageData>>();
+vi.mock("@/server/doc-page", () => ({
+  loadDocPage: (owner: string, name: string, segments: readonly string[]) =>
+    loadDocPage(owner, name, segments),
+}));
+
+import DocPage, { dynamic, generateMetadata } from "./page";
+
+const NOW = new Date("2026-10-10T12:00:00Z");
+
+const repo: RepoDetail = {
+  id: 1,
+  githubId: 1,
+  owner: "acme",
+  name: "api",
+  description: "API",
+  htmlUrl: "https://github.com/acme/api",
+  visibility: "public",
+  isOkf: false,
+  okfVersion: null,
+  syncStatus: "ok",
+  syncError: null,
+  lastSyncedAt: new Date("2026-10-10T11:00:00Z"),
+  docCount: 3,
+  defaultBranch: "main",
+  docsPath: "docs",
+  readme: null,
+  codeownersPath: null,
+  codeOwners: [],
+};
+
+function docRow(path: string, title: string): DocsTreeRow {
+  return { path, title, description: null, type: null, tags: [], status: null, reserved: null };
+}
+
+const tree = buildDocsTree(
+  [
+    docRow("docs/guides/setup.md", "Setup"),
+    docRow("docs/guides/tuning.md", "Tuning"),
+    docRow("docs/ref.md", "Ref"),
+  ],
+  "docs",
+);
+
+function ok(over: Partial<DocPageOk> = {}): DocPageOk {
+  return {
+    status: "ok",
+    repo,
+    doc: {
+      id: 1,
+      repoId: 1,
+      path: "docs/guides/setup.md",
+      blobSha: "x",
+      sizeBytes: 1,
+      title: "Setup",
+      description: "How to set up.",
+      type: null,
+      tags: [],
+      status: null,
+      headings: [],
+      frontmatter: {},
+      reserved: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    },
+    body: {
+      status: "rendered",
+      html: '<h2 id="install">Install</h2><p>Body</p>',
+      hideTitleHeading: false,
+    },
+    notice: null,
+    outline: [{ text: "Install", id: "install", depth: 2, children: [] }],
+    tree,
+    previous: null,
+    next: null,
+    crumbs: [{ label: "guides", href: null }],
+    sourceUrl: "https://github.com/acme/api/blob/main/docs/guides/setup.md",
+    url: "/acme/api/docs/guides/setup",
+    loadedAt: NOW,
+    ...over,
+  };
+}
+
+const params = (path: string[], owner = "acme", repoName = "api") =>
+  Promise.resolve({ owner, repo: repoName, path });
+
+async function html(path = ["guides", "setup"]): Promise<string> {
+  return renderToStaticMarkup(await DocPage({ params: params(path) }));
+}
+
+beforeEach(() => {
+  loadDocPage.mockReset();
+});
+
+describe("document page", () => {
+  it("is rendered per request", () => {
+    expect(dynamic).toBe("force-dynamic");
+  });
+
+  it("renders the title, description, source link, body, outline, pager and table of contents", async () => {
+    loadDocPage.mockResolvedValue(
+      ok({
+        previous: {
+          ...docRow("docs/ref.md", "Ref"),
+          kind: "doc",
+          stem: "ref",
+          fileName: "ref.md",
+          reserved: null,
+        },
+        next: {
+          ...docRow("docs/guides/tuning.md", "Tuning"),
+          kind: "doc",
+          stem: "guides/tuning",
+          fileName: "tuning.md",
+          reserved: null,
+        },
+      }),
+    );
+    const out = await html();
+    expect(out).toMatch(/<h1[^>]*id="doc-title"[^>]*>Setup<\/h1>/);
+    expect(out).toContain("How to set up.");
+    expect(out).toContain('href="https://github.com/acme/api/blob/main/docs/guides/setup.md"');
+    expect(out).toContain("View source on GitHub");
+    expect(out).toContain('<h2 id="install">Install</h2>');
+    expect(out).toContain('aria-label="On this page"');
+    expect(out).toContain('href="#install"');
+    expect(out).toContain('rel="prev"');
+    expect(out).toContain('href="/acme/api/docs/ref"');
+    expect(out).toContain('rel="next"');
+    expect(out).toContain('href="/acme/api/docs/guides/tuning"');
+    expect(out).toContain('aria-label="Documentation"');
+    expect(out).toContain('aria-current="page"');
+    // the document comes before the sidebar in the DOM (keyboard order)
+    expect(out.indexOf('data-testid="doc-article"')).toBeLessThan(
+      out.indexOf('data-testid="doc-sidebar"'),
+    );
+    expect(out).not.toContain("<aside");
+  });
+
+  it("leaves out the outline of a document with no headings", async () => {
+    loadDocPage.mockResolvedValue(ok({ outline: [] }));
+    expect(await html()).not.toContain('aria-label="On this page"');
+  });
+
+  it("leaves out the source link when the stored path is not linkable", async () => {
+    loadDocPage.mockResolvedValue(ok({ sourceUrl: null }));
+    expect(await html()).not.toContain("View source on GitHub");
+  });
+
+  it("shows a notice and plain text when rendering failed", async () => {
+    loadDocPage.mockResolvedValue(
+      ok({ body: { status: "plain", text: "# raw" }, notice: "Shown as plain text." }),
+    );
+    const out = await html();
+    expect(out).toContain("Shown as plain text.");
+    expect(out).toContain("# raw");
+  });
+
+  it("calls notFound (HTTP 404) for an unknown document", async () => {
+    loadDocPage.mockResolvedValue({ status: "not_found" });
+    await expect(html(["nope"])).rejects.toMatchObject({ digest: expect.stringContaining("404") });
+  });
+
+  it("redirects to the canonical address", async () => {
+    loadDocPage.mockResolvedValue({ status: "redirect", to: "/acme/api/docs/guides/setup" });
+    await expect(html(["GUIDES", "SETUP"])).rejects.toMatchObject({
+      digest: expect.stringContaining("/acme/api/docs/guides/setup"),
+    });
+  });
+
+  it("renders the in-page error state for an expected failure", async () => {
+    loadDocPage.mockResolvedValue({ status: "error", loadedAt: NOW });
+    const out = await html();
+    expect(out).toContain("This repository could not be loaded");
+    expect(out).toContain('href="/acme/api/docs/guides/setup"');
+  });
+
+  it("lets an unexpected error reach the error boundary", async () => {
+    loadDocPage.mockRejectedValue(new TypeError("bug"));
+    await expect(html()).rejects.toThrow("bug");
+  });
+
+  it("percent-decodes the address once before loading", async () => {
+    loadDocPage.mockResolvedValue({ status: "not_found" });
+    await expect(html(["special", "100%25%20done"])).rejects.toBeDefined();
+    expect(loadDocPage).toHaveBeenCalledWith("acme", "api", ["special", "100% done"]);
+  });
+
+  it("answers not found for a malformed escape without loading", async () => {
+    await expect(html(["%E0%A4%A"])).rejects.toMatchObject({
+      digest: expect.stringContaining("404"),
+    });
+    expect(loadDocPage).not.toHaveBeenCalled();
+  });
+});
+
+describe("generateMetadata", () => {
+  const meta = (path: string[], owner = "acme", repoName = "api") =>
+    generateMetadata({ params: params(path, owner, repoName) });
+
+  it("titles the page with the stored title and owner/name, and sets the canonical URL", async () => {
+    loadDocPage.mockResolvedValue(ok());
+    expect(await meta(["guides", "setup"], "ACME", "API")).toEqual({
+      title: "Setup · acme/api",
+      description: "How to set up.",
+      alternates: { canonical: "/acme/api/docs/guides/setup" },
+    });
+  });
+
+  it("leaves the description out, so the site description is inherited, when the document has none", async () => {
+    const data = ok();
+    loadDocPage.mockResolvedValue({ ...data, doc: { ...data.doc, description: null } });
+    const result = await meta(["guides", "setup"]);
+    expect("description" in result).toBe(false);
+  });
+
+  it("uses the segments as Next.js passes them to metadata (already decoded)", async () => {
+    loadDocPage.mockResolvedValue(ok());
+    await meta(["special", "100% done"]);
+    expect(loadDocPage).toHaveBeenCalledWith("acme", "api", ["special", "100% done"]);
+  });
+
+  it("never echoes an address that names nothing", async () => {
+    loadDocPage.mockResolvedValue({ status: "not_found" });
+    expect(await meta(["<script>"], "search", "x")).toEqual({
+      title: "Document not found · DocMyRepos",
+    });
+  });
+
+  it("uses the plain site title for a redirect and the in-page error state", async () => {
+    loadDocPage.mockResolvedValue({ status: "error", loadedAt: NOW });
+    expect(await meta(["a"])).toEqual({ title: "DocMyRepos" });
+    loadDocPage.mockResolvedValue({ status: "redirect", to: "/x" });
+    expect(await meta(["a"])).toEqual({ title: "DocMyRepos" });
+  });
+});

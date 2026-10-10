@@ -10,8 +10,8 @@ import { SKIP_DB, SKIP_DB_REASON, stackUrl } from "./support/stack";
  * seeded database (e2e/support/seed-data.ts).
  *
  * - 9.3 shell: header (GitHub link, last synced, badges, sync state), not-found handling (HTTP 404
- *   for unknown, malformed and reserved addresses), the Documentation navigation slot that task
- *   9.6 fills.
+ *   for unknown, malformed and reserved addresses), the Documentation navigation slot (the table
+ *   of contents of task 9.6 is covered in e2e/doc-page.spec.ts).
  * - 9.4 README: rendered by the real pipeline (headings, highlighted code, Mermaid, rewritten and
  *   broken links, proxied image), empty state without a README.
  * - 9.5 code owners: grouping, profile and team links, many patterns, empty state.
@@ -425,7 +425,7 @@ test.describe("repository page, seeded database", () => {
       await expect(page.getByTestId("repo-meta")).toContainText("Not synced yet");
       await expect(page.getByTestId("readme-empty")).toContainText("after the first sync");
       await expect(page.getByTestId("code-owners-empty")).toContainText("after the first sync");
-      await expect(page.getByTestId("docs-nav")).toContainText("No documents");
+      await expect(page.getByTestId("docs-nav")).toContainText("after the first sync");
       await expect(page.getByText("No README found")).toHaveCount(0);
     });
 

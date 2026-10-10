@@ -232,6 +232,14 @@ pre:has(> .dmr-copy-host) {
 .markdown-body > :first-child {
   margin-top: 0;
 }
+/* A document page shows its title as its own h1; a body that opens with the same h1 hides it
+   (display: none also removes it from the accessibility tree). */
+.markdown-body[data-hide-title] > h1:first-child {
+  display: none;
+}
+.markdown-body[data-hide-title] > h1:first-child + * {
+  margin-top: 0;
+}
 .markdown-body :is(p, ul, ol, pre, table, blockquote, details, figure, hr, dl) {
   margin-top: 1rem;
   margin-bottom: 1rem;

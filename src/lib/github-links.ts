@@ -98,3 +98,62 @@ export function githubRepoUrl(
   }
   return `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
 }
+
+const CONTROL = /[\u0000-\u001f\u007f]/;
+const MAX_SOURCE_PART = 2048;
+
+function sourceSegments(value: string): string[] | null {
+  if (value === "" || value.length > MAX_SOURCE_PART || CONTROL.test(value)) return null;
+  const parts = value.split("/");
+  return parts.every((p) => p !== "" && p !== "." && p !== "..") ? parts : null;
+}
+
+/**
+ * The host (scheme and authority) links to a repository's files use: the one GitHub reported in
+ * `htmlUrl` when it is a plain `https:` URL without credentials (it may be a GitHub Enterprise
+ * host), else `https://github.com`. Only the origin is taken from `htmlUrl`; the path is always
+ * rebuilt from the owner and name.
+ */
+function githubOrigin(htmlUrl: string | null | undefined): string {
+  if (typeof htmlUrl === "string" && htmlUrl.length <= 2048) {
+    try {
+      const url = new URL(htmlUrl);
+      if (
+        url.protocol === "https:" &&
+        url.username === "" &&
+        url.password === "" &&
+        url.hostname !== ""
+      ) {
+        return url.origin;
+      }
+    } catch {
+      // fall through to github.com
+    }
+  }
+  return "https://github.com";
+}
+
+/**
+ * Link to a document's source file on GitHub (task 9.7): `<origin>/<owner>/<repo>/blob/<branch>/<path>`.
+ * `path` is the repo-relative path stored by the sync and `branch` the default branch; both come
+ * from a third-party repository, so every segment is percent-encoded (a `#`, `?` or `%` in a file
+ * name cannot start a fragment or query) and anything that would be normalized away or is not
+ * text is refused: an empty, `.` or `..` segment, a control character, a path longer than 2048
+ * characters. Returns `null` for those, and the caller leaves the link out. An empty branch uses
+ * `HEAD`, which GitHub resolves to the default branch.
+ */
+export function githubBlobUrl(
+  htmlUrl: string | null | undefined,
+  owner: string,
+  name: string,
+  branch: string | null | undefined,
+  path: string,
+): string | null {
+  const pathParts = sourceSegments(path);
+  if (pathParts === null) return null;
+  const branchValue = typeof branch === "string" && branch !== "" ? branch : "HEAD";
+  const branchParts = sourceSegments(branchValue);
+  if (branchParts === null) return null;
+  const enc = (parts: readonly string[]) => parts.map(encodeURIComponent).join("/");
+  return `${githubOrigin(htmlUrl)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/blob/${enc(branchParts)}/${enc(pathParts)}`;
+}

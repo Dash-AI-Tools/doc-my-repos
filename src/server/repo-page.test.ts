@@ -228,6 +228,11 @@ describeDb("loadRepoPage on a real database", () => {
       ["*", "@alice"],
       ["/docs/", "@my-org/docs-team"],
     ]);
+    // the docs table of contents: folder "guides" holding "Setup"
+    expect(data.tree.path).toBe("docs");
+    expect(data.tree.children).toMatchObject([
+      { kind: "folder", name: "guides", children: [{ kind: "doc", title: "Setup" }] },
+    ]);
     expect(data.readme.status).toBe("rendered");
     if (data.readme.status !== "rendered") return;
     expect(data.readme.notice).toBeUndefined();
@@ -253,6 +258,8 @@ describeDb("loadRepoPage on a real database", () => {
     expect(data.status).toBe("ok");
     if (data.status !== "ok") return;
     expect(data.readme).toEqual({ status: "missing" });
+    // no docs folder: an empty table of contents
+    expect(data.tree.children).toEqual([]);
     expect(data.repo.codeOwners).toEqual([]);
     expect(data.repo.description).toBeNull();
   });

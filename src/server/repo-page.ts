@@ -1,5 +1,6 @@
 import "server-only";
 
+import { buildDocsTree, type DocsTreeFolder } from "@/lib/docs-tree";
 import { isReservedOwner } from "@/lib/routes";
 
 import type { Db } from "./db/client";
@@ -12,12 +13,13 @@ import {
   renderMarkdown,
   type RenderResult,
 } from "./markdown/pipeline";
-import { getDocPaths, getRepo, type RepoDetail } from "./queries";
+import { getDocsTree, getRepo, type RepoDetail } from "./queries";
 import { getRuntime } from "./runtime";
 
 /**
- * Data for the repository page `/<owner>/<repo>` (tasks 9.3 and 9.4). Reads only through the shared
- * query layer (`getRepo`, `getDocPaths`); never GitHub. The README is rendered here, on the
+ * Data for the repository page `/<owner>/<repo>` (tasks 9.3, 9.4 and 9.6). Reads only through the
+ * shared query layer (`getRepo`, `getDocsTree`); never GitHub. The document rows give both the docs
+ * table of contents (`tree`) and the `docPaths` set the README's link resolver needs. The README is rendered here, on the
  * server, from the stored Markdown with the same options every document uses (link and image
  * rewriting for this repository, Shiki highlighting); the sanitizer is the last pipeline step.
  *
@@ -28,7 +30,7 @@ import { getRuntime } from "./runtime";
  *   visibility-filtered lookup found nothing.
  * - `error`: the expected failures of the home page (unusable configuration, unreachable
  *   database), shown in-page; anything else is a bug and propagates to `error.tsx`.
- * - `ok`: the repository, its README as a `ReadmeView`.
+ * - `ok`: the repository, its README as a `ReadmeView` and its docs table of contents.
  *
  * A README that cannot be rendered never fails the page: the Markdown is shown as plain text with
  * a notice. The log line is fixed text; the README is never quoted.
@@ -45,6 +47,8 @@ export type RepoPageData =
       readonly status: "ok";
       readonly repo: RepoDetail;
       readonly readme: ReadmeView;
+      /** The docs table of contents (empty when the repository has no docs folder). */
+      readonly tree: DocsTreeFolder;
       /** When the data was read; the page formats "x minutes ago" against this. */
       readonly loadedAt: Date;
     }
@@ -126,10 +130,10 @@ export async function loadRepoPage(
     const handle = db();
     const repo = await getRepo(handle, owner, name);
     if (repo === null) return { status: "not_found" };
-    const docPaths =
-      repo.readme === null ? new Set<string>() : await getDocPaths(handle, { id: repo.id });
-    const readme = await readmeView(repo, docPaths, render, log);
-    return { status: "ok", repo, readme, loadedAt: now() };
+    const rows = await getDocsTree(handle, { id: repo.id });
+    const tree = buildDocsTree(rows, repo.docsPath);
+    const readme = await readmeView(repo, new Set(rows.map((r) => r.path)), render, log);
+    return { status: "ok", repo, readme, tree, loadedAt: now() };
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;

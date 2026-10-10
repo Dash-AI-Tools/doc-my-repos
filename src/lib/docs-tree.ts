@@ -191,3 +191,146 @@ export function adjacentInTree(
   if (at === -1) return null;
   return { previous: flat[at - 1] ?? null, next: flat[at + 1] ?? null };
 }
+
+/** The folders from the first level down to the one that holds `path`, outermost first. */
+export function ancestorFolders(tree: DocsTreeFolder, path: string): DocsTreeFolder[] {
+  const trail: DocsTreeFolder[] = [];
+  let folder = tree;
+  for (;;) {
+    const next: DocsTreeFolder | undefined = folder.children.find(
+      (child): child is DocsTreeFolder =>
+        child.kind === "folder" && path.startsWith(`${child.path}/`),
+    );
+    if (next === undefined) return trail;
+    trail.push(next);
+    folder = next;
+  }
+}
+
+function lowerStem(value: string): string {
+  return value.toLowerCase();
+}
+
+/**
+ * Finds the page a documentation address stands for when no document is stored at exactly that
+ * address (task 9.7). `segments` are the decoded catch-all segments after `/docs/`.
+ *
+ * 1. A document whose route stem equals the segments ignoring case (`Guides/SETUP` for
+ *    `guides/setup`). Several matches: the lowest path by code point, so the answer is stable.
+ * 2. A folder with that path (case ignored) that has an `index.md`: the folder's index document,
+ *    so `/docs/guides` leads to `/docs/guides/index`.
+ *
+ * Returns null when neither exists. Pure, so the page can redirect to the stored spelling.
+ */
+export function resolveDocRoute(
+  tree: DocsTreeFolder,
+  segments: readonly string[],
+): DocsTreeDoc | null {
+  if (segments.length === 0) return null;
+  const wanted = lowerStem(segments.join("/"));
+  const flat = flattenDocsTree(tree);
+  const byStem = flat
+    .filter((doc) => lowerStem(doc.stem) === wanted)
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  if (byStem[0] !== undefined) return byStem[0];
+
+  const folders: DocsTreeFolder[] = [];
+  const walk = (folder: DocsTreeFolder) => {
+    for (const child of folder.children) {
+      if (child.kind !== "folder") continue;
+      folders.push(child);
+      walk(child);
+    }
+  };
+  walk(tree);
+  const prefix = `${tree.path}/`;
+  const matches = folders
+    .filter(
+      (f) =>
+        f.index !== null &&
+        f.path.startsWith(prefix) &&
+        lowerStem(f.path.slice(prefix.length)) === wanted,
+    )
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  return matches[0]?.index ?? null;
+}
+
+/** Number of folders below the docs root (every level). */
+export function countFolders(tree: DocsTreeFolder): number {
+  let count = 0;
+  const walk = (folder: DocsTreeFolder) => {
+    for (const child of folder.children) {
+      if (child.kind !== "folder") continue;
+      count += 1;
+      walk(child);
+    }
+  };
+  walk(tree);
+  return count;
+}
+
+/** A page in the navigation tree the browser gets (`toNavTree`): only what the tree shows. */
+export interface NavDoc {
+  readonly kind: "doc";
+  readonly title: string;
+  /** Repo-relative path, to find the current page. */
+  readonly path: string;
+  readonly href: string;
+}
+
+/** A folder in the navigation tree. */
+export interface NavFolder {
+  readonly kind: "folder";
+  /** Folder name as stored; empty for the docs root. */
+  readonly name: string;
+  /** Repo-relative folder path, unique in the tree. */
+  readonly path: string;
+  /** Link of the folder's `index.md`, or null when it has none. */
+  readonly href: string | null;
+  /** Repo-relative path of the folder's `index.md`, to mark it as the current page. */
+  readonly indexPath: string | null;
+  /** The index's description. */
+  readonly summary: string | null;
+  readonly children: readonly NavNode[];
+}
+
+export type NavNode = NavDoc | NavFolder;
+
+/**
+ * The slim form of the tree that goes to the browser (task 9.6): titles, links and summaries, with
+ * the link of every page already built (`hrefFor` returns null for a page that has no URL; such
+ * a page is left out). The root's own `index.md` becomes its first child, since the root has no
+ * folder row to link from. Pure; keeps the order of `buildDocsTree`.
+ */
+export function toNavTree(
+  tree: DocsTreeFolder,
+  hrefFor: (doc: DocsTreeDoc) => string | null,
+): NavFolder {
+  const doc = (d: DocsTreeDoc): NavDoc | null => {
+    const href = hrefFor(d);
+    return href === null ? null : { kind: "doc", title: d.title, path: d.path, href };
+  };
+  const folder = (f: DocsTreeFolder, isRoot: boolean): NavFolder => {
+    const children: NavNode[] = [];
+    const lead = isRoot && f.index !== null ? doc(f.index) : null;
+    if (lead !== null) children.push(lead);
+    for (const child of f.children) {
+      if (child.kind === "folder") children.push(folder(child, false));
+      else {
+        const d = doc(child);
+        if (d !== null) children.push(d);
+      }
+    }
+    const index = isRoot || f.index === null ? null : doc(f.index);
+    return {
+      kind: "folder",
+      name: f.name,
+      path: f.path,
+      href: index?.href ?? null,
+      indexPath: index?.path ?? null,
+      summary: index === null ? null : f.summary,
+      children,
+    };
+  };
+  return folder(tree, true);
+}

@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { buildDocsTree, type DocsTreeRow } from "@/lib/docs-tree";
 import type { RepoDetail } from "@/server/queries";
 import type { RepoPageData } from "@/server/repo-page";
 
@@ -41,12 +42,26 @@ const repo: RepoDetail = {
   ],
 };
 
+function docRow(path: string, title: string): DocsTreeRow {
+  return { path, title, description: null, type: null, tags: [], status: null, reserved: null };
+}
+
+const tree = buildDocsTree(
+  [
+    docRow("docs/guides/setup.md", "Setup"),
+    docRow("docs/guides/advanced/tuning.md", "Tuning"),
+    docRow("docs/reference/endpoints.md", "Endpoints"),
+  ],
+  "docs",
+);
+
 function ok(over: Partial<RepoDetail> = {}) {
   return {
     status: "ok" as const,
     loadedAt: NOW,
     repo: { ...repo, ...over },
     readme: { status: "rendered" as const, html: "<h1>Hello</h1>" },
+    tree,
   };
 }
 
@@ -72,6 +87,9 @@ describe("repository page", () => {
     expect(out).toContain("<h1>Hello</h1>");
     expect(out).toContain('aria-label="Documentation"');
     expect(out).toContain("3 documents");
+    // the table of contents: folders and titles, linking to the document pages
+    expect(out).toContain('href="/acme/api/docs/guides/setup"');
+    expect(out).toContain('href="/acme/api/docs/guides/advanced/tuning"');
     expect(out).toContain('id="code-owners-heading"');
     expect(out).toContain("@alice");
     // sidebar order: documentation navigation before the code owners
@@ -100,9 +118,12 @@ describe("repository page", () => {
         readme: null,
       }),
       readme: { status: "missing" as const },
+      tree: buildDocsTree([], null),
     });
     const out = await html();
     expect(out).toContain("Waiting for the first sync");
+    expect(out).toContain("The table of contents appears here after the first sync.");
+    expect(out).not.toContain("No documentation files found");
     expect(out).toContain("The README appears here after the first sync.");
     expect(out).toContain("Code owners appear here after the first sync.");
     expect(out).not.toContain("No README found");
