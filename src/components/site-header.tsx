@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { ThemeToggle } from "./theme-toggle";
+
 export function SiteHeader() {
   return (
     <header className="border-b border-border">
@@ -10,6 +12,9 @@ export function SiteHeader() {
         >
           DocMyRepos
         </Link>
+        <div className="ml-auto">
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

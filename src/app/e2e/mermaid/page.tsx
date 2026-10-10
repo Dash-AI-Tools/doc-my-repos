@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { ThemeProvider } from "next-themes";
 
 import { CodeCopyEnhancer } from "@/components/code-copy";
 import { MermaidEnhancer } from "@/components/mermaid-enhancer";
@@ -20,8 +19,8 @@ import { renderMarkdown } from "@/server/markdown/pipeline";
  * Playwright `webServer` does. It is not linked from the nav and not in any sitemap. The check
  * runs per request (`connection()`), so a production build never bakes it in.
  *
- * It mounts its own next-themes `ThemeProvider` (`attribute="class"`, system default, as group 8
- * will) so the specs switch light and dark with `colorScheme` and the Mermaid theme follows.
+ * The root layout's `ThemeProvider` (task 8.2) applies the theme, so the specs switch light and
+ * dark with `colorScheme` (system default) or the header toggle, and the Mermaid theme follows.
  *
  * Group 10 note: this route is `/e2e/mermaid`, so a repo named `mermaid` in an org named `e2e`
  * would be shadowed by it in `/[owner]/[repo]`; the guard keeps it from existing in production.
@@ -113,12 +112,10 @@ export default async function Page({
   const source = (typeof doc === "string" ? DOCS[doc] : undefined) ?? BASIC;
   const { html } = await renderMarkdown(source, { slots: { highlight: [rehypeHighlight] } });
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-      <MermaidEnhancer>
-        <CodeCopyEnhancer>
-          <div data-testid="fixture-doc" dangerouslySetInnerHTML={{ __html: html }} />
-        </CodeCopyEnhancer>
-      </MermaidEnhancer>
-    </ThemeProvider>
+    <MermaidEnhancer>
+      <CodeCopyEnhancer>
+        <div data-testid="fixture-doc" dangerouslySetInnerHTML={{ __html: html }} />
+      </CodeCopyEnhancer>
+    </MermaidEnhancer>
   );
 }
