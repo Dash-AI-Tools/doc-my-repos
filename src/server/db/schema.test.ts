@@ -87,6 +87,15 @@ describe("db schema", () => {
     expect(synced.notNull).toBe(false);
   });
 
+  it("keeps the selection fingerprint and branch-head state next to the tree SHA", () => {
+    for (const name of ["selection_fingerprint", "head_etag", "commit_sha"]) {
+      const col = column(repos, name);
+      expect(col.getSQLType()).toBe("text");
+      expect(col.notNull).toBe(false);
+      expect(col.hasDefault).toBe(false);
+    }
+  });
+
   it("stores README and CODEOWNERS path/SHA pairs as nullable text", () => {
     for (const name of ["readme_path", "readme_sha", "codeowners_path", "codeowners_sha"]) {
       const col = column(repos, name);

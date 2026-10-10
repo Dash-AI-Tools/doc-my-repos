@@ -78,6 +78,13 @@ export const repos = pgTable(
     codeownersPath: text("codeowners_path"),
     codeownersSha: text("codeowners_sha"),
     treeSha: text("tree_sha"),
+    // Hash of the doc selection settings (task 5.4). Stored with tree_sha after a fully
+    // successful sync only; the tree short-circuit needs both to match.
+    selectionFingerprint: text("selection_fingerprint"),
+    // ETag and commit SHA of the default-branch head response, stored with tree_sha, so the next
+    // sync can send a conditional request (a 304 costs no rate limit).
+    headEtag: text("head_etag"),
+    commitSha: text("commit_sha"),
     docsPath: text("docs_path"),
     isOkf: boolean("is_okf").notNull().default(false),
     okfVersion: text("okf_version"),
