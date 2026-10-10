@@ -27,7 +27,13 @@ import {
   markSyncRequested,
   writtenSince,
 } from "./requests";
-import { SUPERSEDED_MESSAGE, startRun, syncRunLockKey } from "./runs";
+import { removeRepo } from "./removal";
+import {
+  REMOVED_SINCE_LISTING_MESSAGE,
+  SUPERSEDED_MESSAGE,
+  startRun,
+  syncRunLockKey,
+} from "./runs";
 
 // Task 6.4: idempotent processing and per-repo coalescing, against a real database and the
 // fixture-backed fake GitHub. Interleavings are forced with hooks and paused fake requests, never
@@ -685,6 +691,267 @@ describeDb("coalesced, idempotent syncs (task 6.4)", () => {
     expect(result.drained).toEqual([{ githubId: HANDBOOK_ID, status: "done", passes: 1 }]);
     expect((await repoRow(HANDBOOK_ID))?.visibility).toBe("private");
     expect(await requested()).toEqual([]);
+  });
+
+  // Epic 6 review, finding 1: public must never overwrite a newer private, even when nothing
+  // reruns the repo (the full sync goes fatal later, or the rerun's listing fails).
+
+  /** A 403 rate-limit answer the client does not wait for (retry-after far past maxWaitMs). */
+  const RATE_LIMITED = { status: 403, headers: { "retry-after": "3600" } };
+
+  /**
+   * Starts a full sync, waits until it holds metrics' lock with its (public) listing, then applies
+   * a `privatized` webhook for metrics (row private now, request coalesced into the holder).
+   * `upstream` is metrics' visibility on GitHub from then on.
+   */
+  async function privatizeWhileFullSyncHoldsMetrics(
+    upstream: "private" | "public",
+    beforeRelease?: () => void,
+  ) {
+    const pause = pauseOnce(fake, METRICS_BRANCH);
+    const run = syncAll(ctx, { trigger: "schedule" });
+    await pause.reached; // metrics' worker passed its checks and holds the lock
+    fake.updateRepo(METRICS_ID, { visibility: upstream });
+    expect(await markRepoPrivate(h.db, METRICS_ID)).toBe(true);
+    expect(await requestSync(ctx, { githubId: METRICS_ID }, webhook)).toEqual({
+      status: "coalesced",
+      passes: 0,
+    });
+    beforeRelease?.();
+    pause.release();
+    return run;
+  }
+
+  it("privatized mid-pass, then the full sync goes fatal on a later repo: the row stays private and the request survives", async () => {
+    await initialSync();
+    fake.setFile(METRICS_ID, "docs/m.md", "# M v2\n"); // the content path writes the repo row
+    const result = await privatizeWhileFullSyncHoldsMetrics("private", () =>
+      fake.fail({ path: HANDBOOK_BRANCH, ...RATE_LIMITED }),
+    );
+    const done = await result;
+
+    expect(done.fatal?.kind).toBe("rate_limited");
+    expect(done.drained).toEqual([]); // no drain after a fatal error
+    const row = await repoRow(METRICS_ID);
+    // Without the write-site guard this was the stale listing's `public`.
+    expect(row?.visibility).toBe("private");
+    expect(await body(METRICS_ID, "docs/m.md")).toBe("# M v2\n");
+    expect(await requested()).toEqual([METRICS_ID]);
+
+    // A later drain (next full sync, startup or periodic) converges on GitHub's visibility.
+    fake.clearFailures();
+    expect(await drainSyncRequests(ctx, webhook)).toEqual([
+      { githubId: METRICS_ID, status: "done", passes: 1 },
+    ]);
+    expect((await repoRow(METRICS_ID))?.visibility).toBe("private");
+    expect(await requested()).toEqual([]);
+  });
+
+  it("privatized mid-pass and the pass then fails: the error path keeps private too", async () => {
+    await initialSync();
+    fake.setFile(METRICS_ID, "docs/m.md", "# M v2\n");
+    const done = await privatizeWhileFullSyncHoldsMetrics("private", () => {
+      fake.fail({ path: /^\/repos\/acme\/metrics\/git\/trees\//, status: 500 });
+      fake.fail({ path: HANDBOOK_BRANCH, ...RATE_LIMITED });
+    });
+    const result = await done;
+    expect(result.fatal?.kind).toBe("rate_limited");
+    expect(await repoRow(METRICS_ID)).toMatchObject({ visibility: "private", syncStatus: "error" });
+    expect(await body(METRICS_ID, "docs/m.md")).toBe("# M\n"); // content kept
+    expect(await requested()).toEqual([METRICS_ID]);
+
+    fake.clearFailures();
+    await drainSyncRequests(ctx, webhook);
+    expect(await repoRow(METRICS_ID)).toMatchObject({ visibility: "private", syncStatus: "ok" });
+    expect(await body(METRICS_ID, "docs/m.md")).toBe("# M v2\n");
+    expect(await requested()).toEqual([]);
+  });
+
+  it("public -> private -> public during a pass: held private until a fresh pass, which writes public", async () => {
+    await initialSync();
+    // Unchanged tree: the persist `unchanged` path writes the repo row.
+    let seenByFreshPass: string | undefined;
+    let listings = 0;
+    const result = await privatizeWhileFullSyncHoldsMetrics("public", () => {
+      const pausing = fake.onRequest;
+      fake.onRequest = async (request) => {
+        await pausing?.(request);
+        if (LISTING.test(request.path) && ++listings === 1) {
+          // The drain's fresh pass lists: the full sync left the row private until now.
+          seenByFreshPass = (await repoRow(METRICS_ID))?.visibility;
+        }
+      };
+    });
+    const done = await result;
+    expect(done.fatal).toBeNull();
+    expect(seenByFreshPass).toBe("private");
+    expect(done.drained).toEqual([{ githubId: METRICS_ID, status: "done", passes: 1 }]);
+    expect((await repoRow(METRICS_ID))?.visibility).toBe("public");
+    expect(await requested()).toEqual([]);
+  });
+
+  it("publicized: a sync writes public as usual", async () => {
+    fake.updateRepo(HANDBOOK_ID, { visibility: "private" });
+    await initialSync();
+    expect((await repoRow(HANDBOOK_ID))?.visibility).toBe("private");
+    fake.updateRepo(HANDBOOK_ID, { visibility: "public" });
+    expect(await requestSync(ctx, { githubId: HANDBOOK_ID }, webhook)).toMatchObject({
+      status: "done",
+      passes: 1,
+    });
+    expect((await repoRow(HANDBOOK_ID))?.visibility).toBe("public");
+    // A full sync agrees and leaves no request behind.
+    await syncAll(ctx, { trigger: "schedule" });
+    expect((await repoRow(HANDBOOK_ID))?.visibility).toBe("public");
+    expect(await requested()).toEqual([]);
+  });
+
+  it("a pass whose listing fails does not consume the request, and the drain stops there", async () => {
+    await initialSync();
+    await markSyncRequested(h.db, METRICS_ID);
+    await markSyncRequested(h.db, HANDBOOK_ID);
+    fake.setFile(HANDBOOK_ID, "docs/a.md", "# A v2\n");
+    fake.fail({ path: LISTING, ...RATE_LIMITED });
+    fake.clearRequests();
+    const { meter, hooks } = passMeter();
+
+    const single = await requestSync(ctx, { githubId: METRICS_ID }, { ...webhook, hooks });
+    expect(single).toMatchObject({
+      status: "done",
+      passes: 1,
+      handedOff: true,
+      result: { status: "discovery_failed" },
+    });
+    expect(meter.passes).toBe(1); // no loop on the still-set marker
+    // The request re-marked metrics, so handbook's is now the oldest. The drain's first listing
+    // fails and it stops: one listing, not one per waiting repo.
+    expect(await drainSyncRequests(ctx, webhook)).toEqual([
+      { githubId: HANDBOOK_ID, status: "done", passes: 1 },
+    ]);
+    expect(fake.requestsTo(LISTING)).toHaveLength(2);
+    // Both requests are still recorded (each failed pass re-marked its own repo).
+    expect((await requested()).sort()).toEqual([HANDBOOK_ID, METRICS_ID]);
+
+    fake.clearFailures();
+    expect(await drainSyncRequests(ctx, webhook)).toEqual([
+      { githubId: METRICS_ID, status: "done", passes: 1 },
+      { githubId: HANDBOOK_ID, status: "done", passes: 1 },
+    ]);
+    expect(await body(HANDBOOK_ID, "docs/a.md")).toBe("# A v2\n");
+    expect(await requested()).toEqual([]);
+  });
+
+  it("a pass that loses its lock stops instead of running another pass", async () => {
+    await initialSync();
+    const { meter, hooks } = passMeter();
+    const result = await requestSync(
+      ctx,
+      { githubId: HANDBOOK_ID },
+      {
+        ...webhook,
+        hooks: {
+          ...hooks,
+          passStart: async (pass, lock) => {
+            hooks.passStart?.(pass, lock);
+            if (pass !== 1) return;
+            const lost = new Promise((resolve) =>
+              lock.signal.addEventListener("abort", resolve, { once: true }),
+            );
+            // Kill the session holding this database's advisory lock (the repo lock).
+            await h.pool.query(
+              `select pg_terminate_backend(pid) from pg_locks
+               where locktype = 'advisory' and database = (select oid from pg_database where datname = current_database())`,
+            );
+            await lost;
+          },
+        },
+      },
+    );
+    expect(result).toMatchObject({ status: "done", passes: 1, handedOff: true });
+    expect(meter.passes).toBe(1);
+    // The marker is left for a later drain.
+    expect(await requested()).toEqual([HANDBOOK_ID]);
+    expect(await drainSyncRequests(ctx, webhook)).toEqual([
+      { githubId: HANDBOOK_ID, status: "done", passes: 1 },
+    ]);
+    expect(await requested()).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------------------------
+  // Epic 6 review, finding 2: a full sync must not resurrect a repo a webhook removed after its
+  // listing.
+
+  it.each([
+    {
+      label: "archived upstream",
+      reason: "archived" as const,
+      upstream: () => fake.updateRepo(HANDBOOK_ID, { archived: true }),
+      restore: () => fake.updateRepo(HANDBOOK_ID, { archived: false }),
+    },
+    {
+      label: "removed from the installation",
+      reason: "not_in_installation" as const,
+      upstream: () => fake.removeRepo(HANDBOOK_ID),
+      restore: () => fake.addRepo(handbook()),
+    },
+  ])(
+    "a repo removed by a webhook after a full sync listed it is not recreated ($label)",
+    async ({ reason, upstream, restore }) => {
+      await initialSync();
+      const pause = pauseOnce(fake, METRICS_BRANCH);
+      const run = syncAll(ctx, { trigger: "schedule" });
+      await pause.reached; // listed both; handbook not reached yet
+      upstream();
+      expect(await removeRepo(h.db, h.pool, { githubId: HANDBOOK_ID }, reason)).toMatchObject({
+        status: "removed",
+      });
+      pause.release();
+      const result = await run;
+
+      expect(await repoRow(HANDBOOK_ID)).toBeUndefined();
+      const entry = result.run.ran
+        ? result.run.value.find((r) => r.githubId === HANDBOOK_ID)
+        : undefined;
+      expect(entry).toMatchObject({
+        status: "skipped",
+        errorKind: "removed",
+        error: REMOVED_SINCE_LISTING_MESSAGE,
+      });
+      expect(fake.requestsTo(HANDBOOK_BRANCH)).toHaveLength(0);
+      expect(result.run.ran && result.run.status).toBe("success");
+
+      // The next run lists it as it is now: still not created.
+      await syncAll(ctx, { trigger: "schedule" });
+      expect(await repoRow(HANDBOOK_ID)).toBeUndefined();
+
+      // Back upstream: the next run (its snapshot has no row) creates it again.
+      restore();
+      await syncAll(ctx, { trigger: "schedule" });
+      expect(await body(HANDBOOK_ID, "docs/a.md")).toBe("# A v1\n");
+    },
+  );
+
+  it("a removed repo that comes back is created again by a single-repo request", async () => {
+    await initialSync();
+    expect(
+      await removeRepo(h.db, h.pool, { githubId: HANDBOOK_ID }, "not_in_installation"),
+    ).toMatchObject({ status: "removed" });
+    expect(await requestSync(ctx, { githubId: HANDBOOK_ID }, webhook)).toMatchObject({
+      status: "done",
+      passes: 1,
+      result: { result: { status: "ok" } },
+    });
+    expect(await body(HANDBOOK_ID, "docs/a.md")).toBe("# A v1\n");
+  });
+
+  it("a repo new to the listing is created by a full sync next to stored ones", async () => {
+    await initialSync();
+    fake.addRepo({ id: 303, name: "fresh", files: { "docs/f.md": "# F\n" } });
+    const result = await syncAll(ctx, { trigger: "schedule" });
+    expect(result.fatal).toBeNull();
+    expect(await body(303, "docs/f.md")).toBe("# F\n");
+    const entry = result.run.ran ? result.run.value.find((r) => r.githubId === 303) : undefined;
+    expect(entry?.status).toBe("ok");
   });
 
   // -------------------------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import {
   type PersistRepo,
   type PersistResult,
 } from "./persist";
+import { databaseInstant, type DbInstant } from "./requests";
 import {
   FATAL_GITHUB_KINDS,
   MAX_RESULT_LIST,
@@ -108,6 +109,7 @@ function persistResult(over: Partial<PersistResult> = {}): PersistResult {
     replacedRepos: [],
     isOkf: false,
     okfVersion: null,
+    visibilityHeld: false,
     ...over,
   };
 }
@@ -391,6 +393,35 @@ describeDb("sync runs on a real database", () => {
         { status: "error", message: "x", visibility: "internal" },
       );
       expect((await repoRow(11))?.visibility).toBe("private");
+    });
+
+    it("on the error path, writes public only with listedAt and never over a newer private", async () => {
+      await seed(13, { visibility: "private" });
+      const error = (listedAt?: DbInstant) =>
+        recordRepoOutcome(
+          t.db,
+          { githubId: 13 },
+          { status: "error", message: "x", visibility: "public", listedAt },
+        );
+      // No listing instant: a public is not written (fail closed).
+      await error();
+      expect((await repoRow(13))?.visibility).toBe("private");
+
+      // Private stored after the listing (a `privatized` webhook): held, rerun marker set.
+      const listedAt = await databaseInstant(t.db);
+      await t.db
+        .update(repos)
+        .set({ updatedAt: sql`now()` })
+        .where(eq(repos.githubId, 13));
+      await error(listedAt);
+      expect(await repoRow(13)).toMatchObject({ visibility: "private", syncStatus: "error" });
+      expect((await repoRow(13))?.syncRequestedAt).not.toBeNull();
+
+      // A listing newer than the stored write applies GitHub's public.
+      await t.db.update(repos).set({ syncRequestedAt: null }).where(eq(repos.githubId, 13));
+      await error(await databaseInstant(t.db));
+      expect((await repoRow(13))?.visibility).toBe("public");
+      expect((await repoRow(13))?.syncRequestedAt).toBeNull();
     });
 
     it("does not create a row for a repo that was never synced", async () => {

@@ -21,8 +21,9 @@ import { describeSyncError, failureEntry, removalEntry, type SyncErrorInfo } fro
  *   lock (try mode: a busy repo is skipped and re-planned next run). The DELETE re-checks, inside
  *   the transaction, that the row still has the planned GitHub id, that the id is not one this run
  *   discovered, and that no sync wrote the row after the listing was taken (`updated_at <=
- *   listedAt`; every successful persist sets `updated_at = now()`), so a repo re-added or re-synced
- *   concurrently by a webhook is not deleted on stale information.
+ *   listedAt`; every successful persist sets `updated_at = now()`, and so does a `privatized`
+ *   webhook), so a repo re-added, re-synced or privatized concurrently by a webhook is not deleted
+ *   on stale information.
  * - `removeRepo` deletes one repo on an authoritative signal (task 6.3 webhooks).
  *
  * Archived repos: config-and-sources says every NON-archived accessible repo is "synced and

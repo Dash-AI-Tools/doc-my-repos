@@ -19,6 +19,7 @@ import { GitHubError, type GitHubErrorKind } from "../github/client";
 import { NOT_ACCESSIBLE_MESSAGE } from "./discovery";
 import { toDbText } from "./document-record";
 import { PersistError, mapVisibility, type PersistResult } from "./persist";
+import { visibilityWrite, type DbInstant } from "./requests";
 
 /**
  * Sync runs and per-repository status (task 5.7).
@@ -64,6 +65,9 @@ export const REPO_BUSY_MESSAGE = "another sync of this repository is running";
 /** A pass skipped because a newer sync wrote the repository after this pass's listing (task 6.4). */
 export const SUPERSEDED_MESSAGE =
   "skipped: a newer sync of this repository finished after this run listed it";
+/** A pass skipped because the repository was removed (webhook) after this pass's listing. */
+export const REMOVED_SINCE_LISTING_MESSAGE =
+  "skipped: the repository was removed after this run listed it";
 export const LOCK_LOST_MESSAGE =
   "lost the repository sync lock (database connection problem); retried on the next sync";
 
@@ -86,14 +90,17 @@ export type RepoSyncErrorKind =
   | "not_accessible";
 
 /**
- * Thrown by a worker that decides not to sync a repo at all (task 6.4: its listing is older than a
- * write by a newer sync). `runRepos` reports the repo `skipped` and records no status.
+ * Thrown by a worker that decides not to sync a repo at all because its listing is stale for it:
+ * `superseded` (task 6.4: a newer sync or a `privatized` webhook wrote the row after the listing)
+ * or `removed` (a webhook removed the row after the listing; recreating it from the listing
+ * would resurrect it). `runRepos` reports the repo `skipped` and records no status.
  */
 export class RepoSyncSkipped extends Error {
   override name = "RepoSyncSkipped";
-  readonly kind = "superseded";
-  constructor() {
-    super(SUPERSEDED_MESSAGE);
+  readonly kind: "superseded" | "removed";
+  constructor(kind: "superseded" | "removed" = "superseded") {
+    super(kind === "removed" ? REMOVED_SINCE_LISTING_MESSAGE : SUPERSEDED_MESSAGE);
+    this.kind = kind;
   }
 }
 
@@ -272,11 +279,24 @@ export type RepoStatusOutcome =
       /** A fixed message, normally `describeSyncError(...).message`. */
       message: string;
       /**
-       * GitHub's current visibility for the repo, when known (from the listing). Written with the
-       * error so a failed sync still applies a visibility change; mapped like persist (fail closed).
+       * GitHub's visibility for the repo, when known (from the listing). Written with the error so
+       * a failed sync still applies a visibility change; mapped like persist (fail closed).
+       * `private` is always written. `public` is written only with `listedAt`, and then never over
+       * a `private` stored after that instant (`visibilityWrite`: the row stays private and its
+       * rerun marker is set); without `listedAt` a `public` is not written at all (fail closed).
        */
       visibility?: string;
+      /** The database instant taken before the listing `visibility` came from. */
+      listedAt?: DbInstant;
     };
+
+/** The visibility columns an error outcome writes (see `RepoStatusOutcome`). */
+function errorVisibility(visibility: string | undefined, listedAt: DbInstant | undefined) {
+  if (visibility === undefined) return {};
+  const mapped = mapVisibility(visibility);
+  if (mapped === "private") return { visibility: mapped };
+  return listedAt === undefined ? {} : visibilityWrite(mapped, listedAt);
+}
 
 /**
  * Records a repo's sync status on its existing row (matched by `github_id`). Success: `ok`, no
@@ -299,9 +319,7 @@ export async function recordRepoOutcome(
       : {
           syncStatus: "error" as const,
           syncError: clip(outcome.message),
-          ...(outcome.visibility === undefined
-            ? {}
-            : { visibility: mapVisibility(outcome.visibility) }),
+          ...errorVisibility(outcome.visibility, outcome.listedAt),
         };
   const rows = await db
     .update(repos)
@@ -452,6 +470,12 @@ export interface RunReposOptions {
    * acquire would be busy). `signal` is the held lock's signal (aborts when its connection is lost).
    */
   heldLock?: HeldRepoLock;
+  /**
+   * The database instant taken before the listing `items` came from. Passed with the listed
+   * visibility to `recordRepoOutcome` on the error path; without it a failed repo's `public` is
+   * not written (only `private` is).
+   */
+  listedAt?: DbInstant;
   /** Clock for rate-limit retry times. */
   now?: () => number;
 }
@@ -540,11 +564,16 @@ export async function runRepos<T extends RunRepo>(
         outcome = successEntry(repo, work);
         status =
           outcome.status === "error"
-            ? { status: "error", message: outcome.error ?? "", visibility: repo.visibility }
+            ? {
+                status: "error",
+                message: outcome.error ?? "",
+                visibility: repo.visibility,
+                listedAt: options.listedAt,
+              }
             : { status: "ok" };
       } catch (error) {
         if (error instanceof RepoSyncSkipped) {
-          entry = failureEntry(repo, info(error.kind, SUPERSEDED_MESSAGE, false), "skipped");
+          entry = failureEntry(repo, info(error.kind, error.message, false), "skipped");
           return;
         }
         let described = describeSyncError(error, now());
@@ -565,7 +594,12 @@ export async function runRepos<T extends RunRepo>(
           return;
         }
         outcome = failureEntry(repo, described);
-        status = { status: "error", message: described.message, visibility: repo.visibility };
+        status = {
+          status: "error",
+          message: described.message,
+          visibility: repo.visibility,
+          listedAt: options.listedAt,
+        };
       }
       entry = outcome;
       // A lost lock means another sync may own the repo now: do not write its status.
@@ -626,6 +660,7 @@ export async function runRepos<T extends RunRepo>(
             status: "error",
             message: reason.message,
             visibility: repo.visibility,
+            listedAt: options.listedAt,
           }),
         );
       } catch {

@@ -8,6 +8,7 @@ import type { FrontmatterData } from "../docs/frontmatter";
 import { detectOkf } from "../docs/okf";
 import type { RepoLevelResult, TextWarning } from "./blobs";
 import { buildDocumentRecord, toDbOwners, toDbText, type DocumentRecord } from "./document-record";
+import { visibilityWrite, type DbInstant } from "./requests";
 
 /**
  * Persistence: the write side of one repository sync (task 5.6), after `planTree` (5.4) and
@@ -19,7 +20,11 @@ import { buildDocumentRecord, toDbOwners, toDbText, type DocumentRecord } from "
  *   html url and `visibility`. GitHub's `public` is stored as public; anything else (`private`,
  *   Enterprise `internal`, unknown) as private, failing closed. The visibility is written in the
  *   same transaction as the content, so the column the read-side visibility filter uses is never
- *   stale relative to the documents it guards.
+ *   stale relative to the documents it guards. With `options.listedAt` (the database instant
+ *   taken before the listing the metadata came from), a `public` never overwrites a stored
+ *   `private` written after that instant (a `privatized` webhook during the sync): the row stays
+ *   private, its rerun marker is set, and `visibilityHeld` is reported (`visibilityWrite` in
+ *   `requests.ts`).
  * - Renames: the same `github_id` with a new owner/name updates the row in place (documents
  *   kept). Any OTHER row whose owner/name equals the new one, ignoring case (GitHub names are
  *   case-insensitive, so two live repos cannot share one), is stale: it is deleted with its
@@ -142,6 +147,12 @@ export interface PersistOptions {
   signal?: AbortSignal;
   /** Per-document byte cap for `buildDocumentRecord`. Default 256 KB. */
   maxDocumentBytes?: number;
+  /**
+   * The database instant taken before the listing `repo` came from. When given, a `public`
+   * visibility does not overwrite a stored `private` written after it (see the module comment).
+   * Without it the visibility is written as listed (callers whose metadata is known fresh).
+   */
+  listedAt?: DbInstant;
 }
 
 export type PersistSkipReason = "too_large" | "write_rejected";
@@ -166,6 +177,11 @@ export interface PersistResult {
   replacedRepos: { githubId: number; owner: string; name: string }[];
   isOkf: boolean;
   okfVersion: string | null;
+  /**
+   * The listing said `public` but the stored row was made private after `listedAt`: it was kept
+   * private and its rerun marker set, so a fresh pass re-reads the visibility.
+   */
+  visibilityHeld: boolean;
 }
 
 /** GitHub visibility to the stored enum: only `public` is public (fail closed). */
@@ -475,6 +491,13 @@ export async function persistRepoSync(
     visibility: mapVisibility(repo.visibility),
     htmlUrl: toDbText(repo.htmlUrl),
   };
+  // On an existing row: the listed visibility, or a public guarded against a newer private.
+  const visibilitySet =
+    options.listedAt === undefined
+      ? { visibility: metadata.visibility }
+      : visibilityWrite(metadata.visibility, options.listedAt);
+  const heldPrivate = (stored: "public" | "private" | undefined) =>
+    metadata.visibility === "public" && stored === "private";
 
   try {
     return await db.transaction(async (tx) => {
@@ -492,6 +515,7 @@ export async function persistRepoSync(
         replacedRepos: [],
         isOkf: false,
         okfVersion: null,
+        visibilityHeld: false,
       };
 
       // Stale rows holding the new owner/name under another GitHub id (deleted, recreated or
@@ -529,15 +553,21 @@ export async function persistRepoSync(
           .update(repos)
           .set({
             ...metadata,
+            ...visibilitySet,
             ...headColumns(plan, true),
             ...okStatus(),
             updatedAt: sql`now()`,
           })
           .where(eq(repos.id, row.id))
-          .returning({ isOkf: repos.isOkf, okfVersion: repos.okfVersion });
+          .returning({
+            isOkf: repos.isOkf,
+            okfVersion: repos.okfVersion,
+            visibility: repos.visibility,
+          });
         result.repoId = row.id;
         result.isOkf = stored?.isOkf ?? false;
         result.okfVersion = stored?.okfVersion ?? null;
+        result.visibilityHeld = heldPrivate(stored?.visibility);
         return result;
       }
 
@@ -546,11 +576,12 @@ export async function persistRepoSync(
         .values({ githubId: repo.githubId, ...metadata })
         .onConflictDoUpdate({
           target: repos.githubId,
-          set: { ...metadata, updatedAt: sql`now()` },
+          set: { ...metadata, ...visibilitySet, updatedAt: sql`now()` },
         })
-        .returning({ id: repos.id });
+        .returning({ id: repos.id, visibility: repos.visibility });
       const repoId = (upserted as { id: number }).id;
       result.repoId = repoId;
+      result.visibilityHeld = heldPrivate(upserted?.visibility);
 
       // Removals first, then upserts, each document in its own savepoint.
       checkSignal(signal);

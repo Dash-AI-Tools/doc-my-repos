@@ -1,8 +1,9 @@
-import { asc, eq, getTableColumns } from "drizzle-orm";
+import { asc, eq, getTableColumns, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { codeOwners, documents, repos, SEARCH_TEXT_CONFIG } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
+import { markRepoPrivate } from "../webhooks/store";
 import type { RepoLevelResult } from "./blobs";
 import {
   PersistError,
@@ -13,6 +14,7 @@ import {
   type PersistPlan,
   type PersistRepo,
 } from "./persist";
+import { databaseInstant } from "./requests";
 
 const sha = (n: number | string) => String(n).padStart(40, "0").slice(-40);
 
@@ -565,6 +567,92 @@ describeDb("persistRepoSync on a real database", () => {
     it("stores internal as private", async () => {
       await persist({ repo: repoMeta(501, { visibility: "internal" }), plan: content() });
       expect((await repoRow(501))?.visibility).toBe("private");
+    });
+
+    it("never writes a listed public over a private stored after the listing (listedAt)", async () => {
+      const id = 502;
+      const unchanged = (treeSha: string): PersistPlan => ({
+        kind: "unchanged",
+        treeSha,
+        commitSha: null,
+        headEtag: null,
+        selectionFingerprint: "v1:fp",
+      });
+      await persist({ repo: repoMeta(id), plan: content({ fetched: [A] }) });
+      expect((await repoRow(id))?.visibility).toBe("public");
+
+      // A listing taken, then a `privatized` webhook, then the sync writes that listing.
+      const listedAt = await databaseInstant(t.db);
+      expect(await markRepoPrivate(t.db, id)).toBe(true);
+      const held = await persist(
+        { repo: repoMeta(id), plan: content({ treeSha: sha("t2"), fetched: [B] }) },
+        { listedAt },
+      );
+      expect(held.visibilityHeld).toBe(true);
+      const row = await repoRow(id);
+      expect(row?.visibility).toBe("private");
+      // The content is written; a fresh pass is requested to re-read the visibility.
+      expect((await docRows(id)).map((d) => d.path)).toEqual(["docs/a.md", "docs/b.md"]);
+      expect(row?.syncRequestedAt).not.toBeNull();
+      expect(row?.syncStatus).toBe("ok");
+
+      // The unchanged path is guarded the same way.
+      const listedAgain = await databaseInstant(t.db);
+      await t.db.update(repos).set({ syncRequestedAt: null }).where(eq(repos.githubId, id));
+      expect(await markRepoPrivate(t.db, id)).toBe(false); // already private, still bumped
+      const heldUnchanged = await persist(
+        { repo: repoMeta(id), plan: unchanged(sha("t2")) },
+        { listedAt: listedAgain },
+      );
+      expect(heldUnchanged.visibilityHeld).toBe(true);
+      expect((await repoRow(id))?.visibility).toBe("private");
+      expect((await repoRow(id))?.syncRequestedAt).not.toBeNull();
+
+      // A listing taken after the privatization (a fresh pass) writes GitHub's public.
+      await t.db.update(repos).set({ syncRequestedAt: null }).where(eq(repos.githubId, id));
+      const fresh = await persist(
+        { repo: repoMeta(id), plan: unchanged(sha("t2")) },
+        { listedAt: await databaseInstant(t.db) },
+      );
+      expect(fresh.visibilityHeld).toBe(false);
+      expect((await repoRow(id))?.visibility).toBe("public");
+      expect((await repoRow(id))?.syncRequestedAt).toBeNull();
+
+      // A listed private is always written, whatever the instant.
+      const old = await databaseInstant(t.db);
+      await t.db
+        .update(repos)
+        .set({ updatedAt: sql`now() + interval '1 hour'` })
+        .where(eq(repos.githubId, id));
+      const priv = await persist(
+        { repo: repoMeta(id, { visibility: "private" }), plan: unchanged(sha("t2")) },
+        { listedAt: old },
+      );
+      expect(priv.visibilityHeld).toBe(false);
+      expect((await repoRow(id))?.visibility).toBe("private");
+      expect((await repoRow(id))?.syncRequestedAt).toBeNull();
+
+      // A stored public written after the listing is not "held": public stays public.
+      await persist({ repo: repoMeta(id), plan: unchanged(sha("t2")) });
+      const beforeWrite = await databaseInstant(t.db);
+      await t.db
+        .update(repos)
+        .set({ updatedAt: sql`now() + interval '1 hour'` })
+        .where(eq(repos.githubId, id));
+      const pub = await persist(
+        { repo: repoMeta(id), plan: unchanged(sha("t2")) },
+        { listedAt: beforeWrite },
+      );
+      expect(pub.visibilityHeld).toBe(false);
+      expect((await repoRow(id))?.visibility).toBe("public");
+    });
+
+    it("creates a new row with the listed visibility whatever listedAt says", async () => {
+      const id = 503;
+      const listedAt = await databaseInstant(t.db);
+      const result = await persist({ repo: repoMeta(id), plan: content() }, { listedAt });
+      expect(result.visibilityHeld).toBe(false);
+      expect((await repoRow(id))?.visibility).toBe("public");
     });
   });
 
