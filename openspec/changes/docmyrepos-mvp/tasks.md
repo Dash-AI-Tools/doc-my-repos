@@ -10,7 +10,7 @@
 ## 2. Configuration (config-and-sources)
 
 - [x] 2.1 Define the zod schema for `docmyrepos.config.yml` (optional `repos` list, optional `exclude`, `docsPath` overrides, `defaults.docsPaths`; no org field) and verify unit tests for valid, invalid, and unknown-field configs
-- [ ] 2.2 Implement the config loader (YAML parse + env validation for `DATABASE_URL`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` or `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_WEBHOOK_SECRET`, `SYNC_SECRET`) and verify tests show errors name the missing or invalid variable (including an unreadable PEM) without printing secrets
+- [x] 2.2 Implement the config loader (YAML parse + env validation for `DATABASE_URL`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` or `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_WEBHOOK_SECRET`, `SYNC_SECRET`) and verify tests show errors name the missing or invalid variable (including an unreadable PEM) without printing secrets
 - [ ] 2.3 Add a sample `docmyrepos.config.example.yml` and verify it passes the schema in a test
 
 ## 3. Database (foundation for sync, search, OKF)
