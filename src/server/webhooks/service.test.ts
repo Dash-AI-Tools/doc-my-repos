@@ -8,6 +8,8 @@ import { createDb, type DbHandle } from "../db/client";
 import { documents, repos, syncRuns } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import { createGitHubClient } from "../github/client";
+import { createLogger } from "../log";
+import { renderRecord } from "../test-logger";
 import { createSyncContext, syncAll, type SyncContext } from "../sync/engine";
 import { FakeGitHub } from "../sync/fake-github";
 import { acknowledgeOnly, handleWebhookRequest, type WebhookDispatch } from "./endpoint";
@@ -87,7 +89,12 @@ describeDb("webhook router wired to the sync engine", () => {
   let ctx: SyncContext;
   let tasks: BackgroundTasks;
   let dispatch: WebhookDispatch;
+  // Every log line (router, endpoint, engine, GitHub client) as `event key=value ...`.
   const logged: string[] = [];
+  const log = createLogger({
+    level: "debug",
+    write: (line) => logged.push(renderRecord(JSON.parse(line) as Record<string, unknown>)),
+  });
 
   beforeAll(async () => {
     testDb = await createTestDatabase();
@@ -112,6 +119,7 @@ describeDb("webhook router wired to the sync engine", () => {
         maxWaitMs: 1_000,
       }),
       config: configSchema.parse({ exclude: ["sandbox"] }),
+      log,
     });
     tasks = createBackgroundTasks();
     logged.length = 0;
@@ -119,7 +127,7 @@ describeDb("webhook router wired to the sync engine", () => {
       sync: ctx,
       installationId: INSTALLATION,
       tasks,
-      log: (message, ...details) => logged.push([message, ...details].join(" ")),
+      log,
       removalLockWaitMs: 5_000,
     });
     const initial = await syncAll(ctx, { trigger: "manual" });
@@ -184,7 +192,7 @@ describeDb("webhook router wired to the sync engine", () => {
         },
         body,
       }),
-      { readSecret: () => SECRET, dispatch, log: (m) => logged.push(m) },
+      { readSecret: () => SECRET, dispatch, log },
     );
     expect(response.status).toBe(202);
     await tasks.idle();
@@ -228,7 +236,7 @@ describeDb("webhook router wired to the sync engine", () => {
     await send("push", pushPayload(HANDBOOK_ID, "handbook"));
     expect(await repoRow(HANDBOOK_ID)).toBeUndefined();
     expect(logged).toContain(
-      "webhook: sync finished event=push action=- delivery=delivery-1 status=not_found",
+      `webhook.task.finished githubEvent=push action=- deliveryId=delivery-1 task=sync githubId=${HANDBOOK_ID} status=not_found`,
     );
   });
 
@@ -405,12 +413,16 @@ describeDb("webhook router wired to the sync engine", () => {
     fake.setFile(HANDBOOK_ID, "docs/start.md", "# Start\n\nSecond push.\n");
     await dispatch("push", pushPayload(HANDBOOK_ID, "handbook"), "delivery-b");
     // Let the second delivery's background task run to its answer while the first is paused.
-    for (let i = 0; i < 50 && !logged.some((l) => l.includes("delivery=delivery-b status=")); i++) {
+    for (
+      let i = 0;
+      i < 50 && !logged.some((l) => l.includes("deliveryId=delivery-b task=sync"));
+      i++
+    ) {
       await new Promise((resolve) => setImmediate(resolve));
       await h.db.execute(sql`select 1`);
     }
     expect(logged).toContain(
-      "webhook: sync finished event=push action=- delivery=delivery-b status=coalesced",
+      `webhook.task.finished githubEvent=push action=- deliveryId=delivery-b task=sync githubId=${HANDBOOK_ID} status=coalesced`,
     );
     release();
     await tasks.idle();

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { GitHubError, type GitHubClient } from "../github/client";
+import { errorFields, logger, type Logger } from "../log";
 import type { AssetRepo } from "../queries/assets";
 import { assetCacheKey, type AssetCache, type AssetOutcome } from "./cache";
 import { bytesMatchType, CONTENT_TYPES, imageTypeForPath } from "./image-types";
@@ -86,8 +87,8 @@ export interface AssetResponse {
 export interface ServeAssetOptions {
   maxBytes?: number;
   timeoutMs?: number;
-  /** Operator log; only fixed text is passed. Default `console.error`. */
-  log?: (message: string) => void;
+  /** Structured log; only outcome words, kinds and statuses are passed. Default `logger`. */
+  log?: Logger;
 }
 
 const BASE_CSP = "default-src 'none'; sandbox";
@@ -203,13 +204,13 @@ async function fetchAsset(
       signal,
     });
     if (result.notModified) {
-      options.log("asset: unexpected not-modified answer from GitHub");
+      options.log.warn("asset.upstream_failed", { reason: "unexpected_not_modified" });
       return { kind: "failure", status: 502 };
     }
     bytes = result.data;
   } catch (error) {
     if (!(error instanceof GitHubError)) {
-      options.log("asset: unexpected failure while fetching an image");
+      options.log.error("asset.upstream_failed", { reason: "unexpected", ...errorFields(error) });
       return { kind: "failure", status: 502 };
     }
     switch (error.kind) {
@@ -221,18 +222,24 @@ async function fetchAsset(
       case "invalid_input":
         return { kind: "failure", status: 400 };
       case "rate_limited": {
-        options.log("asset: GitHub rate limit reached");
         const seconds =
           error.retryAfterMs === undefined
             ? DEFAULT_RETRY_AFTER_SECONDS
             : Math.max(1, Math.ceil(error.retryAfterMs / 1000));
+        options.log.warn("asset.upstream_failed", {
+          reason: "rate_limited",
+          retryAfterSeconds: seconds,
+        });
         return { kind: "failure", status: 503, retryAfterSeconds: seconds };
       }
       case "aborted":
-        if (timeout.aborted) options.log("asset: GitHub request timed out");
+        if (timeout.aborted) options.log.warn("asset.upstream_failed", { reason: "timeout" });
         return { kind: "failure", status: 504 };
       default:
-        options.log(`asset: GitHub request failed (${error.kind})`);
+        options.log.warn("asset.upstream_failed", {
+          reason: "github_error",
+          ...errorFields(error),
+        });
         return { kind: "failure", status: 502 };
     }
   }
@@ -272,23 +279,25 @@ export async function serveAsset(
   if (target === null) return errorResponse(400, method);
   if (imageTypeForPath(target.path) === null) return errorResponse(415, method);
 
-  const log = options.log ?? ((message: string) => console.error(message));
+  const log = options.log ?? logger;
   let deps: AssetDeps;
   let repo: AssetRepo | null;
   try {
     deps = getDeps();
     repo = await deps.findRepo(target.owner, target.repo);
-  } catch {
-    // Config and database errors can name hosts or variables; log fixed text only.
-    log("asset: repository lookup failed");
+  } catch (error) {
+    // Config and database errors can name hosts or variables; log safe error fields only.
+    log.error("asset.lookup_failed", errorFields(error));
     return errorResponse(500, method);
   }
   if (repo === null || repo.defaultBranch === "" || !deps.isConfigured(repo.name)) {
+    log.debug("asset.served", { httpStatus: 404, outcome: "unknown_repo" });
     return errorResponse(404, method);
   }
 
   const key = assetCacheKey(repo.githubId, repo.defaultBranch, target.path);
   let outcome = deps.cache?.get(key);
+  const cached = outcome !== undefined;
   if (outcome === undefined) {
     const fetched = await fetchAsset(request, repo, target.path, deps, {
       maxBytes: options.maxBytes ?? MAX_ASSET_BYTES,
@@ -296,6 +305,7 @@ export async function serveAsset(
       log,
     });
     if (fetched.kind === "failure") {
+      log.debug("asset.served", { githubId: repo.githubId, httpStatus: fetched.status, cached });
       return errorResponse(
         fetched.status,
         method,
@@ -308,8 +318,13 @@ export async function serveAsset(
     if (fetched.cacheable) deps.cache?.set(key, outcome);
   }
 
-  if (outcome.kind === "refused") return errorResponse(outcome.status, method);
-  return imageResponse(method, request.headers.get("if-none-match"), outcome, repo);
+  if (outcome.kind === "refused") {
+    log.debug("asset.served", { githubId: repo.githubId, httpStatus: outcome.status, cached });
+    return errorResponse(outcome.status, method);
+  }
+  const response = imageResponse(method, request.headers.get("if-none-match"), outcome, repo);
+  log.debug("asset.served", { githubId: repo.githubId, httpStatus: response.status, cached });
+  return response;
 }
 
 /** Turns an `AssetResponse` into a web `Response`. */
@@ -334,8 +349,8 @@ export async function handleAssetRequest(
   }
   try {
     return toResponse(await serveAsset(request, segments, getDeps, options));
-  } catch {
-    (options.log ?? ((message: string) => console.error(message)))("asset: unexpected failure");
+  } catch (error) {
+    (options.log ?? logger).error("asset.failed", errorFields(error));
     return toResponse(errorResponse(500, request.method.toUpperCase()));
   }
 }

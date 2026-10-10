@@ -6,6 +6,7 @@ import githubAppJwt from "universal-github-app-jwt";
 
 import { pemProblem } from "../config/env";
 import type { Secret } from "../config/secret";
+import { errorFields, logger, type Logger } from "../log";
 import {
   GitHubError,
   isRateLimited,
@@ -46,6 +47,9 @@ import {
  *   headers, GitHub's response body or the original error.
  * - Known limit: `@octokit/auth-app` shares in-flight mints per installation id across all
  *   providers in the process. One provider per installation (the MVP has one) is unaffected.
+ * - Logging (task 12.4): `github.token.minted` with the expiry instant only, and
+ *   `github.token.mint_failed` / `github.installation.unavailable` with the error kind and status.
+ *   Never the token, the JWT, the key or a response body.
  */
 
 export interface InstallationTokenProviderOptions {
@@ -70,6 +74,8 @@ export interface InstallationTokenProviderOptions {
   baseBackoffMs?: number;
   /** Timeout for one token request. Default 30 seconds. */
   requestTimeoutMs?: number;
+  /** Default: the process logger. */
+  log?: Logger;
 }
 
 export interface InstallationTokenProvider {
@@ -177,6 +183,7 @@ export function createInstallationTokenProvider(
   const maxAttempts = Math.max(1, Math.floor(options.maxAttempts ?? 3));
   const baseBackoffMs = Math.max(0, options.baseBackoffMs ?? 500);
   const requestTimeoutMs = Math.max(1, options.requestTimeoutMs ?? 30_000);
+  const log = options.log ?? logger;
 
   // `Date` header of the last token response. Mints are single-flight, so it belongs to the
   // response being processed.
@@ -292,13 +299,24 @@ export function createInstallationTokenProvider(
     const run = (async () => {
       try {
         const fresh = await mintWithRetries();
+        const refresh = cached !== null;
         cached = fresh;
         failure = null;
+        log.info("github.token.minted", {
+          installationId,
+          refresh,
+          expiresAt: new Date(fresh.expiresAt).toISOString(),
+        });
         return fresh;
       } catch (error) {
         const err = classify(error);
         const at = now();
         failure = { error: err, at, until: at + failureCooldownMs };
+        if (err.kind === "installation_unavailable") {
+          log.warn("github.installation.unavailable", { installationId, ...errorFields(err) });
+        } else {
+          log.error("github.token.mint_failed", { installationId, ...errorFields(err) });
+        }
         throw err;
       } finally {
         inflight = null;

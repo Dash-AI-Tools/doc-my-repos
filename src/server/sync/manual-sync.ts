@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { SyncRepoResult } from "../db/schema";
+import { errorFields, logger, type Logger } from "../log";
 import { verifySyncSecret } from "./auth";
 import type { RequestSyncResult, SyncAllResult, SyncOneResult, SyncOneTarget } from "./engine";
 import { REPO_BUSY_MESSAGE, describeSyncError, type RunStats, type SyncErrorInfo } from "./runs";
@@ -69,8 +70,8 @@ export interface ManualSyncDeps {
   /** Builds the service from freshly re-read config. Throws `ConfigError` when it is invalid. */
   getService(): ManualSyncService;
   now?: () => number;
-  /** Operator log. Only fixed text and configuration problem names are ever passed. */
-  log?: (message: string, ...details: string[]) => void;
+  /** Structured log. Only event names, outcome words, counts and problem names are passed. */
+  log?: Logger;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -356,18 +357,26 @@ function isConfigError(error: unknown): error is Error & { problems: readonly st
  * fixed body.
  */
 export async function handleManualSync(request: Request, deps: ManualSyncDeps): Promise<Response> {
-  const log = deps.log ?? ((message, ...details) => console.error(message, ...details));
+  const log = deps.log ?? logger;
   const now = deps.now ?? Date.now;
   try {
     const secret = deps.readSecret();
     if (secret === null) {
-      log("sync: SYNC_SECRET is not set or is shorter than the minimum length; /api/sync is off");
+      log.error("sync_api.not_configured", { variable: "SYNC_SECRET" });
       return notConfigured();
     }
-    if (!verifySyncSecret(request.headers.get("authorization"), secret)) return unauthorized();
+    // Only the outcome is logged, never the header or any part of it.
+    if (!verifySyncSecret(request.headers.get("authorization"), secret)) {
+      log.warn("sync_api.auth", { outcome: "unauthorized" });
+      return unauthorized();
+    }
+    log.info("sync_api.auth", { outcome: "authorized" });
 
     const body = await parseBody(request);
-    if (!body.ok) return body.response;
+    if (!body.ok) {
+      log.info("sync_api.rejected", { httpStatus: body.response.status });
+      return body.response;
+    }
 
     let service: ManualSyncService;
     try {
@@ -375,20 +384,25 @@ export async function handleManualSync(request: Request, deps: ManualSyncDeps): 
     } catch (error) {
       if (isConfigError(error)) {
         // `problems` name variables and config fields, never values.
-        log("sync: invalid configuration", ...error.problems);
+        log.error("sync_api.config_invalid", { problems: [...error.problems] });
         return notConfigured();
       }
       throw error;
     }
 
+    const scope = body.target === null ? "all" : "repo";
     const result =
       body.target === null
         ? mapAll(await service.syncAll({ trigger: "manual" }), now())
         : mapOne(await service.syncOne(body.target, { trigger: "manual" }), now());
+    log.info("sync_api.done", { scope, httpStatus: result.status });
     return result;
   } catch (error) {
-    // describeSyncError returns fixed text: raw errors can carry connection strings or tokens.
-    log("sync: unexpected failure", describeSyncError(error, now()).message);
+    // Only the kind and safe error fields: raw errors can carry connection strings or tokens.
+    log.error("sync_api.failed", {
+      reason: describeSyncError(error, now()).kind,
+      ...errorFields(error),
+    });
     return internalError();
   }
 }

@@ -2,6 +2,8 @@ import { createHmac } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { recordFields, recordingLogger, type RecordingLogger } from "../test-logger";
+
 import {
   MAX_WEBHOOK_BODY_BYTES,
   acknowledgeOnly,
@@ -57,8 +59,8 @@ function delivery(options: Options = {}): Request {
 function setup(overrides: Partial<WebhookDeps> = {}) {
   const readSecret = vi.fn((): string | null => SECRET);
   const dispatch = vi.fn<WebhookDispatch>(async () => undefined);
-  const log = vi.fn<(message: string, ...details: string[]) => void>();
-  const deps: WebhookDeps = { readSecret, dispatch, log, ...overrides };
+  const log = recordingLogger();
+  const deps: WebhookDeps = { readSecret, dispatch, log: log.log, ...overrides };
   return {
     readSecret,
     dispatch,
@@ -72,10 +74,11 @@ async function expectUnauthorized(response: Response) {
   expect(await response.json()).toEqual({ error: "unauthorized" });
 }
 
-/** Everything a response or the log exposes, as one string. */
-async function exposed(response: Response, log: ReturnType<typeof setup>["log"]) {
+/** Everything a response or the log exposes, as one string (log lines without their time). */
+async function exposed(response: Response, log: RecordingLogger) {
   const headers = [...response.headers.entries()].map(([k, v]) => `${k}: ${v}`).join("\n");
-  return `${response.status}\n${headers}\n${await response.text()}\n${JSON.stringify(log.mock.calls)}`;
+  const lines = log.records.map(recordFields);
+  return `${response.status}\n${headers}\n${await response.text()}\n${JSON.stringify(lines)}`;
 }
 
 describe("handleWebhookRequest: valid deliveries", () => {
@@ -166,7 +169,11 @@ describe("handleWebhookRequest: rejected signatures", () => {
     const { handle, dispatch, log } = setup();
     await expectUnauthorized(await handle(delivery({ body, ...options })));
     expect(dispatch).not.toHaveBeenCalled();
-    expect(log).not.toHaveBeenCalled();
+    // Only the verdict is logged, never the header.
+    expect(log.records).toEqual([
+      expect.objectContaining({ event: "webhook.signature", verification: "rejected" }),
+    ]);
+    expect(JSON.stringify(log.records)).not.toContain(hex.slice(0, 16));
   });
 
   it("rejects a body changed by one byte after signing", async () => {
@@ -190,11 +197,12 @@ describe("handleWebhookRequest: rejected signatures", () => {
   });
 
   it("gives a missing signature exactly the same response as a wrong one", async () => {
-    const { handle, log } = setup();
-    const missing = await exposed(await handle(delivery({ signature: null })), log);
+    const first = setup();
+    const missing = await exposed(await first.handle(delivery({ signature: null })), first.log);
+    const second = setup();
     const wrong = await exposed(
-      await handle(delivery({ signature: sign("other", "another-secret-0123456789") })),
-      log,
+      await second.handle(delivery({ signature: sign("other", "another-secret-0123456789") })),
+      second.log,
     );
     expect(missing).toBe(wrong);
   });
@@ -223,7 +231,13 @@ describe("handleWebhookRequest: rejected signatures", () => {
         message: "The server is not configured for webhooks.",
       });
       expect(dispatch).not.toHaveBeenCalled();
-      expect(log).toHaveBeenCalledOnce();
+      expect(log.records).toEqual([
+        expect.objectContaining({
+          level: "error",
+          event: "webhook.not_configured",
+          variable: "GITHUB_WEBHOOK_SECRET",
+        }),
+      ]);
     }
   });
 
@@ -420,11 +434,15 @@ describe("handleWebhookRequest: dispatch failures", () => {
     expect(text).toContain('"error":"internal_error"');
     expect(text).not.toContain(SECRET);
     expect(text).not.toContain("ghs_");
-    expect(log).toHaveBeenCalledExactlyOnceWith(
-      "webhook: dispatch failed",
-      "event=push",
-      `delivery=${DELIVERY}`,
-    );
+    expect(log.find("webhook.dispatch_failed")).toEqual([
+      expect.objectContaining({
+        level: "error",
+        event: "webhook.dispatch_failed",
+        githubEvent: "push",
+        deliveryId: DELIVERY,
+        errorName: "Error",
+      }),
+    ]);
   });
 
   it("answers 500 when the dispatcher throws synchronously", async () => {
@@ -448,15 +466,14 @@ describe("handleWebhookRequest: dispatch failures", () => {
     const { handle, log } = setup({ dispatch, dispatchWaitMs: 5 });
     const response = await handle(delivery());
     expect(response.status).toBe(202);
-    expect(log).not.toHaveBeenCalled();
+    expect(log.find("webhook.dispatch")).toEqual([
+      expect.objectContaining({ outcome: "pending", deliveryId: DELIVERY }),
+    ]);
+    expect(log.find("webhook.dispatch_failed")).toEqual([]);
     reject(leaky());
-    await vi.waitFor(() => expect(log).toHaveBeenCalledOnce());
-    expect(log).toHaveBeenCalledWith(
-      "webhook: dispatch failed",
-      "event=push",
-      `delivery=${DELIVERY}`,
-    );
-    expect(JSON.stringify(log.mock.calls)).not.toContain(SECRET);
+    await vi.waitFor(() => expect(log.find("webhook.dispatch_failed")).toHaveLength(1));
+    expect(log.find("webhook.dispatch_failed")[0]).toMatchObject({ deliveryId: DELIVERY });
+    expect(log.lines.join("")).not.toContain(SECRET);
   });
 
   it("answers 202 when a slow dispatcher later succeeds", async () => {
@@ -471,7 +488,7 @@ describe("handleWebhookRequest: dispatch failures", () => {
     expect((await handle(delivery())).status).toBe(202);
     resolve();
     await new Promise((r) => setTimeout(r, 10));
-    expect(log).not.toHaveBeenCalled();
+    expect(log.find("webhook.dispatch_failed")).toEqual([]);
   });
 
   it("never puts the secret in any response or log line", async () => {

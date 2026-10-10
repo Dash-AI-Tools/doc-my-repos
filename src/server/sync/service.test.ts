@@ -10,6 +10,7 @@ import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db
 import { FakeGitHub } from "./fake-github";
 import { handleManualSync } from "./manual-sync";
 import { getSyncService, readConfiguredSyncSecret } from "./service";
+import { captureOutput } from "../test-logger";
 
 // The real handler, service, runtime reload, engine and client, over a fake GitHub and a real
 // test database.
@@ -234,20 +235,21 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
 
   it("answers 500 with a fixed body for an invalid config file and keeps working after a fix", async () => {
     configYaml = "reposs: SENTINELfileText\n";
-    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const output = captureOutput();
     try {
       const bad = await call(post());
       expect(bad.response.status).toBe(500);
       expect(bad.json).toMatchObject({ error: "misconfigured" });
       expect(responses.at(-1)).not.toContain("SENTINELfileText");
       expect(responses.at(-1)).not.toContain("reposs");
-      const logged = log.mock.calls.flat().map(String).join("\n");
+      const logged = output.text();
+      expect(output.records().map((r) => r.event)).toContain("sync_api.config_invalid");
       expect(logged).not.toContain("SENTINELfileText");
       for (const secret of [SECRET, TOKEN, DB_PASSWORD, PEM_LINE]) {
         expect(logged).not.toContain(secret);
       }
     } finally {
-      log.mockRestore();
+      output.restore();
     }
     expect(fake.requests).toEqual([]);
     configYaml = "repos:\n  - handbook\n";

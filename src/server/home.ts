@@ -4,6 +4,7 @@ import { ConfigError } from "./config/load";
 import { describeDbError, type Db } from "./db/client";
 import { listRepos, type RepoSummary } from "./queries";
 import { getRuntime } from "./runtime";
+import { logger, type LogFn } from "./log";
 
 /**
  * Data for the home page (task 9.2). Reads only through the shared query layer; never GitHub.
@@ -34,8 +35,8 @@ export interface HomeDeps {
   /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
-  /** Receives a fixed message only. Default: `console.error`. */
-  readonly log?: (message: string) => void;
+  /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
+  readonly log?: LogFn;
 }
 
 const UNKNOWN_DB_ERROR = describeDbError(undefined);
@@ -52,7 +53,7 @@ export function expectedFailureKind(error: unknown): string | null {
 
 export async function loadHome(deps: HomeDeps = {}): Promise<HomeData> {
   const now = deps.now ?? (() => new Date());
-  const log = deps.log ?? ((message: string) => console.error(message));
+  const log = deps.log ?? logger.error;
   const db = deps.db ?? (() => getRuntime().db.db);
   try {
     const repos = await listRepos(db());
@@ -60,7 +61,7 @@ export async function loadHome(deps: HomeDeps = {}): Promise<HomeData> {
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;
-    log(`[home] could not load the repository list: ${kind}`);
+    log("home.load_failed", { reason: kind });
     return { status: "error", loadedAt: now() };
   }
 }

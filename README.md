@@ -77,6 +77,7 @@ Files left out by these limits are listed as a warning in the repository header 
 | `GITHUB_APP_INSTALLATION_ID` | ID of the App's installation on your organization                         |
 | `GITHUB_WEBHOOK_SECRET`      | Webhook secret (16+ characters) of the GitHub App, verifies signatures    |
 | `SYNC_SECRET`                | Secret (16+ characters) that protects the manual `/api/sync` endpoint     |
+| `LOG_LEVEL`                  | Optional: `debug`, `info` (default), `warn`, `error` or `silent`          |
 
 ### GitHub App
 
@@ -115,6 +116,30 @@ The app sets its own security headers (`src/proxy.ts`, values in `src/lib/securi
 - Also: `Referrer-Policy: same-origin` (portal URLs name private repositories), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, a `Permissions-Policy` that denies camera, microphone, geolocation and other features except clipboard writes, `Cross-Origin-Opener-Policy` and `Cross-Origin-Resource-Policy: same-origin`. `X-Powered-By` is not sent. The image proxy `/api/asset` keeps its own stricter sandbox policy.
 - **HTTPS:** terminate TLS at your reverse proxy and forward `X-Forwarded-Proto: https`. When a request arrives over HTTPS, a production build adds `Strict-Transport-Security: max-age=63072000; includeSubDomains` (no `preload`; add it at the proxy if you want your domain on the preload list) and `upgrade-insecure-requests`.
 - **Loading from a CDN** (fonts, a script): add the origin to the one directive that needs it, for example `font-src 'self' https://fonts.example.com`, in `buildContentSecurityPolicy`. Never widen `default-src` or `script-src`.
+
+### Logging
+
+The server writes one JSON object per line: `debug` and `info` to stdout, `warn` and `error` to stderr, ready for `docker logs` or any log collector.
+
+```json
+{
+  "ts": "2026-10-10T12:00:00.000Z",
+  "level": "info",
+  "service": "docmyrepos",
+  "event": "sync.run.finished",
+  "runId": 42,
+  "trigger": "webhook",
+  "scopeKind": "repo",
+  "status": "success",
+  "durationMs": 812,
+  "repos": 1,
+  "docsAdded": 2
+}
+```
+
+- **Events** are stable dotted names: `sync.run.started`/`finished`, `sync.repo.done`/`removed`, `sync.discovery.done`/`failed`, `sync.request.done`/`coalesced`, `sync.drain.done`, `github.token.minted`/`mint_failed`, `github.installation.unavailable`, `github.rate_limit.wait`/`exceeded`, `webhook.received`/`signature`/`decision`/`task.finished`, `sync_api.auth`/`done`/`failed`, `asset.upstream_failed`, and the page loaders' `*.load_failed`. Unchanged repositories, tree short-circuits, retries and served images are `debug` only; nothing is logged per file.
+- **`LOG_LEVEL`** sets the threshold (`debug`, `info`, `warn`, `error`, `silent`; default `info`). An unknown value stops the app at startup with a configuration error naming `LOG_LEVEL`.
+- **Never logged:** the App private key, installation tokens, App JWTs, the webhook and sync secrets, the database password, request headers or bodies, webhook payload content and error messages or stacks (only an error's name, kind, SQLSTATE or OS code and HTTP status). Webhook lines carry GitHub ids, never repository names, which a sender controls. As a safety net, the logger also redacts values under credential-like keys (`token`, `secret`, `password`, `authorization`, `cookie`, `private key`, `jwt`, `signature`, ...), scrubs PEM blocks, `Bearer` credentials, GitHub token shapes, JWTs and `user:password@` URLs from any text, and strips control characters so a value cannot forge a log line.
 
 ## Project status
 

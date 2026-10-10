@@ -15,7 +15,8 @@ import {
   type SyncRepoResult,
   type SyncWarning,
 } from "../db/schema";
-import { GitHubError, type GitHubErrorKind } from "../github/client";
+import { GitHubError, isValidOwner, isValidRepoName, type GitHubErrorKind } from "../github/client";
+import { errorFields, logger, type LogFields, type Logger } from "../log";
 import { NOT_ACCESSIBLE_MESSAGE } from "./discovery";
 import { toDbText } from "./document-record";
 import { PersistError, mapVisibility, type PersistResult } from "./persist";
@@ -41,6 +42,13 @@ import { visibilityWrite, type DbInstant } from "./requests";
  *
  * Every message stored or returned here is a fixed text chosen by error kind (`describeSyncError`).
  * Raw error messages, GitHub bodies, SQL text and tokens are never stored.
+ *
+ * Logging (task 12.4, structured, `../log`): `withRun` writes `sync.run.started`, one line per
+ * repository outcome when the run ends (`sync.repo.done`, `sync.repo.removed`; unchanged repos at
+ * `debug`), then `sync.run.finished` with the status, duration and counters; `sync.run.not_run`
+ * when it could not start; `sync.run.error` (safe error fields only) when the body threw.
+ * `reapStaleRuns` writes `sync.run.reaped`. Lines carry ids, counts and kinds; a repository's
+ * `owner/name` only when both parts pass the GitHub name rules.
  */
 
 export const SYNC_RUN_LOCK_NAMESPACE = "docmyrepos:sync-run";
@@ -868,6 +876,82 @@ export interface RunContext {
 
 export interface WithRunOptions extends StartRunInput {
   signal?: AbortSignal;
+  /** Default: the process logger. */
+  log?: Logger;
+}
+
+/** `owner/name` when both parts are valid GitHub names, else undefined (never logged raw). */
+export function loggableRepoName(full: string): string | undefined {
+  const slash = full.indexOf("/");
+  if (slash < 0) return undefined;
+  const owner = full.slice(0, slash);
+  const name = full.slice(slash + 1);
+  return isValidOwner(owner) && isValidRepoName(name) ? `${owner}/${name}` : undefined;
+}
+
+/** The log line for one results entry (task 12.4). */
+function logRepoOutcome(log: Logger, entry: SyncRepoResult): void {
+  const base: LogFields = { githubId: entry.githubId, repo: loggableRepoName(entry.repo) };
+  if (entry.status === "removed") {
+    log.info("sync.repo.removed", {
+      ...base,
+      reason: entry.removalReason ?? null,
+      docsRemoved: entry.removed,
+      errorKind: entry.errorKind ?? undefined,
+    });
+    return;
+  }
+  const fields: LogFields = {
+    ...base,
+    status: entry.status,
+    added: entry.added,
+    updated: entry.updated,
+    removed: entry.removed,
+    identical: entry.identical,
+    skipped: entry.skipped,
+    failedFiles: entry.failedFilesTotal,
+    warnings: entry.warningsTotal,
+    ...(entry.errorKind === null
+      ? {}
+      : { errorKind: entry.errorKind, retryable: entry.retryable, retryAfter: entry.retryAfter }),
+  };
+  if (entry.status === "unchanged") log.debug("sync.repo.done", fields);
+  else if (entry.status === "error") log.warn("sync.repo.done", fields);
+  else log.info("sync.repo.done", fields);
+}
+
+function logRunFinished(
+  log: Logger,
+  trigger: RunTrigger,
+  scopeKind: string,
+  results: readonly SyncRepoResult[],
+  fatal: SyncErrorInfo | null,
+  finished: FinishRunResult,
+): void {
+  for (const entry of results) logRepoOutcome(log, entry);
+  const s = finished.stats;
+  const fields: LogFields = {
+    trigger,
+    scopeKind,
+    status: finished.status,
+    written: finished.written,
+    durationMs: finished.durationMs,
+    repos: s.reposTotal,
+    reposOk: s.reposOk,
+    reposSynced: s.reposSynced,
+    reposUnchanged: s.reposUnchanged,
+    reposFailed: s.reposFailed,
+    reposSkipped: s.reposSkipped,
+    reposRemoved: s.reposRemoved,
+    docsAdded: s.docsAdded,
+    docsUpdated: s.docsUpdated,
+    docsRemoved: s.docsRemoved,
+    docsSkipped: s.docsSkipped,
+    warnings: s.warnings,
+    ...(fatal === null ? {} : { fatalKind: fatal.kind, retryable: fatal.retryable }),
+  };
+  if (finished.status === "success") log.info("sync.run.finished", fields);
+  else log.warn("sync.run.finished", fields);
 }
 
 export type WithRunResult<T> =
@@ -895,6 +979,8 @@ export async function withRun<T>(
   fn: (context: RunContext) => Promise<T>,
 ): Promise<WithRunResult<T>> {
   const runId = await startRun(db, options);
+  const scopeKind = options.scope === null ? "all" : "repo";
+  const log = (options.log ?? logger).child({ runId });
   let lock;
   let state: WithRunResult<T> | undefined;
   let thrown: { error: unknown } | undefined;
@@ -913,16 +999,19 @@ export async function withRun<T>(
         }
         const ledger = new RunLedger();
         let value: T | undefined;
+        log.info("sync.run.started", { trigger: options.trigger, scopeKind });
         try {
           value = await fn({ runId, signal, ledger });
         } catch (error) {
           thrown = { error };
+          log.error("sync.run.error", errorFields(error));
           if (ledger.fatal === null) ledger.fatal = describeSyncError(error);
         } finally {
           if (ledger.fatal === null && signal.aborted)
             ledger.fatal = info("aborted", RUN_ABORTED_ERROR, true, true);
           const finished = await finishRun(db, runId, ledger);
           state = { ran: true, runId, value: value as T, ...finished };
+          logRunFinished(log, options.trigger, scopeKind, ledger.results, ledger.fatal, finished);
         }
       },
       { signal: options.signal },
@@ -931,6 +1020,7 @@ export async function withRun<T>(
     if (thrown === undefined && !(error instanceof AdvisoryLockError)) throw error;
     if (thrown === undefined) {
       await failRun(db, runId, RUN_LOCK_ERROR).catch(() => false);
+      log.warn("sync.run.not_run", { trigger: options.trigger, scopeKind, reason: "lock_failed" });
       return { ran: false, runId, reason: "lock_failed" };
     }
   }
@@ -938,9 +1028,15 @@ export async function withRun<T>(
   if (lock !== undefined && !lock.acquired) {
     const aborted = lock.reason === "aborted";
     await failRun(db, runId, aborted ? RUN_ABORTED_ERROR : RUN_LOCK_ERROR).catch(() => false);
-    return { ran: false, runId, reason: aborted ? "aborted" : "lock_failed" };
+    const reason = aborted ? "aborted" : "lock_failed";
+    log.warn("sync.run.not_run", { trigger: options.trigger, scopeKind, reason });
+    return { ran: false, runId, reason };
   }
-  return state as WithRunResult<T>;
+  const final = state as WithRunResult<T> | undefined;
+  if (final !== undefined && !final.ran) {
+    log.warn("sync.run.not_run", { trigger: options.trigger, scopeKind, reason: final.reason });
+  }
+  return final as WithRunResult<T>;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -951,6 +1047,8 @@ export interface ReapOptions {
   now?: Date;
   /** Default 60 s. */
   graceMs?: number;
+  /** Default: the process logger. */
+  log?: Logger;
 }
 
 /**
@@ -986,7 +1084,10 @@ export async function reapStaleRuns(
     const result = await withAdvisoryLock(pool, syncRunLockKey(id), () =>
       failRun(db, id, REAPED_RUN_ERROR),
     );
-    if (result.acquired && result.value) reaped.push(id);
+    if (result.acquired && result.value) {
+      reaped.push(id);
+      (options.log ?? logger).warn("sync.run.reaped", { runId: id });
+    }
   }
   return reaped;
 }

@@ -14,6 +14,7 @@ import { anchorId } from "./markdown/sanitize";
 import { searchDocuments, searchFacets, type SearchHit } from "./queries";
 import { getRuntime } from "./runtime";
 import type { Db } from "./db/client";
+import { logger, type LogFn } from "./log";
 
 /**
  * Data for the `/search` page (task 10.3). The state comes from the URL (`parseSearchParams`);
@@ -34,8 +35,8 @@ import type { Db } from "./db/client";
 export interface SearchPageDeps {
   /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
   readonly db?: () => Db;
-  /** Receives a fixed message only. Default: `console.error`. */
-  readonly log?: (message: string) => void;
+  /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
+  readonly log?: LogFn;
 }
 
 /** The link to a document, with the best matching heading as a `#anchor` below the title. */
@@ -69,7 +70,7 @@ export async function loadSearchPage(
   deps: SearchPageDeps = {},
 ): Promise<SearchPageView> {
   if (state.q === "") return { status: "idle", state };
-  const log = deps.log ?? ((message: string) => console.error(message));
+  const log = deps.log ?? logger.error;
   const db = deps.db ?? (() => getRuntime().db.db);
   const params = {
     q: state.q,
@@ -102,7 +103,7 @@ export async function loadSearchPage(
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;
-    log(`[search] could not run the search: ${kind}`);
+    log("search_page.failed", { reason: kind });
     return { status: "error", state };
   }
 }

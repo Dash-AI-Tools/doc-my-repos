@@ -30,5 +30,20 @@ export default defineConfig([
       "@typescript-eslint/no-explicit-any": "error",
     },
   },
+  // Server code logs through the structured logger (`src/server/log.ts`), which redacts
+  // credentials; a stray console call would bypass that. Tests, test support and the logger
+  // itself may use the console. Client components report through error boundaries instead.
+  {
+    files: ["src/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"],
+    ignores: [
+      "src/server/log.ts",
+      "src/**/*.test.{ts,tsx}",
+      "src/server/db/test-db.ts",
+      "src/server/test-logger.ts",
+    ],
+    rules: {
+      "no-console": "error",
+    },
+  },
   prettier,
 ]);

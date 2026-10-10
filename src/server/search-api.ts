@@ -14,6 +14,7 @@ import { searchDocuments, type QueryOptions } from "./queries";
 import { searchResultItem } from "./search-page";
 import { getRuntime } from "./runtime";
 import type { Db } from "./db/client";
+import { logger, type LogFn } from "./log";
 
 /**
  * `GET /api/search` for the command palette (task 10.4, search spec "Global search access" and
@@ -52,8 +53,8 @@ export const MAX_IN_FLIGHT = 16;
 export interface SearchApiDeps {
   /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
   readonly db?: () => Db;
-  /** Receives a fixed message only. Default: `console.error`. */
-  readonly log?: (message: string) => void;
+  /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
+  readonly log?: LogFn;
   /** Query options (tests swap the visibility filter to prove the shared layer is used). */
   readonly options?: QueryOptions;
   /** Concurrency cap. Default `MAX_IN_FLIGHT`. */
@@ -92,7 +93,7 @@ export async function handleSearchRequest(
   deps: SearchApiDeps = {},
 ): Promise<Response> {
   if (request.method !== "GET") return methodNotAllowed();
-  const log = deps.log ?? ((message: string) => console.error(message));
+  const log = deps.log ?? logger.error;
 
   let state: SearchState;
   try {
@@ -131,7 +132,7 @@ export async function handleSearchRequest(
       // classification must not break the answer
     }
     try {
-      log(`[search-api] could not run the search: ${kind ?? "unexpected error"}`);
+      log("search_api.failed", { reason: kind ?? "unexpected error" });
     } catch {
       // a failing logger must not break the answer
     }

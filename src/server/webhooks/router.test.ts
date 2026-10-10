@@ -9,6 +9,7 @@ import {
   createWebhookRouter,
   type WebhookRouterDeps,
 } from "./router";
+import { recordingLogger, renderRecord } from "../test-logger";
 
 const INSTALLATION = 4242;
 const DELIVERY = "72d3162e-cc78-11e3-81ab-4c9367dc0958";
@@ -17,7 +18,6 @@ const SANDBOX = 303;
 // Strings that must never reach the log: payload content a sender controls.
 const SECRET_IN_PAYLOAD = "SENTINEL-payload-ghs_token0123";
 
-type Log = (message: string, ...details: string[]) => void;
 type D = WebhookRouterDeps;
 
 function setup(
@@ -34,11 +34,11 @@ function setup(
     markRepoPrivate: vi.fn<D["markRepoPrivate"]>(async () => true),
     markInstallationUnavailable: vi.fn<D["markInstallationUnavailable"]>(async () => 3),
     detach: vi.fn((task: Promise<void>) => tasks.detach(task)),
-    log: vi.fn<Log>(),
+    log: recordingLogger(),
   };
   // Overrides in these tests are `vi.fn` mocks too, except the scheduler ones (never inspected).
   const deps = { ...defaults, ...overrides } as typeof defaults;
-  const dispatch = createWebhookRouter(deps);
+  const dispatch = createWebhookRouter({ ...deps, log: deps.log.log });
   const send = async (
     event: string,
     payload: WebhookPayload,
@@ -47,7 +47,8 @@ function setup(
     await dispatch(event, payload, delivery);
     await tasks.idle();
   };
-  const lines = () => deps.log.mock.calls.map((c) => c.join(" "));
+  // Each record as `event key=value ...` (without time, level and service), for readable asserts.
+  const lines = () => deps.log.records.map(renderRecord);
   return { deps, dispatch, send, tasks, lines };
 }
 
@@ -113,10 +114,10 @@ describe("push", () => {
     expect(deps.syncRepo).toHaveBeenCalledWith(HANDBOOK);
     expect(deps.detach).toHaveBeenCalledTimes(1);
     expect(lines()).toContain(
-      `webhook: sync scheduled event=push action=- delivery=${DELIVERY} repo=${HANDBOOK}`,
+      `webhook.decision githubEvent=push action=- deliveryId=${DELIVERY} decision=sync_scheduled githubId=${HANDBOOK}`,
     );
     expect(lines()).toContain(
-      `webhook: sync finished event=push action=- delivery=${DELIVERY} status=ok`,
+      `webhook.task.finished githubEvent=push action=- deliveryId=${DELIVERY} task=sync githubId=${HANDBOOK} status=ok`,
     );
   });
 
@@ -142,7 +143,7 @@ describe("push", () => {
     await send("push", push(extra));
     expectNoWork(deps);
     expect(deps.detach).not.toHaveBeenCalled();
-    expect(lines().join("\n")).toMatch(/ignored/);
+    expect(lines().join("\n")).toMatch(/decision=ignored/);
   });
 
   it("does nothing for an archived repository", async () => {
@@ -156,7 +157,7 @@ describe("push", () => {
     await send("push", push({}, repository(SANDBOX, "SandBox")));
     expectNoWork(deps);
     expect(lines()).toContain(
-      `webhook: ignored (not selected) event=push action=- delivery=${DELIVERY} repo=${SANDBOX}`,
+      `webhook.decision githubEvent=push action=- deliveryId=${DELIVERY} decision=ignored reason=not_selected githubId=${SANDBOX}`,
     );
   });
 
@@ -170,7 +171,7 @@ describe("push", () => {
     const { deps, send, lines } = setup();
     await send("push", push({ installation: { id: 999 } }));
     expectNoWork(deps);
-    expect(lines().join("\n")).toMatch(/ignored \(other installation\)/);
+    expect(lines().join("\n")).toMatch(/decision=ignored reason=other_installation/);
   });
 });
 
@@ -282,7 +283,8 @@ describe("repository", () => {
     expect(String(error)).not.toContain(SECRET_IN_PAYLOAD);
     expect(deps.syncRepo).not.toHaveBeenCalled();
     expect(lines().join("\n")).not.toContain(SECRET_IN_PAYLOAD);
-    expect(lines().join("\n")).toContain("webhook: visibility update failed");
+    expect(lines().join("\n")).toContain("webhook.update_failed");
+    expect(lines().join("\n")).toContain("update=visibility_update");
   });
 
   it("syncs a publicized repository and leaves the visibility to that sync", async () => {
@@ -321,7 +323,7 @@ describe("repository", () => {
     await send("repository", repoEvent("frobnicated"));
     expectNoWork(deps);
     expect(lines().join("\n")).toMatch(
-      /ignored \(unhandled action\) event=repository action=frobnicated/,
+      /githubEvent=repository action=frobnicated deliveryId=\S+ decision=ignored reason=unhandled_action/,
     );
   });
 
@@ -428,7 +430,7 @@ describe("installation_repositories", () => {
     );
     expect(deps.removeRepo).toHaveBeenCalledTimes(2);
     expect(lines().join("\n")).toContain(
-      `webhook: removal failed event=installation_repositories action=removed delivery=${DELIVERY} repo=${HANDBOOK}`,
+      `webhook.task.failed githubEvent=installation_repositories action=removed deliveryId=${DELIVERY} task=removal githubId=${HANDBOOK} errorName=Error`,
     );
     expect(lines().join("\n")).not.toContain(SECRET_IN_PAYLOAD);
   });
@@ -454,7 +456,7 @@ describe("installation", () => {
       expect(deps.syncAll).not.toHaveBeenCalled();
       expect(deps.detach).not.toHaveBeenCalled();
       expect(lines()).toContain(
-        `webhook: all repositories marked unavailable event=installation action=${action} delivery=${DELIVERY} count=3`,
+        `webhook.decision githubEvent=installation action=${action} deliveryId=${DELIVERY} decision=installation_unavailable reason=${action} count=3`,
       );
     },
   );
@@ -535,7 +537,7 @@ describe("malformed payloads and other events", () => {
     const { deps, dispatch, lines } = setup();
     await expect(dispatch(event, payload as WebhookPayload, DELIVERY)).resolves.toBeUndefined();
     expectNoWork(deps);
-    expect(lines().join("\n")).toMatch(/webhook: ignored \(malformed payload\)/);
+    expect(lines().join("\n")).toMatch(/decision=ignored reason=malformed_payload/);
   });
 
   it.each(["check_run", "issues", "pull_request", "installation_target", "star"])(
@@ -545,7 +547,7 @@ describe("malformed payloads and other events", () => {
       await send(event, repoEvent("created"));
       expectNoWork(deps);
       expect(lines()).toEqual([
-        `webhook: ignored (unhandled event) event=${event} action=created delivery=${DELIVERY}`,
+        `webhook.decision githubEvent=${event} action=created deliveryId=${DELIVERY} decision=ignored reason=unhandled_event`,
       ]);
     },
   );
@@ -559,8 +561,8 @@ describe("malformed payloads and other events", () => {
     const text = lines().join("\n");
     expect(text).not.toContain(SECRET_IN_PAYLOAD);
     expect(text).not.toContain("FAKE LOG LINE");
-    expect(text).toContain("delivery=invalid");
-    expect(text).toContain("delivery=none");
+    expect(text).toContain("deliveryId=invalid");
+    expect(text).toContain("deliveryId=none");
     expect(text).toContain("action=-");
   });
 });
@@ -597,7 +599,9 @@ describe("background work", () => {
         }),
       });
       await send("push", push());
-      expect(lines()).toContain(`webhook: sync failed event=push action=- delivery=${DELIVERY}`);
+      expect(lines()).toContain(
+        `webhook.task.failed githubEvent=push action=- deliveryId=${DELIVERY} task=sync githubId=${HANDBOOK} errorName=Error`,
+      );
       expect(lines().join("\n")).not.toContain(SECRET_IN_PAYLOAD);
       await new Promise((r) => setTimeout(r, 10));
       expect(unhandled).not.toHaveBeenCalled();
@@ -614,7 +618,7 @@ describe("background work", () => {
     });
     await expect(dispatch("push", push(), DELIVERY)).resolves.toBeUndefined();
     await tasks.idle();
-    expect(lines().join("\n")).toContain("webhook: sync failed");
+    expect(lines().join("\n")).toContain("webhook.task.failed");
   });
 
   it("survives a scheduler that throws", async () => {
@@ -640,7 +644,7 @@ describe("background work", () => {
     const { send, lines } = setup({ syncRepo: vi.fn(async () => `weird ${SECRET_IN_PAYLOAD}`) });
     await send("push", push());
     expect(lines()).toContain(
-      `webhook: sync finished event=push action=- delivery=${DELIVERY} status=unknown`,
+      `webhook.task.finished githubEvent=push action=- deliveryId=${DELIVERY} task=sync githubId=${HANDBOOK} status=unknown`,
     );
   });
 });

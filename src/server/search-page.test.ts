@@ -51,9 +51,9 @@ describe("loadSearchPage without a database", () => {
     });
     expect(view.status).toBe("error");
     expect(log).toHaveBeenCalledOnce();
-    expect(log).toHaveBeenCalledWith(
-      "[search] could not run the search: database error (ECONNREFUSED)",
-    );
+    expect(log).toHaveBeenCalledWith("search_page.failed", {
+      reason: "database error (ECONNREFUSED)",
+    });
     expect(JSON.stringify(log.mock.calls)).not.toMatch(/secret|10\.1\.2\.3|postgres:/);
   });
 
@@ -66,7 +66,7 @@ describe("loadSearchPage without a database", () => {
       log,
     });
     expect(view.status).toBe("error");
-    expect(log).toHaveBeenCalledWith("[search] could not run the search: ConfigError");
+    expect(log).toHaveBeenCalledWith("search_page.failed", { reason: "ConfigError" });
     expect(JSON.stringify(log.mock.calls)).not.toContain("SYNC_SECRET");
   });
 

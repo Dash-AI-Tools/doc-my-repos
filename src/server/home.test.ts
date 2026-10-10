@@ -57,9 +57,9 @@ describe("loadHome failures", () => {
     });
     expect(data).toEqual({ status: "error", loadedAt: NOW });
     expect(log).toHaveBeenCalledOnce();
-    expect(log).toHaveBeenCalledWith(
-      "[home] could not load the repository list: database error (ECONNREFUSED)",
-    );
+    expect(log).toHaveBeenCalledWith("home.load_failed", {
+      reason: "database error (ECONNREFUSED)",
+    });
     const logged = JSON.stringify(log.mock.calls);
     expect(logged).not.toMatch(/secret|10\.1\.2\.3|postgres:/);
   });
@@ -74,7 +74,7 @@ describe("loadHome failures", () => {
       log,
     });
     expect(data.status).toBe("error");
-    expect(log).toHaveBeenCalledWith("[home] could not load the repository list: ConfigError");
+    expect(log).toHaveBeenCalledWith("home.load_failed", { reason: "ConfigError" });
     expect(JSON.stringify(log.mock.calls)).not.toContain("SYNC_SECRET");
   });
 
@@ -140,7 +140,10 @@ describeDb("loadHome on a real database", () => {
       const data = await loadHome({ db: () => dead.db, now: () => NOW, log });
       expect(data.status).toBe("error");
       expect(log).toHaveBeenCalledOnce();
-      expect(String(log.mock.calls[0]?.[0])).toMatch(/database error \((ECONNREFUSED|timeout)\)$/);
+      expect(log.mock.calls[0]?.[0]).toBe("home.load_failed");
+      expect(String(log.mock.calls[0]?.[1]?.reason)).toMatch(
+        /database error \((ECONNREFUSED|timeout)\)$/,
+      );
     } finally {
       await dead.close();
     }

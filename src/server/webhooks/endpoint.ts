@@ -1,4 +1,5 @@
 import { MIN_SECRET_LENGTH } from "../config/secret";
+import { errorFields, logger, type Logger } from "../log";
 import { SIGNATURE_HEADER, verifyWebhookSignature } from "./verify";
 
 /**
@@ -28,7 +29,10 @@ import { SIGNATURE_HEADER, verifyWebhookSignature } from "./verify";
  * caught and logged with fixed text, so there is never an unhandled rejection. A dispatcher that
  * starts a long sync should therefore start it and resolve without awaiting it (task 6.3/6.4).
  *
- * Nothing here logs or returns the secret, the signature, the body or an error's message.
+ * Nothing here logs or returns the secret, the signature, the body or an error's message. Log
+ * lines (structured, `../log`) carry only the outcome words, the validated event name
+ * (`githubEvent`) and the validated delivery id: `webhook.rejected` (with a reason), `webhook.signature` (`rejected`),
+ * `webhook.received`, `webhook.dispatch` (`done`, `pending`) or `webhook.dispatch_failed`.
  *
  * Status codes:
  *   200  ping                            202  event accepted (dispatched or still running)
@@ -70,8 +74,8 @@ export interface WebhookDeps {
   maxBodyBytes?: number;
   /** See the module comment. Defaults to `DEFAULT_DISPATCH_WAIT_MS`. */
   dispatchWaitMs?: number;
-  /** Operator log. Only fixed text, the event name and the delivery id are ever passed. */
-  log?: (message: string, ...details: string[]) => void;
+  /** Structured log. Only outcome words, the validated event name and delivery id are passed. */
+  log?: Logger;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -183,21 +187,21 @@ async function runDispatch(
   payload: WebhookPayload,
   deliveryId: string | null,
   waitMs: number,
-  log: (message: string, ...details: string[]) => void,
+  log: Logger,
 ): Promise<Outcome> {
-  const details = [`event=${event}`, `delivery=${deliveryId ?? "none"}`];
+  const details = { githubEvent: event, deliveryId: deliveryId ?? "none" };
   let settled: Promise<Outcome>;
   try {
     settled = Promise.resolve(dispatch(event, payload, deliveryId)).then(
       (): Outcome => "done",
-      (): Outcome => {
-        // The error itself is never logged: it may carry tokens or connection strings.
-        log("webhook: dispatch failed", ...details);
+      (error: unknown): Outcome => {
+        // Only safe error fields (name, kind, code): the message may carry tokens or URLs.
+        log.error("webhook.dispatch_failed", { ...details, ...errorFields(error) });
         return "failed";
       },
     );
-  } catch {
-    log("webhook: dispatch failed", ...details);
+  } catch (error) {
+    log.error("webhook.dispatch_failed", { ...details, ...errorFields(error) });
     return "failed";
   }
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -219,7 +223,7 @@ async function runDispatch(
  * with a fixed body.
  */
 export async function handleWebhookRequest(request: Request, deps: WebhookDeps): Promise<Response> {
-  const log = deps.log ?? ((message, ...details) => console.error(message, ...details));
+  const log = deps.log ?? logger;
   try {
     let secret: string | null;
     try {
@@ -228,31 +232,45 @@ export async function handleWebhookRequest(request: Request, deps: WebhookDeps):
       secret = null;
     }
     if (typeof secret !== "string" || secret.length < MIN_SECRET_LENGTH) {
-      log(
-        "webhook: GITHUB_WEBHOOK_SECRET is not set or is shorter than the minimum length; webhooks are rejected",
-      );
+      log.error("webhook.not_configured", { variable: "GITHUB_WEBHOOK_SECRET" });
       return notConfigured();
     }
+    const rejected = (reason: string, response: Response): Response => {
+      log.warn("webhook.rejected", { reason, httpStatus: response.status });
+      return response;
+    };
 
-    if (!isJsonContentType(request.headers.get("content-type"))) return unsupportedMediaType();
+    if (!isJsonContentType(request.headers.get("content-type"))) {
+      return rejected("unsupported_media_type", unsupportedMediaType());
+    }
 
     const raw = await readRawBody(request, deps.maxBodyBytes ?? MAX_WEBHOOK_BODY_BYTES);
-    if (raw === "too_large") return payloadTooLarge();
-    if (raw === "invalid") return invalidRequest();
+    if (raw === "too_large") return rejected("too_large", payloadTooLarge());
+    if (raw === "invalid") return rejected("unreadable_body", invalidRequest());
 
+    // Only the verdict is logged: never the header, the secret or the body.
     if (!verifyWebhookSignature(raw, request.headers.get(SIGNATURE_HEADER), secret)) {
+      log.warn("webhook.signature", { verification: "rejected" });
       return unauthorized();
     }
 
     // Authenticated from here on.
     const event = request.headers.get("x-github-event");
-    if (event === null || !EVENT_NAME.test(event)) return invalidRequest();
+    if (event === null || !EVENT_NAME.test(event))
+      return rejected("invalid_event", invalidRequest());
     const delivery = request.headers.get("x-github-delivery");
-    if (delivery !== null && !DELIVERY_ID.test(delivery)) return invalidRequest();
+    if (delivery !== null && !DELIVERY_ID.test(delivery)) {
+      return rejected("invalid_delivery_id", invalidRequest());
+    }
 
     const payload = parsePayload(raw);
-    if (payload === null) return invalidRequest();
+    if (payload === null) return rejected("invalid_json", invalidRequest());
 
+    log.info("webhook.received", {
+      githubEvent: event,
+      deliveryId: delivery ?? "none",
+      verification: "accepted",
+    });
     if (event === "ping") return json(200, { ok: true, event: "ping" });
 
     const outcome = await runDispatch(
@@ -264,9 +282,10 @@ export async function handleWebhookRequest(request: Request, deps: WebhookDeps):
       log,
     );
     if (outcome === "failed") return internalError();
+    log.info("webhook.dispatch", { githubEvent: event, deliveryId: delivery ?? "none", outcome });
     return json(202, { ok: true });
-  } catch {
-    log("webhook: unexpected failure");
+  } catch (error) {
+    log.error("webhook.failed", errorFields(error));
     return internalError();
   }
 }

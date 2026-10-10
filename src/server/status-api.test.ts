@@ -56,7 +56,7 @@ describe("GET /api/status without a database", () => {
     expect(await res.json()).toEqual(UNAVAILABLE_STATUS_BODY);
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(log).toHaveBeenCalledWith(`[status-api] could not read the sync status: ${kind}`);
+    expect(log).toHaveBeenCalledWith("status_api.failed", { reason: kind });
     expect(JSON.stringify(log.mock.calls)).not.toContain("sentinel");
   });
 

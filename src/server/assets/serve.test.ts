@@ -6,6 +6,12 @@ import { createGitHubClient, GitHubError, type GitHubClient } from "../github/cl
 import { findAssetRepo, type AssetRepo } from "../queries/assets";
 import { publicReposOnly } from "../queries/visibility";
 import { FakeGitHub } from "../sync/fake-github";
+import {
+  captureOutput,
+  recordingLogger,
+  type CapturedOutput,
+  type RecordingLogger,
+} from "../test-logger";
 import { createAssetCache, type AssetCache } from "./cache";
 import {
   assetEtag,
@@ -63,7 +69,7 @@ interface Setup {
   cache: AssetCache;
   clock: { now: number };
   getDeps: ReturnType<typeof vi.fn<() => AssetDeps>>;
-  logs: string[];
+  logs: RecordingLogger;
   serve(
     path: string,
     init?: { method?: string; headers?: Record<string, string>; signal?: AbortSignal },
@@ -95,7 +101,7 @@ function setup(over: Partial<AssetDeps> = {}): Setup {
     ...over,
   };
   const getDeps = vi.fn(() => deps);
-  const logs: string[] = [];
+  const logs = recordingLogger();
   return {
     fake,
     github,
@@ -112,7 +118,7 @@ function setup(over: Partial<AssetDeps> = {}): Setup {
         },
         path.split("/"),
         getDeps,
-        { log: (m) => logs.push(m), ...options },
+        { log: logs.log, ...options },
       ),
   };
 }
@@ -452,7 +458,9 @@ describe("serveAsset: upstream failures", () => {
     expect(res.status).toBe(503);
     expect(Number(res.headers["retry-after"])).toBeGreaterThanOrEqual(100);
     expect(contentRequests(s.fake)).toHaveLength(1);
-    expect(s.logs).toEqual(["asset: GitHub rate limit reached"]);
+    expect(s.logs.find("asset.upstream_failed")).toEqual([
+      expect.objectContaining({ level: "warn", reason: "rate_limited" }),
+    ]);
   });
 
   it("maps a 429 with retry-after to 503 with Retry-After", async () => {
@@ -467,7 +475,9 @@ describe("serveAsset: upstream failures", () => {
     const res = await s.serve("acme/handbook/docs/img/arch.png");
     expect(res.status).toBe(502);
     expect(contentRequests(s.fake)).toHaveLength(2);
-    expect(s.logs).toEqual(["asset: GitHub request failed (server)"]);
+    expect(s.logs.find("asset.upstream_failed")).toEqual([
+      expect.objectContaining({ reason: "github_error", errorKind: "server", status: 502 }),
+    ]);
   });
 
   it("maps a timeout to 504", async () => {
@@ -483,7 +493,9 @@ describe("serveAsset: upstream failures", () => {
     const t = setup({ github: hanging });
     const res = await t.serve("acme/handbook/docs/img/arch.png", {}, { timeoutMs: 30 });
     expect(res.status).toBe(504);
-    expect(t.logs).toEqual(["asset: GitHub request timed out"]);
+    expect(t.logs.find("asset.upstream_failed")).toEqual([
+      expect.objectContaining({ reason: "timeout" }),
+    ]);
   });
 
   it("stops when the client has gone away", async () => {
@@ -501,7 +513,10 @@ describe("serveAsset: upstream failures", () => {
     });
     const res = await t.serve("acme/handbook/docs/img/arch.png");
     expect(res.status).toBe(500);
-    expect(t.logs).toEqual(["asset: repository lookup failed"]);
+    expect(t.logs.find("asset.lookup_failed")).toEqual([
+      expect.objectContaining({ level: "error", errorName: "Error" }),
+    ]);
+    expect(t.logs.lines.join("")).not.toContain(TOKEN);
     const u = setup({
       findRepo: async () => {
         throw new Error(`connect ECONNREFUSED postgres://u:${TOKEN}@db`);
@@ -526,14 +541,12 @@ describe("serveAsset: methods", () => {
 });
 
 describe("serveAsset: credentials never leak", () => {
-  const consoleSpies: ReturnType<typeof vi.spyOn>[] = [];
+  let output: CapturedOutput;
   beforeEach(() => {
-    for (const method of ["error", "warn", "log", "info", "debug"] as const) {
-      consoleSpies.push(vi.spyOn(console, method).mockImplementation(() => undefined));
-    }
+    output = captureOutput();
   });
   afterEach(() => {
-    for (const spy of consoleSpies.splice(0)) spy.mockRestore();
+    output.restore();
   });
 
   function leakFree(res: AssetResponse): void {
@@ -552,7 +565,7 @@ describe("serveAsset: credentials never leak", () => {
   it("keeps the installation token out of every outcome, header and log", async () => {
     const outcomes: AssetResponse[] = [];
     const run = async (s: Setup, path: string, init = {}) => {
-      // The default logger (console.error) is used here so the console is checked too.
+      // The default logger (JSON lines on stdout/stderr) is used, so the process output is checked.
       outcomes.push(
         await serveAsset(
           { method: "GET", headers: new Headers(), ...init },
@@ -618,15 +631,14 @@ describe("serveAsset: credentials never leak", () => {
       200, 200, 415, 404, 400, 415, 404, 405, 502, 502, 503, 503, 404, 502, 502, 502, 502,
     ]);
     for (const res of outcomes) leakFree(res);
-    for (const spy of consoleSpies) {
-      const logged = JSON.stringify(spy.mock.calls);
-      expect(logged).not.toContain(TOKEN);
-      expect(logged.toLowerCase()).not.toContain("bearer");
-    }
-    // Something was logged (the 5xx, 401 and raw failures), all of it fixed text.
-    const all = consoleSpies.flatMap((spy) => spy.mock.calls.flat());
-    expect(all.length).toBeGreaterThan(0);
-    for (const line of all) expect(String(line)).toMatch(/^asset: [A-Za-z -]+(?: \([a-z_]+\))?$/);
+    const logged = output.text();
+    expect(logged).not.toContain(TOKEN);
+    expect(logged.toLowerCase()).not.toContain("bearer");
+    // Something was logged (the 5xx, 401 and raw failures), all of it structured lines.
+    const records = output.records();
+    expect(records.some((r) => r.event === "asset.upstream_failed")).toBe(true);
+    for (const line of logged.trim().split("\n")) expect(line).toMatch(/^\{"ts":/);
+    for (const r of records) expect(r.event).toMatch(/^(asset|github)\.[a-z_.]+$/);
   });
 
   it("GitHubError messages are fixed text", () => {
@@ -660,7 +672,9 @@ describe("handleAssetRequest", () => {
       "http://localhost/api/asset/acme/handbook/..%2f..%2fx.png",
       "http://localhost/elsewhere/x.png",
     ]) {
-      const res = await handleAssetRequest(new Request(url), s.getDeps, { log: () => undefined });
+      const res = await handleAssetRequest(new Request(url), s.getDeps, {
+        log: recordingLogger().log,
+      });
       expect(res.status, url).toBe(400);
     }
     expect(s.getDeps).not.toHaveBeenCalled();

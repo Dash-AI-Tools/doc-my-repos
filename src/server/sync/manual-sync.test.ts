@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ConfigError } from "../config/load";
 import type { SyncRepoResult } from "../db/schema";
+import { captureOutput, recordingLogger } from "../test-logger";
 import type { SyncAllResult, SyncOneResult, SyncOneTarget } from "./engine";
 import {
   MAX_BODY_BYTES,
@@ -110,12 +111,12 @@ function harness(
       async () => over.one ?? oneResult("success", entry()),
     ),
   };
-  const logs: string[][] = [];
+  const logs = recordingLogger();
   const deps = {
     readSecret: vi.fn(() => (over.secret === undefined ? SECRET : over.secret)),
     getService: vi.fn(() => service),
     now: () => NOW,
-    log: (message: string, ...details: string[]) => logs.push([message, ...details]),
+    log: logs.log,
   } satisfies ManualSyncDeps;
   return { service, deps, logs };
 }
@@ -550,12 +551,14 @@ describe("errors never leak", () => {
     expect(text).not.toContain("SYNC_SECRET");
     expect(text).not.toContain("docmyrepos.config.yml");
     expect(h.service.syncAll).not.toHaveBeenCalled();
-    expect(h.logs).toEqual([
-      [
-        "sync: invalid configuration",
-        "SYNC_SECRET: must be at least 16 characters",
-        "docmyrepos.config.yml: repos.0: is not a string",
-      ],
+    expect(h.logs.find("sync_api.config_invalid")).toEqual([
+      expect.objectContaining({
+        level: "error",
+        problems: [
+          "SYNC_SECRET: must be at least 16 characters",
+          "docmyrepos.config.yml: repos.0: is not a string",
+        ],
+      }),
     ]);
   });
 
@@ -568,17 +571,17 @@ describe("errors never leak", () => {
     const { response, json, text } = await call(h, post());
     expect(response.status).toBe(500);
     expect(json.error).toBe("internal_error");
-    const printed = [text, ...h.logs.flat()].join("\n");
+    const printed = [text, ...h.logs.lines].join("\n");
     for (const secret of [SECRET, TOKEN, "BEGIN PRIVATE KEY", "postgres://"]) {
       expect(printed).not.toContain(secret);
     }
-    expect(h.logs).toHaveLength(1);
+    expect(h.logs.find("sync_api.failed")).toEqual([
+      expect.objectContaining({ level: "error", reason: "unexpected", errorName: "Error" }),
+    ]);
   });
 
   it("never logs or returns the secret or a token on any path", async () => {
-    const spies = (["log", "info", "warn", "error", "debug"] as const).map((m) =>
-      vi.spyOn(console, m).mockImplementation(() => undefined),
-    );
+    const output = captureOutput();
     try {
       const texts: string[] = [];
       const run = async (h: H, request: Request) => texts.push((await call(h, request)).text);
@@ -595,21 +598,17 @@ describe("errors never leak", () => {
         throw new ConfigError(["GITHUB_APP_PRIVATE_KEY: is not a PEM private key"]);
       });
       await run(config, post());
-      // Default logger: console.error.
+      // Default logger: JSON lines on stdout/stderr.
       await handleManualSync(post(), {
         ...config.deps,
         log: undefined,
       });
-      const printed = [
-        ...texts,
-        ...spies.flatMap((spy) => spy.mock.calls.flat().map(String)),
-        ...config.logs.flat(),
-      ].join("\n");
+      const printed = [...texts, output.text(), ...config.logs.lines].join("\n");
       expect(printed).not.toContain(SECRET);
       expect(printed).not.toContain(TOKEN);
-      expect(spies[3]?.mock.calls.length).toBeGreaterThan(0);
+      expect(output.records().map((r) => r.event)).toContain("sync_api.config_invalid");
     } finally {
-      for (const spy of spies) spy.mockRestore();
+      output.restore();
     }
   });
 });

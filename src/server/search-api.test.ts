@@ -88,9 +88,9 @@ describe("GET /api/search without a database", () => {
     });
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "unavailable" });
-    expect(log).toHaveBeenCalledExactlyOnceWith(
-      "[search-api] could not run the search: database error (ECONNREFUSED)",
-    );
+    expect(log).toHaveBeenCalledExactlyOnceWith("search_api.failed", {
+      reason: "database error (ECONNREFUSED)",
+    });
     expect(JSON.stringify(log.mock.calls)).not.toMatch(/secret|10\.1\.2\.3|postgres:/);
   });
 
@@ -104,7 +104,7 @@ describe("GET /api/search without a database", () => {
     });
     expect(res.status).toBe(503);
     expect(await res.text()).toBe('{"error":"unavailable"}');
-    expect(log).toHaveBeenCalledWith("[search-api] could not run the search: ConfigError");
+    expect(log).toHaveBeenCalledWith("search_api.failed", { reason: "ConfigError" });
     expect(JSON.stringify(log.mock.calls)).not.toContain("SYNC_SECRET");
   });
 
@@ -116,9 +116,9 @@ describe("GET /api/search without a database", () => {
     });
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "unavailable" });
-    expect(log).toHaveBeenCalledExactlyOnceWith(
-      "[search-api] could not run the search: unexpected error",
-    );
+    expect(log).toHaveBeenCalledExactlyOnceWith("search_api.failed", {
+      reason: "unexpected error",
+    });
   });
 
   it("survives a logger that throws", async () => {

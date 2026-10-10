@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { logger, type Logger } from "../log";
+
 /**
  * A small GitHub REST client for the sync engine, built on an injected `fetch`.
  *
@@ -114,6 +116,8 @@ export interface GitHubClientOptions {
   maxBodyBytes?: number;
   /** Most pages walked by a listing. Default 100. */
   maxPages?: number;
+  /** Structured log for retries and rate-limit waits (no URL, header or token). Default `logger`. */
+  log?: Logger;
 }
 
 export interface CallOptions {
@@ -409,6 +413,7 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
   const baseBackoffMs = options.baseBackoffMs ?? 500;
   const maxBodyBytes = options.maxBodyBytes ?? 20 * 1024 * 1024;
   const maxPages = options.maxPages ?? 100;
+  const log = options.log ?? logger;
 
   const backoffMs = (attempt: number) =>
     Math.min(maxWaitMs, baseBackoffMs * 2 ** attempt) * (0.5 + 0.5 * random());
@@ -456,7 +461,13 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
       } catch {
         if (signal?.aborted) throw new GitHubError("aborted");
         if (last) throw new GitHubError("network");
-        await pause(backoffMs(attempt), signal);
+        const waitMs = backoffMs(attempt);
+        log.debug("github.retry", {
+          reason: "network",
+          attempt: attempt + 1,
+          waitMs: Math.round(waitMs),
+        });
+        await pause(waitMs, signal);
         continue;
       }
 
@@ -469,9 +480,18 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
       if (isRateLimited(status, res.headers)) {
         const asked = rateLimitWaitMs(res.headers, now());
         const wait = asked ?? backoffMs(attempt);
-        if (asked !== null && asked > maxWaitMs)
-          throw new GitHubError("rate_limited", status, asked);
-        if (last) throw new GitHubError("rate_limited", status, asked ?? undefined);
+        if ((asked !== null && asked > maxWaitMs) || last) {
+          log.warn("github.rate_limit.exceeded", {
+            status,
+            retryAfterMs: asked === null ? null : Math.round(asked),
+          });
+          throw new GitHubError("rate_limited", status, asked ?? undefined);
+        }
+        log.warn("github.rate_limit.wait", {
+          status,
+          retryAfterMs: Math.round(wait),
+          attempt: attempt + 1,
+        });
         await pause(wait, signal);
         continue;
       }
@@ -480,6 +500,7 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
         // Expired or revoked token: retry once at once with a fresh one, outside `maxAttempts`.
         retriedUnauthorized = true;
         rejectedToken = token;
+        log.info("github.token.rejected", { status, action: "refresh_and_retry" });
         attempt--;
         continue;
       }
@@ -487,7 +508,14 @@ export function createGitHubClient(options: GitHubClientOptions): GitHubClient {
       if (status === 404) throw new GitHubError("not_found", status);
       if (status >= 500) {
         if (last) throw new GitHubError("server", status);
-        await pause(backoffMs(attempt), signal);
+        const waitMs = backoffMs(attempt);
+        log.debug("github.retry", {
+          reason: "server",
+          status,
+          attempt: attempt + 1,
+          waitMs: Math.round(waitMs),
+        });
+        await pause(waitMs, signal);
         continue;
       }
       throw new GitHubError("client_error", status);

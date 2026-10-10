@@ -23,6 +23,7 @@ import {
 } from "./queries";
 import { getRuntime } from "./runtime";
 import { loadToc } from "./toc-data";
+import { logger, type LogFn } from "./log";
 
 /**
  * Data for the repository page `/<owner>/<repo>` (tasks 9.3, 9.4 and 9.6). Reads only through the
@@ -79,8 +80,8 @@ export interface RepoPageDeps {
   /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
-  /** Receives a fixed message only. Default: `console.error`. */
-  readonly log?: (message: string) => void;
+  /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
+  readonly log?: LogFn;
   /** Default: `renderMarkdown`. Replaceable in tests to prove the failure fallback. */
   readonly render?: (
     source: string,
@@ -102,7 +103,7 @@ async function readmeView(
   repo: RepoDetail,
   docPaths: ReadonlySet<string>,
   render: NonNullable<RepoPageDeps["render"]>,
-  log: (message: string) => void,
+  log: LogFn,
 ): Promise<ReadmeView> {
   const readme = repo.readme;
   if (readme === null) return { status: "missing" };
@@ -124,14 +125,14 @@ async function readmeView(
       slots: { highlight: [rehypeHighlight] },
     });
     if (result.warnings.includes(RENDER_FAILED_WARNING)) {
-      log("[repo-page] the README renderer fell back to plain text");
+      log("repo_page.readme_plain_text", { reason: "renderer_fallback" });
       return plain;
     }
     return result.warnings.includes(RENDER_TRUNCATED_WARNING)
       ? { status: "rendered", html: result.html, notice: RENDER_TRUNCATED_NOTICE }
       : { status: "rendered", html: result.html };
   } catch {
-    log("[repo-page] the README could not be rendered");
+    log("repo_page.readme_plain_text", { reason: "render_error" });
     return plain;
   }
 }
@@ -144,7 +145,7 @@ export async function loadRepoPage(
 ): Promise<RepoPageData> {
   if (!isRepoRoute(owner, name)) return { status: "not_found" };
   const now = deps.now ?? (() => new Date());
-  const log = deps.log ?? ((message: string) => console.error(message));
+  const log = deps.log ?? logger.error;
   const db = deps.db ?? (() => getRuntime().db.db);
   const render = deps.render ?? renderMarkdown;
   try {
@@ -167,7 +168,7 @@ export async function loadRepoPage(
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;
-    log(`[repo-page] could not load the repository: ${kind}`);
+    log("repo_page.load_failed", { reason: kind });
     return { status: "error", loadedAt: now() };
   }
 }

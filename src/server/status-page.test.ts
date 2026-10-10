@@ -25,9 +25,9 @@ describe("loadStatusPage", () => {
     });
     const data = await loadStatusPage({ db: () => failingDb(error), now: () => NOW, log });
     expect(data).toEqual({ status: "error", loadedAt: NOW });
-    expect(log).toHaveBeenCalledWith(
-      "[status] could not load the sync status: database error (ECONNREFUSED)",
-    );
+    expect(log).toHaveBeenCalledWith("status_page.load_failed", {
+      reason: "database error (ECONNREFUSED)",
+    });
     expect(JSON.stringify(log.mock.calls)).not.toContain("sentinel");
   });
 
@@ -41,7 +41,7 @@ describe("loadStatusPage", () => {
       log,
     });
     expect(data.status).toBe("error");
-    expect(log).toHaveBeenCalledWith("[status] could not load the sync status: ConfigError");
+    expect(log).toHaveBeenCalledWith("status_page.load_failed", { reason: "ConfigError" });
   });
 
   it("lets an unexpected error propagate", async () => {

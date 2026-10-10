@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { RepoRemovalReason } from "../db/schema";
+import { errorFields, logger, type LogFields, type Logger } from "../log";
 import type { NameSelection } from "../sync/discovery";
 import type { WebhookDispatch, WebhookPayload } from "./endpoint";
 
@@ -39,9 +40,11 @@ import type { WebhookDispatch, WebhookPayload } from "./endpoint";
  * Ordering is not assumed (GitHub does not guarantee it): a sync goes through the installation
  * listing (`syncOne`), so a late `push` for a deleted repository finds nothing and creates nothing.
  *
- * Logging: one line per decision, fixed text plus `event=`, `action=`, `delivery=` and, where
- * relevant, `repo=<GitHub id>` or `status=<engine status>`. No payload content (names, refs,
- * commit messages) and no error text is ever logged.
+ * Logging (structured, `../log`): one `webhook.decision` line per decision with `githubEvent`,
+ * `action`, `deliveryId`, the `decision` word and, where relevant, `reason`, `githubId` or
+ * `count`; background work reports `webhook.task.finished` / `webhook.task.failed` with the
+ * engine's status word. No payload content (names, refs, commit messages) and no error text is
+ * ever logged: repository names are attacker-controlled (log injection), so only GitHub ids are.
  */
 
 /** More added repositories than this in one event are handled with a single full sync. */
@@ -76,8 +79,8 @@ export interface WebhookRouterDeps {
   markInstallationUnavailable(reason: InstallationUnavailableReason): Promise<number>;
   /** Takes a started background task. It never rejects (the router attached a catch). */
   detach?(task: Promise<void>): void;
-  /** Operator log. Only fixed text and `key=value` details built from validated values. */
-  log?(message: string, ...details: string[]): void;
+  /** Structured log. Only fixed words and validated ids are passed. */
+  log?: Logger;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -166,95 +169,103 @@ const INSTALLATION_RECOVER_ACTIONS: ReadonlySet<string> = new Set([
 
 /** Builds the dispatcher for verified, non-ping events. See the module comment. */
 export function createWebhookRouter(deps: WebhookRouterDeps): WebhookDispatch {
-  const log = deps.log ?? ((message, ...details) => console.log(message, ...details));
+  const log = deps.log ?? logger;
   const detach = deps.detach ?? (() => undefined);
 
-  function note(ctx: Context, message: string, ...extra: string[]): void {
-    log(
-      `webhook: ${message}`,
-      `event=${ctx.event}`,
-      `action=${ctx.action}`,
-      `delivery=${ctx.delivery}`,
-      ...extra,
-    );
+  function fieldsOf(ctx: Context, extra: LogFields): LogFields {
+    return { githubEvent: ctx.event, action: ctx.action, deliveryId: ctx.delivery, ...extra };
   }
 
-  function ignore(ctx: Context, reason: string, ...extra: string[]): void {
-    note(ctx, `ignored (${reason})`, ...extra);
+  function note(ctx: Context, decision: string, extra: LogFields = {}): void {
+    log.info("webhook.decision", fieldsOf(ctx, { decision, ...extra }));
+  }
+
+  function ignore(ctx: Context, reason: string, extra: LogFields = {}): void {
+    note(ctx, "ignored", { reason, ...extra });
   }
 
   /**
    * Starts `work` as a background task: deferred to a microtask (so even a synchronous throw is
    * caught), with a catch that logs fixed text. The dispatch never awaits it.
    */
-  function background(ctx: Context, label: string, work: () => Promise<string | void>): void {
-    const task = Promise.resolve()
+  function background(
+    ctx: Context,
+    task: string,
+    work: () => Promise<string | void>,
+    extra: LogFields = {},
+  ): void {
+    const started = Promise.resolve()
       .then(work)
       .then(
-        (status) => note(ctx, `${label} finished`, `status=${safeWord(status ?? "done")}`),
-        () => note(ctx, `${label} failed`),
+        (status) =>
+          log.info(
+            "webhook.task.finished",
+            fieldsOf(ctx, { task, ...extra, status: safeWord(status ?? "done") }),
+          ),
+        (error: unknown) =>
+          log.warn("webhook.task.failed", fieldsOf(ctx, { task, ...extra, ...errorFields(error) })),
       )
       .catch(() => undefined);
     try {
-      detach(task);
+      detach(started);
     } catch {
       // The task runs regardless; a broken scheduler only loses tracking.
     }
   }
 
   /** An awaited single-statement update. Rethrows a fixed error so nothing raw reaches the caller. */
-  async function immediate<T>(ctx: Context, label: string, work: () => Promise<T>): Promise<T> {
+  async function immediate<T>(ctx: Context, update: string, work: () => Promise<T>): Promise<T> {
     try {
       return await work();
-    } catch {
-      note(ctx, `${label} failed`);
-      throw new Error(`webhook: ${label} failed`);
+    } catch (error) {
+      log.error("webhook.update_failed", fieldsOf(ctx, { update, ...errorFields(error) }));
+      throw new Error(`webhook: ${update.replaceAll("_", " ")} failed`);
     }
   }
 
   function scheduleSync(ctx: Context, id: number): void {
-    note(ctx, "sync scheduled", `repo=${id}`);
-    background(ctx, "sync", () => deps.syncRepo(id));
+    note(ctx, "sync_scheduled", { githubId: id });
+    background(ctx, "sync", () => deps.syncRepo(id), { githubId: id });
   }
 
   function scheduleSyncAll(ctx: Context): void {
-    note(ctx, "full sync scheduled");
-    background(ctx, "full sync", () => deps.syncAll());
+    note(ctx, "full_sync_scheduled");
+    background(ctx, "full_sync", () => deps.syncAll());
   }
 
   function scheduleRemoval(ctx: Context, id: number, reason: RepoRemovalReason): void {
-    note(ctx, "removal scheduled", `repo=${id}`, `reason=${reason}`);
-    background(ctx, "removal", () => deps.removeRepo(id, reason));
+    note(ctx, "removal_scheduled", { githubId: id, reason });
+    background(ctx, "removal", () => deps.removeRepo(id, reason), { githubId: id, reason });
   }
 
   function foreign(ctx: Context, id: number): boolean {
     if (id === deps.installationId) return false;
-    ignore(ctx, "other installation");
+    ignore(ctx, "other_installation");
     return true;
   }
 
   function onPush(ctx: Context, payload: WebhookPayload): void {
     const parsed = pushPayload.safeParse(payload);
-    if (!parsed.success) return ignore(ctx, "malformed payload");
+    if (!parsed.success) return ignore(ctx, "malformed_payload");
     const { ref, deleted, repository, installation } = parsed.data;
     if (foreign(ctx, installation.id)) return;
-    const repo = `repo=${repository.id}`;
+    const repo = { githubId: repository.id };
     if (ref !== `refs/heads/${repository.default_branch}`) {
-      return ignore(ctx, "not the default branch", repo);
+      return ignore(ctx, "not_default_branch", repo);
     }
-    if (deleted === true) return ignore(ctx, "branch deleted", repo);
+    if (deleted === true) return ignore(ctx, "branch_deleted", repo);
     if (repository.archived === true) return ignore(ctx, "archived", repo);
-    if (deps.narrow(repository.name) !== "selected") return ignore(ctx, "not selected", repo);
+    if (deps.narrow(repository.name) !== "selected") return ignore(ctx, "not_selected", repo);
     scheduleSync(ctx, repository.id);
   }
 
   async function onRepository(ctx: Context, payload: WebhookPayload): Promise<void> {
     const parsed = repositoryPayload.safeParse(payload);
-    if (!parsed.success) return ignore(ctx, "malformed payload");
+    if (!parsed.success) return ignore(ctx, "malformed_payload");
     const { action, repository, installation } = parsed.data;
     if (foreign(ctx, installation.id)) return;
     const id = repository.id;
-    const repo = `repo=${id}`;
+    const repo = { githubId: id };
     const selection = deps.narrow(repository.name);
 
     switch (action) {
@@ -264,10 +275,10 @@ export function createWebhookRouter(deps: WebhookRouterDeps): WebhookDispatch {
         return scheduleRemoval(ctx, id, "archived");
       case "privatized": {
         // Fail closed: private now, even before (or without) the follow-up sync.
-        const changed = await immediate(ctx, "visibility update", () => deps.markRepoPrivate(id));
-        note(ctx, "visibility set to private", repo, `changed=${changed}`);
+        const changed = await immediate(ctx, "visibility_update", () => deps.markRepoPrivate(id));
+        note(ctx, "visibility_private", { ...repo, changed });
         if (repository.archived === true) return ignore(ctx, "archived", repo);
-        if (selection !== "selected") return ignore(ctx, "not selected", repo);
+        if (selection !== "selected") return ignore(ctx, "not_selected", repo);
         return scheduleSync(ctx, id);
       }
       case "renamed":
@@ -280,16 +291,16 @@ export function createWebhookRouter(deps: WebhookRouterDeps): WebhookDispatch {
           selection === "excluded" ? "excluded" : "dropped_from_config",
         );
       default:
-        if (!REPOSITORY_SYNC_ACTIONS.has(action)) return ignore(ctx, "unhandled action", repo);
+        if (!REPOSITORY_SYNC_ACTIONS.has(action)) return ignore(ctx, "unhandled_action", repo);
         if (repository.archived === true) return ignore(ctx, "archived", repo);
-        if (selection !== "selected") return ignore(ctx, "not selected", repo);
+        if (selection !== "selected") return ignore(ctx, "not_selected", repo);
         return scheduleSync(ctx, id);
     }
   }
 
   function onInstallationRepositories(ctx: Context, payload: WebhookPayload): void {
     const parsed = installationRepositoriesPayload.safeParse(payload);
-    if (!parsed.success) return ignore(ctx, "malformed payload");
+    if (!parsed.success) return ignore(ctx, "malformed_payload");
     const { action, installation } = parsed.data;
     if (foreign(ctx, installation.id)) return;
 
@@ -301,20 +312,19 @@ export function createWebhookRouter(deps: WebhookRouterDeps): WebhookDispatch {
       const ids = [
         ...new Set(added.filter((r) => deps.narrow(r.name) === "selected").map((r) => r.id)),
       ];
-      if (ids.length === 0) return ignore(ctx, "not selected", `count=${added.length}`);
-      note(ctx, "sync scheduled", `repos=${ids.join(",")}`);
+      if (ids.length === 0) return ignore(ctx, "not_selected", { count: added.length });
+      note(ctx, "sync_scheduled", { githubIds: ids, count: ids.length });
       // One background task, one repository at a time: each sync lists the installation.
-      background(ctx, "sync of added repositories", async () => {
+      background(ctx, "sync_added", async () => {
         for (const id of ids) {
           try {
-            note(
-              ctx,
-              "added repository synced",
-              `repo=${id}`,
-              `status=${safeWord(await deps.syncRepo(id))}`,
+            const status = safeWord(await deps.syncRepo(id));
+            log.info("webhook.task.repo", fieldsOf(ctx, { task: "sync", githubId: id, status }));
+          } catch (error) {
+            log.warn(
+              "webhook.task.failed",
+              fieldsOf(ctx, { task: "sync", githubId: id, ...errorFields(error) }),
             );
-          } catch {
-            note(ctx, "sync failed", `repo=${id}`);
           }
         }
       });
@@ -323,39 +333,53 @@ export function createWebhookRouter(deps: WebhookRouterDeps): WebhookDispatch {
 
     if (action === "removed") {
       const ids = [...new Set((parsed.data.repositories_removed ?? []).map((r) => r.id))];
-      if (ids.length === 0) return ignore(ctx, "empty list");
-      note(ctx, "removal scheduled", `count=${ids.length}`, "reason=not_in_installation");
-      background(ctx, "removal of removed repositories", async () => {
+      if (ids.length === 0) return ignore(ctx, "empty_list");
+      note(ctx, "removal_scheduled", { count: ids.length, reason: "not_in_installation" });
+      background(ctx, "removal_removed", async () => {
         for (const id of ids) {
           try {
-            const status = await deps.removeRepo(id, "not_in_installation");
-            note(ctx, "removed repository handled", `repo=${id}`, `status=${safeWord(status)}`);
-          } catch {
-            note(ctx, "removal failed", `repo=${id}`);
+            const status = safeWord(await deps.removeRepo(id, "not_in_installation"));
+            log.info(
+              "webhook.task.repo",
+              fieldsOf(ctx, {
+                task: "removal",
+                githubId: id,
+                reason: "not_in_installation",
+                status,
+              }),
+            );
+          } catch (error) {
+            log.warn(
+              "webhook.task.failed",
+              fieldsOf(ctx, { task: "removal", githubId: id, ...errorFields(error) }),
+            );
           }
         }
       });
       return;
     }
 
-    ignore(ctx, "unhandled action");
+    ignore(ctx, "unhandled_action");
   }
 
   async function onInstallation(ctx: Context, payload: WebhookPayload): Promise<void> {
     const parsed = installationPayload.safeParse(payload);
-    if (!parsed.success) return ignore(ctx, "malformed payload");
+    if (!parsed.success) return ignore(ctx, "malformed_payload");
     const { action, installation } = parsed.data;
     if (foreign(ctx, installation.id)) return;
 
     if (action === "deleted" || action === "suspend") {
-      const count = await immediate(ctx, "installation error marking", () =>
+      const count = await immediate(ctx, "installation_error_marking", () =>
         deps.markInstallationUnavailable(action),
       );
-      note(ctx, "all repositories marked unavailable", `count=${count}`);
+      log.warn(
+        "webhook.decision",
+        fieldsOf(ctx, { decision: "installation_unavailable", reason: action, count }),
+      );
       return;
     }
     if (INSTALLATION_RECOVER_ACTIONS.has(action)) return scheduleSyncAll(ctx);
-    ignore(ctx, "unhandled action");
+    ignore(ctx, "unhandled_action");
   }
 
   return async (event, payload, deliveryId) => {
@@ -370,7 +394,7 @@ export function createWebhookRouter(deps: WebhookRouterDeps): WebhookDispatch {
       case "installation":
         return onInstallation(ctx, payload);
       default:
-        return ignore(ctx, "unhandled event");
+        return ignore(ctx, "unhandled_event");
     }
   };
 }

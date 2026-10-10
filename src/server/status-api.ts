@@ -4,6 +4,7 @@ import type { Db } from "./db/client";
 import { expectedFailureKind } from "./home";
 import { getSyncStatus, type QueryOptions, type SyncRunCounts, type SyncStatus } from "./queries";
 import { getRuntime } from "./runtime";
+import { logger, type LogFn } from "./log";
 
 /**
  * `GET /api/status` (task 12.2): the sync status as JSON for operators, scripts and health
@@ -40,8 +41,8 @@ export interface StatusApiDeps {
   /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
-  /** Receives a fixed message only. Default: `console.error`. */
-  readonly log?: (message: string) => void;
+  /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
+  readonly log?: LogFn;
   /** Query options (tests swap the visibility filter to prove the shared layer is used). */
   readonly options?: QueryOptions;
   /** Concurrency cap. Default `MAX_IN_FLIGHT`. */
@@ -162,7 +163,7 @@ export async function handleStatusRequest(
   deps: StatusApiDeps = {},
 ): Promise<Response> {
   if (request.method !== "GET") return statusMethodNotAllowed();
-  const log = deps.log ?? ((message: string) => console.error(message));
+  const log = deps.log ?? logger.error;
   const now = deps.now ?? (() => new Date());
   if (inFlight >= (deps.maxInFlight ?? MAX_IN_FLIGHT)) return unavailable({ "Retry-After": "1" });
   inFlight += 1;
@@ -178,7 +179,7 @@ export async function handleStatusRequest(
       // classification must not break the answer
     }
     try {
-      log(`[status-api] could not read the sync status: ${kind ?? "unexpected error"}`);
+      log("status_api.failed", { reason: kind ?? "unexpected error" });
     } catch {
       // a failing logger must not break the answer
     }

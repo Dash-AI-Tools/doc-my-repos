@@ -28,6 +28,7 @@ import type { RepoDetail } from "./queries";
 import { getRuntime } from "./runtime";
 import { isRepoRoute } from "./repo-page";
 import { loadToc } from "./toc-data";
+import { logger, type LogFn } from "./log";
 
 /**
  * Data for the document page `/<owner>/<repo>/docs/<path>` (task 9.7). Reads only through the
@@ -109,8 +110,8 @@ export interface DocPageDeps {
   /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
-  /** Receives a fixed message only. Default: `console.error`. */
-  readonly log?: (message: string) => void;
+  /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
+  readonly log?: LogFn;
   /** Default: `renderMarkdown`. Replaceable in tests to prove the failure fallback. */
   readonly render?: (
     source: string,
@@ -142,7 +143,7 @@ export async function loadDocPage(
 ): Promise<DocPageData> {
   if (!isRepoRoute(owner, name) || segments.length === 0) return { status: "not_found" };
   const now = deps.now ?? (() => new Date());
-  const log = deps.log ?? ((message: string) => console.error(message));
+  const log = deps.log ?? logger.error;
   const db = deps.db ?? (() => getRuntime().db.db);
   const render = deps.render ?? renderMarkdown;
   try {
@@ -198,7 +199,7 @@ export async function loadDocPage(
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;
-    log(`[doc-page] could not load the document: ${kind}`);
+    log("doc_page.load_failed", { reason: kind });
     return { status: "error", loadedAt: now() };
   }
 }
@@ -216,7 +217,7 @@ async function renderBody(
   docPaths: ReadonlySet<string>,
   deps: {
     render: NonNullable<DocPageDeps["render"]>;
-    log: (message: string) => void;
+    log: LogFn;
   },
 ): Promise<RenderedBody> {
   const plain: RenderedBody = {
@@ -237,7 +238,7 @@ async function renderBody(
       slots: { highlight: [rehypeHighlight] },
     });
     if (result.warnings.includes(RENDER_FAILED_WARNING)) {
-      deps.log("[doc-page] the document renderer fell back to plain text");
+      deps.log("doc_page.render_plain_text", { reason: "renderer_fallback" });
       return plain;
     }
     return {
@@ -252,7 +253,7 @@ async function renderBody(
       outline: buildOutline(result.headings, anchorId),
     };
   } catch {
-    deps.log("[doc-page] the document could not be rendered");
+    deps.log("doc_page.render_plain_text", { reason: "render_error" });
     return plain;
   }
 }

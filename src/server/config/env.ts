@@ -2,6 +2,7 @@ import { createPrivateKey } from "node:crypto";
 
 import { z } from "zod";
 
+import { LOG_THRESHOLDS, parseLogLevel } from "../log";
 import { MIN_SECRET_LENGTH, Secret } from "./secret";
 
 /** Environment variables as read from `process.env` (or a test double). */
@@ -86,8 +87,20 @@ const databaseUrlSchema = requiredString().refine(
   "must be a postgres:// or postgresql:// URL with a host",
 );
 
+// Optional. The logger itself falls back to `info` on an unknown value; startup rejects it so a
+// typo is noticed. The message lists the accepted words, never the value.
+const logLevel = () =>
+  z.preprocess(
+    blankToUndefined,
+    z
+      .string()
+      .refine((v) => parseLogLevel(v) !== null, `must be one of ${LOG_THRESHOLDS.join(", ")}`)
+      .optional(),
+  );
+
 const envSchema = z.object({
   DATABASE_URL: databaseUrlSchema,
+  LOG_LEVEL: logLevel(),
   GITHUB_APP_ID: numericId(),
   GITHUB_APP_INSTALLATION_ID: numericId(),
   GITHUB_WEBHOOK_SECRET: sharedSecret(),

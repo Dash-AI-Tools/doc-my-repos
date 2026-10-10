@@ -4,6 +4,7 @@ import type { Db } from "./db/client";
 import { expectedFailureKind } from "./home";
 import { getSyncStatus, type QueryOptions, type SyncStatus } from "./queries";
 import { getRuntime } from "./runtime";
+import { logger, type LogFn } from "./log";
 
 /**
  * Data for the `/status` page (task 12.2): the last sync run and every visible repository's sync
@@ -21,15 +22,15 @@ export interface StatusPageDeps {
   /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
-  /** Receives a fixed message only. Default: `console.error`. */
-  readonly log?: (message: string) => void;
+  /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
+  readonly log?: LogFn;
   /** Query options (tests swap the visibility filter). */
   readonly options?: QueryOptions;
 }
 
 export async function loadStatusPage(deps: StatusPageDeps = {}): Promise<StatusPageData> {
   const now = deps.now ?? (() => new Date());
-  const log = deps.log ?? ((message: string) => console.error(message));
+  const log = deps.log ?? logger.error;
   const db = deps.db ?? (() => getRuntime().db.db);
   try {
     const sync = await getSyncStatus(db(), {}, deps.options);
@@ -37,7 +38,7 @@ export async function loadStatusPage(deps: StatusPageDeps = {}): Promise<StatusP
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;
-    log(`[status] could not load the sync status: ${kind}`);
+    log("status_page.load_failed", { reason: kind });
     return { status: "error", loadedAt: now() };
   }
 }

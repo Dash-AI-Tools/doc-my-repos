@@ -89,9 +89,9 @@ describe("loadRepoPage without a database", () => {
       log,
     });
     expect(data).toEqual({ status: "error", loadedAt: NOW });
-    expect(log).toHaveBeenCalledWith(
-      "[repo-page] could not load the repository: database error (ECONNREFUSED)",
-    );
+    expect(log).toHaveBeenCalledWith("repo_page.load_failed", {
+      reason: "database error (ECONNREFUSED)",
+    });
     expect(JSON.stringify(log.mock.calls)).not.toMatch(/secret|10\.1\.2\.3|postgres:/);
   });
 

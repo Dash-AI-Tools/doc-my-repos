@@ -58,9 +58,9 @@ describe("loadDocPage without a database", () => {
       log,
     });
     expect(data).toEqual({ status: "error", loadedAt: NOW });
-    expect(log).toHaveBeenCalledWith(
-      "[doc-page] could not load the document: database error (ECONNREFUSED)",
-    );
+    expect(log).toHaveBeenCalledWith("doc_page.load_failed", {
+      reason: "database error (ECONNREFUSED)",
+    });
     expect(JSON.stringify(log.mock.calls)).not.toMatch(/secret|10\.1\.2\.3|postgres:/);
   });
 

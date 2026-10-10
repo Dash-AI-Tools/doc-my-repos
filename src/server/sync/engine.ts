@@ -5,6 +5,7 @@ import { withRepoSyncLock, type LockResult } from "../db/advisory-lock";
 import { redactWhenLogged, type Db } from "../db/client";
 import { documents, repos, type SyncRepoResult, type SyncWarning } from "../db/schema";
 import { GitHubError, type GitHubClient } from "../github/client";
+import { errorFields, logger, type LogFields, type Logger } from "../log";
 import { syncBlobs, type FailedBlob, type RepoLevelResult } from "./blobs";
 import {
   discoverRepositories,
@@ -131,6 +132,8 @@ export interface SyncContext {
   readonly tuning: Readonly<Required<SyncTuning>>;
   /** Clock for rate-limit retry times. */
   readonly now: () => number;
+  /** Structured log for runs, discovery, requests and drains (task 12.4). */
+  readonly log: Logger;
 }
 
 export interface CreateSyncContextInput {
@@ -140,6 +143,8 @@ export interface CreateSyncContextInput {
   config: SyncConfig;
   tuning?: SyncTuning;
   now?: () => number;
+  /** Default: the process logger. */
+  log?: Logger;
 }
 
 function positiveInt(value: number, name: string): number {
@@ -177,6 +182,7 @@ export function createSyncContext(input: CreateSyncContextInput): SyncContext {
         lockWaitMs,
       }),
       now: input.now ?? Date.now,
+      log: input.log ?? logger,
     }),
   );
 }
@@ -306,6 +312,9 @@ export async function syncRepo(
       },
     });
     if (plan.outcome === "failed") throw new RepoSyncError(plan.reason);
+    if (plan.outcome === "unchanged") {
+      ctx.log.debug("sync.repo.tree_unchanged", { githubId: repo.githubId });
+    }
 
     let persistPlan: PersistPlan;
     let warnings: SyncWarning[] = [];
@@ -368,6 +377,7 @@ export async function syncRepo(
       };
     } catch (error) {
       if (error instanceof PersistError && error.kind === "stale_plan" && attempt === 0) {
+        ctx.log.debug("sync.repo.replan", { githubId: repo.githubId, reason: "stale_plan" });
         stored = await readStoredState(ctx.db, repo.githubId);
         continue;
       }
@@ -400,6 +410,19 @@ export async function syncRepoLocked(
 
 // ---------------------------------------------------------------------------------------------
 // Shared run helpers
+
+/** Logs a listing's outcome: counts only, never names (task 12.4). */
+function logDiscovery(log: Logger, discovery: DiscoveryResult, level: "info" | "debug"): void {
+  if (discovery.complete) {
+    log[level]("sync.discovery.done", {
+      repos: discovery.repos.length,
+      skipped: discovery.skipped.length,
+      inaccessible: discovery.inaccessible.length,
+    });
+  } else {
+    log.warn("sync.discovery.failed", errorFields(listingError(discovery.error)));
+  }
+}
 
 /**
  * The listing endpoint is scoped to the installation, so a 404 on it means the installation is
@@ -615,21 +638,22 @@ function removalAllowed(ledger: RunLedger, signal: AbortSignal): boolean {
  * `drainSyncRequests` (tasks 12.x), runs them.
  */
 export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promise<SyncAllResult> {
-  await reapStaleRuns(ctx.db, ctx.pool);
+  await reapStaleRuns(ctx.db, ctx.pool, { log: ctx.log });
   let discovery: DiscoveryResult | null = null;
   let removals: RemovalOutcome[] = [];
   let fatal: SyncErrorInfo | null = null;
   const run = await withRun(
     ctx.db,
     ctx.pool,
-    { trigger: options.trigger, scope: null, signal: options.signal },
-    async ({ signal, ledger }) => {
+    { trigger: options.trigger, scope: null, signal: options.signal, log: ctx.log },
+    async ({ runId, signal, ledger }) => {
       // Taken before the listing: rows a concurrent sync writes after it are not removed, and
       // requests newer than it are not consumed by this run.
       const listedAt = await databaseNow(ctx.db);
       const since = await databaseInstant(ctx.db);
       const storedAtListing = await storedGithubIds(ctx.db);
       discovery = await discoverRepositories(ctx.github, ctx.config, { signal });
+      logDiscovery(ctx.log.child({ runId }), discovery, "info");
       if (!discovery.complete) {
         await recordDiscoveryFailure(ctx, ledger, discovery.error, "all");
         fatal = ledger.fatal;
@@ -788,13 +812,14 @@ export async function syncOne(
   if (held !== undefined && !("githubId" in target && target.githubId === held.githubId)) {
     throw new TypeError("heldLock needs a { githubId } target of the same repository");
   }
-  await reapStaleRuns(ctx.db, ctx.pool);
+  await reapStaleRuns(ctx.db, ctx.pool, { log: ctx.log });
   const since = await databaseInstant(ctx.db);
   const storedAtListing = await storedGithubIds(
     ctx.db,
     "githubId" in target ? target.githubId : undefined,
   );
   const discovery = await discoverRepositories(ctx.github, ctx.config, { signal: options.signal });
+  logDiscovery(ctx.log, discovery, "debug");
   if (!discovery.complete) return listingFailed(ctx, target, discovery, options);
 
   const found = await resolveListed(ctx, target, discovery);
@@ -804,7 +829,12 @@ export async function syncOne(
   const run = await withRun(
     ctx.db,
     ctx.pool,
-    { trigger: options.trigger, scope: `${repo.owner}/${repo.name}`, signal: options.signal },
+    {
+      trigger: options.trigger,
+      scope: `${repo.owner}/${repo.name}`,
+      signal: options.signal,
+      log: ctx.log,
+    },
     async ({ signal, ledger }) => {
       ledger.add(
         await runRepos(ctx.db, ctx.pool, [repo], worker(ctx, since, storedAtListing), {
@@ -872,7 +902,7 @@ async function listingFailed(
   const run = await withRun(
     ctx.db,
     ctx.pool,
-    { trigger: options.trigger, scope, signal: options.signal },
+    { trigger: options.trigger, scope, signal: options.signal, log: ctx.log },
     async ({ ledger }) => {
       error = await recordDiscoveryFailure(
         ctx,
@@ -1017,6 +1047,27 @@ export async function requestSync(
   target: SyncOneTarget,
   options: RequestSyncOptions,
 ): Promise<RequestSyncResult> {
+  const result = await requestSyncPasses(ctx, target, options);
+  const fields: LogFields = {
+    trigger: options.trigger,
+    ...("githubId" in target ? { githubId: target.githubId } : {}),
+    status: result.status,
+    passes: result.passes,
+    ...(result.status === "done"
+      ? { handedOff: result.handedOff, outcome: result.result.status }
+      : {}),
+  };
+  if (result.status === "coalesced") ctx.log.info("sync.request.coalesced", fields);
+  else if (result.status === "done") ctx.log.info("sync.request.done", fields);
+  else ctx.log.warn("sync.request.done", fields);
+  return result;
+}
+
+async function requestSyncPasses(
+  ctx: SyncContext,
+  target: SyncOneTarget,
+  options: RequestSyncOptions,
+): Promise<RequestSyncResult> {
   validateTarget(target);
   const maxPasses = positiveInt(options.maxPasses ?? DEFAULT_MAX_PASSES, "maxPasses");
   const queueWaitMs = options.queueWaitMs ?? DEFAULT_QUEUE_WAIT_MS;
@@ -1031,8 +1082,9 @@ export async function requestSync(
   if ("githubId" in target) {
     githubId = target.githubId;
   } else {
-    await reapStaleRuns(ctx.db, ctx.pool);
+    await reapStaleRuns(ctx.db, ctx.pool, { log: ctx.log });
     const discovery = await discoverRepositories(ctx.github, ctx.config, { signal });
+    logDiscovery(ctx.log, discovery, "debug");
     const outcome = discovery.complete
       ? await resolveListed(ctx, target, discovery)
       : await listingFailed(ctx, target, discovery, options);
@@ -1089,6 +1141,7 @@ export async function requestSync(
 
     passes = pass;
     last = lock.value.result;
+    if (pass > 1) ctx.log.debug("sync.request.rerun", { githubId, pass });
     if (signal?.aborted) return { status: "aborted", passes, result: last };
     // A failed listing or a lost lock (database connection problem) would fail the same way
     // again at once: stop here and leave the marker to a later drain instead of looping.
@@ -1100,6 +1153,7 @@ export async function requestSync(
       return { status: "done", passes, result: last, handedOff: false };
     }
     if (passes >= maxPasses) {
+      ctx.log.info("sync.request.rearmed", { githubId, passes });
       const follow = Promise.resolve()
         .then(() => requestSync(ctx, { githubId }, options))
         .then(
@@ -1144,7 +1198,8 @@ export async function drainSyncRequests(
   options: DrainOptions,
 ): Promise<DrainedRequest[]> {
   const out: DrainedRequest[] = [];
-  for (const githubId of await listSyncRequests(ctx.db)) {
+  const waiting = await listSyncRequests(ctx.db);
+  for (const githubId of waiting) {
     if (options.signal?.aborted) break;
     try {
       const result = await requestSync(
@@ -1154,9 +1209,16 @@ export async function drainSyncRequests(
       );
       out.push({ githubId, status: result.status, passes: result.passes });
       if (result.status === "done" && result.result.status === "discovery_failed") break;
-    } catch {
+    } catch (error) {
+      ctx.log.warn("sync.drain.request_failed", { githubId, ...errorFields(error) });
       out.push({ githubId, status: "aborted", passes: 0 });
     }
   }
+  ctx.log[waiting.length === 0 ? "debug" : "info"]("sync.drain.done", {
+    trigger: options.trigger,
+    waiting: waiting.length,
+    handled: out.length,
+    passes: out.reduce((n, d) => n + d.passes, 0),
+  });
   return out;
 }

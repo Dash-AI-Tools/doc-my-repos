@@ -974,3 +974,17 @@ describe("no secret leakage", () => {
     expectClean(load(secretEnv({ GITHUB_APP_PRIVATE_KEY: RSA_PEM.replaceAll("\n", "\\n") })));
   });
 });
+
+describe("LOG_LEVEL (task 12.4)", () => {
+  it("is optional and accepts the five thresholds in any case", () => {
+    for (const level of [undefined, "  ", "debug", "info", "WARN", " error ", "silent"]) {
+      expect(() => load(validEnv({ LOG_LEVEL: level }))).not.toThrow();
+    }
+  });
+
+  it("rejects an unknown value with a ConfigError naming LOG_LEVEL, never the value", () => {
+    const error = catchConfigError(() => load(validEnv({ LOG_LEVEL: "verbose-sentinel" })));
+    expect(error.problems).toEqual(["LOG_LEVEL: must be one of debug, info, warn, error, silent"]);
+    expect(error.message).not.toContain("verbose-sentinel");
+  });
+});

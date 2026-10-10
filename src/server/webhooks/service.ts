@@ -1,6 +1,7 @@
 import "server-only";
 
 import { readWebhookSecret, type EnvSource } from "../config/env";
+import type { Logger } from "../log";
 import { getRuntime } from "../runtime";
 import { repoNameSelection } from "../sync/discovery";
 import { requestSync, syncAll, type RequestSyncResult, type SyncContext } from "../sync/engine";
@@ -29,7 +30,7 @@ export interface WebhookWiring {
   installationId: number;
   /** Where background syncs and removals are tracked. */
   tasks: BackgroundTasks;
-  log?: (message: string, ...details: string[]) => void;
+  log?: Logger;
   removalLockWaitMs?: number;
 }
 
