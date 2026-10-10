@@ -31,4 +31,26 @@ describe("SearchBar", () => {
     render(<SearchBar defaultValue="deploy guide" />);
     expect((screen.getByRole("searchbox") as HTMLInputElement).value).toBe("deploy guide");
   });
+
+  it("sends extra fields as hidden inputs so a new query keeps the filters", () => {
+    render(
+      <SearchBar
+        hiddenFields={[
+          { name: "repo", value: "acme/api" },
+          { name: "repo", value: "acme/web" },
+        ]}
+      />,
+    );
+    const form = screen.getByRole("search");
+    const hidden = [...form.querySelectorAll("input[type=hidden]")];
+    expect(hidden.map((i) => [i.getAttribute("name"), i.getAttribute("value")])).toEqual([
+      ["repo", "acme/api"],
+      ["repo", "acme/web"],
+    ]);
+  });
+
+  it("has no hidden inputs by default", () => {
+    render(<SearchBar />);
+    expect(screen.getByRole("search").querySelector("input[type=hidden]")).toBeNull();
+  });
 });

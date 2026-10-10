@@ -215,6 +215,79 @@ const PAGES: readonly PageCase[] = [
     },
   },
   {
+    name: "search, results with facets (seeded)",
+    path: "/search?q=deployment",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("result")).toHaveCount(10);
+      await expect(page.getByTestId("facet-group-type")).toBeVisible();
+      await expect(page.getByTestId("private-badge").first()).toBeVisible();
+      await expect(page.locator("mark").first()).toBeVisible();
+    },
+  },
+  {
+    name: "search, results with selected filters (seeded)",
+    path: "/search?q=deployment&repo=acme%2Fknowledge-base&type=Runbook",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("result")).toHaveCount(1);
+      await expect(page.getByTestId("active-filter")).toHaveCount(2);
+      await expect(
+        page.locator('[data-testid=facet-option][aria-current="true"]').first(),
+      ).toBeAttached();
+    },
+  },
+  {
+    name: "search, second page (seeded)",
+    path: "/search?page=2&q=changelog",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("result")).toHaveCount(5);
+      await expect(page.getByTestId("pagination")).toBeVisible();
+    },
+  },
+  {
+    name: "search, hostile document title (seeded)",
+    path: "/search?q=gateway",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("result")).toHaveCount(1);
+    },
+  },
+  {
+    name: "search, no results (seeded)",
+    path: "/search?q=zzzznothing&repo=acme%2Fapi-service",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("no-results")).toBeVisible();
+      await expect(page.getByTestId("active-filter")).toBeVisible();
+    },
+  },
+  {
+    name: "search, page past the end (seeded)",
+    path: "/search?page=9&q=changelog",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("page-out-of-range")).toBeVisible();
+    },
+  },
+  {
+    name: "search, no query (seeded)",
+    path: "/search",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("no-query")).toBeVisible();
+    },
+  },
+  {
+    name: "search, database error",
+    path: "/search?q=deployment",
+    stack: "unreachable",
+    ready: async (page) => {
+      await expect(page.getByTestId("search-error")).toBeVisible();
+    },
+  },
+  {
     name: "theme showcase",
     path: "/e2e/theme",
     ready: async (page) => {
@@ -299,6 +372,25 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Enlarge diagram" }).click();
       const dialog = page.getByRole("dialog", { name: "Diagram" });
       await expect(dialog.locator("svg").first()).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test("search: no violations with a long facet list expanded", async ({ page }) => {
+      test.skip(SKIP_DB, SKIP_DB_REASON);
+      await open(page, theme, pageByName("search, results with facets (seeded)"));
+      await page.getByTestId("facet-more-tag").locator("summary").click();
+      await expect(page.getByTestId("facet-more-tag").getByTestId("facet-option")).toBeVisible();
+      expect(await violations(page)).toEqual([]);
+    });
+
+    test("search: no violations on a narrow screen with the filter panel open", async ({
+      page,
+    }) => {
+      test.skip(SKIP_DB, SKIP_DB_REASON);
+      await page.setViewportSize({ width: 375, height: 800 });
+      await open(page, theme, pageByName("search, results with selected filters (seeded)"));
+      await page.getByTestId("facet-disclosure").locator(":scope > summary").click();
+      await expect(page.getByTestId("facet-group-repo")).toBeVisible();
       expect(await violations(page)).toEqual([]);
     });
 

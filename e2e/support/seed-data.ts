@@ -24,6 +24,22 @@
  *                          with a long outline, a frontmatter title, odd characters in a file name
  *                          (task 9.6 and 9.7)
  *   acme/empty-docs        public, README, synced, NO docs                       (task 9.6 and 9.7)
+ *   acme/search-lab        public, plain Markdown, 30 docs for the search page (task 10.3): a title
+ *                          match, a heading match and body matches for "deployment", a
+ *                          markup-heavy doc, a hostile frontmatter title, a "rate limit" doc and 25
+ *                          "changelog" docs to fill several pages
+ *
+ * Search data (task 10.3). The word "deployment" (the spec's "Title outranks body") appears in:
+ *   title (rank A)         search-lab "Deployment"
+ *   heading (B)            search-lab "Operations" (## Deployment checks)
+ *   description or tag (C) knowledge-base "Release pipeline" (tag deployment)
+ *   body (D)               api-service "Setup", internal-tools "Deploys" (private),
+ *                          knowledge-base "Rollback", "Terms", "Use Postgres", globex/handbook
+ *                          "Release windows" (private OKF), search-lab "Markup showcase"
+ * so a "deployment" search finds 10 documents in 5 repositories. OKF values among them: types
+ * concept, Concept (a case variant, kept apart), Runbook, Decision, policy; statuses active (3),
+ * deprecated, draft; tags infrastructure (2), deployment, glossary, oncall, database, release,
+ * governance (7 tags: one more than the facet list shows before "Show more").
  */
 
 export interface SeedDoc {
@@ -82,6 +98,25 @@ const RICH_README = [
   "",
   "Read the [guide](docs/guide.md), the [missing page](docs/does-not-exist.md) or the",
   "[source file](src/index.ts).",
+  "",
+].join("\n");
+
+const MARKUP_HEAVY = [
+  "# Markup showcase",
+  "",
+  "Intro with **bold deployment notes**, a [deployment guide](https://example.com/deployment/guide),",
+  '`deployment.yaml` inline code and <span class="x">inline html deployment</span> in a line.',
+  "",
+  "> **Note**",
+  "> Quoted deployment advice.",
+  "",
+  "| Stage | Notes |",
+  "| ----- | ----- |",
+  "| build | deployment starts here |",
+  "",
+  "```bash",
+  "./deploy --env production # deployment script",
+  "```",
   "",
 ].join("\n");
 
@@ -171,7 +206,7 @@ export const SEED_REPOS: readonly SeedRepo[] = [
       },
       {
         path: "docs/guides/setup.md",
-        text: "# Setup\n\nInstall the dependencies and start the server.\n\n```bash\nmake dev\n```\n",
+        text: "# Setup\n\nInstall the dependencies and start the server. Production deployment is covered by the operations guide.\n\n```bash\nmake dev\n```\n",
       },
       {
         path: "docs/guides/advanced/tuning.md",
@@ -217,7 +252,10 @@ export const SEED_REPOS: readonly SeedRepo[] = [
     readme: "# internal-tools\n\nOnly for the platform team.\n",
     docs: [
       { path: "docs/onboarding.md", text: "# Onboarding\n\nGet access to the tools.\n" },
-      { path: "docs/deploys.md", text: "# Deploys\n\nHow releases go out.\n" },
+      {
+        path: "docs/deploys.md",
+        text: "# Deploys\n\nHow releases go out. Every deployment is announced in chat.\n",
+      },
     ],
   },
   {
@@ -240,7 +278,19 @@ export const SEED_REPOS: readonly SeedRepo[] = [
       },
       {
         path: "docs/decisions/use-postgres.md",
-        text: "---\ntype: Decision\ntags: [database]\nstatus: draft\ndescription: Why we chose Postgres.\n---\n\n# Use Postgres\n\nWe chose Postgres for search.\n",
+        text: "---\ntype: Decision\ntags: [database]\nstatus: draft\ndescription: Why we chose Postgres.\n---\n\n# Use Postgres\n\nWe chose Postgres for search. The deployment uses a single instance.\n",
+      },
+      {
+        path: "docs/concepts/release-pipeline.md",
+        text: "---\ntype: concept\ntags: [infrastructure, deployment]\nstatus: active\ndescription: How code reaches production.\n---\n\n# Release pipeline\n\nEvery merge is built and promoted automatically.\n",
+      },
+      {
+        path: "docs/runbooks/rollback.md",
+        text: "---\ntype: Runbook\ntags: [infrastructure, oncall]\nstatus: deprecated\ndescription: Undo a bad release.\n---\n\n# Rollback\n\nRevert the last deployment with the rollback script.\n",
+      },
+      {
+        path: "docs/glossary/terms.md",
+        text: "---\ntype: Concept\ntags: [glossary]\nstatus: active\ndescription: Words used in this knowledge base.\n---\n\n# Terms\n\nA deployment is one release of the service.\n",
       },
       {
         path: "docs/log.md",
@@ -270,6 +320,10 @@ export const SEED_REPOS: readonly SeedRepo[] = [
       {
         path: "docs/policies/travel.md",
         text: "---\ntype: policy\ntags: [travel]\n---\n\n# Travel\n\nBook through the portal.\n",
+      },
+      {
+        path: "docs/policies/release.md",
+        text: "---\ntype: policy\ntags: [release, governance]\nstatus: active\n---\n\n# Release windows\n\nA deployment may only start on Tuesday or Thursday.\n",
       },
     ],
   },
@@ -350,6 +404,41 @@ export const SEED_REPOS: readonly SeedRepo[] = [
     ],
   },
   {
+    githubId: 1013,
+    owner: "acme",
+    name: "search-lab",
+    description: "Documents that exercise the search page.",
+    visibility: "public",
+    state: "synced",
+    lastSyncedAt: "2026-03-06T09:00:00.000Z",
+    docs: [
+      {
+        path: "docs/deployment.md",
+        text: "# Deployment\n\nShip the service to production with the release script.\n",
+      },
+      {
+        path: "docs/guides/operations.md",
+        text: "# Operations\n\nDay-to-day operations of the service.\n\n## Deployment checks\n\nRun the smoke tests after every release.\n",
+      },
+      { path: "docs/guides/markup-heavy.md", text: MARKUP_HEAVY },
+      {
+        path: "docs/guides/throttling.md",
+        text: "# Throttling\n\nClients that exceed the rate limit receive HTTP 429 and must back off.\n",
+      },
+      {
+        path: "docs/special/odd-title.md",
+        text: "---\ntitle: '<script>window.__xss = 1</script> & \"quotes\" gateway'\n---\n\nThe gateway <script>window.__xss = 1</script> terminates TLS.\n",
+      },
+      ...Array.from({ length: 25 }, (_, i) => {
+        const n = String(i + 1).padStart(2, "0");
+        return {
+          path: `docs/changelog/release-${n}.md`,
+          text: `# Release ${n}\n\nThis release fixes bugs. See the changelog entry ${n} for details.\n`,
+        };
+      }),
+    ],
+  },
+  {
     githubId: 1012,
     owner: "acme",
     name: "empty-docs",
@@ -375,6 +464,7 @@ export const SEEDED = {
   richReadme: { owner: "acme", name: "rich-readme" },
   showcase: { owner: "acme", name: "doc-showcase" },
   emptyDocs: { owner: "acme", name: "empty-docs" },
+  searchLab: { owner: "acme", name: "search-lab" },
 } as const;
 
 /** `owner/name` of every private seeded repository. */
