@@ -36,7 +36,8 @@ services:
   app:
     build: .
     image: docmyrepos:local
-    # Without .env the app still starts and says what is missing in the page and in the logs.
+    # Without .env the app still starts; the container log names the missing settings, and the health
+    # check and /api/status answer 503 until they are valid.
     env_file:
       - path: .env
         required: false

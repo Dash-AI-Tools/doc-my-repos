@@ -52,7 +52,7 @@ Docker with Compose is the only requirement.
 docker compose up -d --build --wait
 ```
 
-This builds the image, starts the app and Postgres 17, and applies the database migrations on start. `--wait` waits for the health check, which answers `503` until the GitHub settings are valid, so fill in `.env` first. A running container with missing settings still serves a home page that names what is missing.
+This builds the image, starts the app and Postgres 17, and applies the database migrations on start. `--wait` waits for the health check, which answers `503` until the GitHub settings are valid, so fill in `.env` first. A running container with missing settings still serves pages, but the home page only says that the repositories could not be loaded; the container log names the missing settings (`docker compose logs app`).
 
 ## 4. Run the first sync
 
