@@ -29,6 +29,7 @@
     "react-dom": "^19.3.0",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
+    "server-only": "^0.0.1",
     "tailwindcss": "^4.3.3",
     "unified": "^11.0.5",
     "universal-github-app-jwt": "^2.2.2",

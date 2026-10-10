@@ -1,3 +1,5 @@
+import "server-only";
+
 import { loadConfig, type LoadConfigOptions, type LoadedConfig } from "./config/load";
 import { closeDb, createDb, getDb, redactWhenLogged, type DbHandle } from "./db/client";
 import { createInstallationTokenProvider } from "./github/app-auth";
@@ -69,6 +71,25 @@ export function getRuntime(options: RuntimeOptions = {}): Runtime {
   const cache = globalThis as Cache;
   cache[CACHE_KEY] ??= createRuntime({ createDb: () => getDb(), ...options });
   return cache[CACHE_KEY];
+}
+
+/**
+ * Re-reads `docmyrepos.config.yml` and the environment and replaces the shared runtime (design:
+ * config is re-read on `/api/sync`, so a config edit applies without a restart). The database
+ * handle is kept: the new runtime shares the previous runtime's pool (or `getDb()` when there was
+ * none), so no connection is closed or reopened, and a sync that is already running keeps the
+ * runtime it started with. `DATABASE_URL` changes therefore need a restart. The GitHub client and
+ * token provider are rebuilt, so the next request mints a fresh installation token.
+ *
+ * When the configuration is invalid this throws `ConfigError` (variable and field names only) and
+ * leaves the previous runtime in place, so a bad edit never takes down a working one.
+ */
+export function reloadRuntime(options: RuntimeOptions = {}): Runtime {
+  const cache = globalThis as Cache;
+  const previous = cache[CACHE_KEY];
+  const next = createRuntime({ createDb: () => previous?.db ?? getDb(), ...options });
+  cache[CACHE_KEY] = next;
+  return next;
 }
 
 /** Drops the shared runtime and closes its database handle (and the shared `getDb()` handle). */

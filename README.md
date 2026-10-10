@@ -39,7 +39,7 @@ Requires Node.js 22+, pnpm, and Docker.
 cp .env.example .env                              # set the GITHUB_APP_* values, GITHUB_WEBHOOK_SECRET, SYNC_SECRET
 cp docmyrepos.config.example.yml docmyrepos.config.yml
 docker compose up                                 # app + Postgres, runs migrations
-curl -X POST -H "x-sync-secret: $SYNC_SECRET" http://localhost:3000/api/sync
+curl -X POST -H "Authorization: Bearer $SYNC_SECRET" http://localhost:3000/api/sync
 ```
 
 Then open <http://localhost:3000>.
@@ -67,7 +67,7 @@ defaults:
 | `GITHUB_APP_PRIVATE_KEY`     | App private key (PEM). Or set `GITHUB_APP_PRIVATE_KEY_PATH` to a key file |
 | `GITHUB_APP_INSTALLATION_ID` | ID of the App's installation on your organization                         |
 | `GITHUB_WEBHOOK_SECRET`      | Webhook secret of the GitHub App, used to verify signatures               |
-| `SYNC_SECRET`                | Secret that protects the manual `/api/sync` endpoint                      |
+| `SYNC_SECRET`                | Secret (16+ characters) that protects the manual `/api/sync` endpoint     |
 
 ### GitHub App
 

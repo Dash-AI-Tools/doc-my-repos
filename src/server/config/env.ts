@@ -2,7 +2,7 @@ import { createPrivateKey } from "node:crypto";
 
 import { z } from "zod";
 
-import { Secret } from "./secret";
+import { MIN_SECRET_LENGTH, Secret } from "./secret";
 
 /** Environment variables as read from `process.env` (or a test double). */
 export type EnvSource = Readonly<Record<string, string | undefined>>;
@@ -33,6 +33,13 @@ function blankToUndefined(value: unknown): unknown {
 
 // Messages are fixed strings: never interpolate the value, which may be a secret.
 const requiredString = () => z.preprocess(blankToUndefined, z.string({ error: "is not set" }));
+
+// A shared secret: trimmed like every value, then at least MIN_SECRET_LENGTH characters. The message
+// is fixed and never includes the value.
+const sharedSecret = () =>
+  requiredString().pipe(
+    z.string().min(MIN_SECRET_LENGTH, `must be at least ${MIN_SECRET_LENGTH} characters`),
+  );
 
 const numericId = () =>
   z.preprocess(
@@ -84,8 +91,18 @@ const envSchema = z.object({
   GITHUB_APP_ID: numericId(),
   GITHUB_APP_INSTALLATION_ID: numericId(),
   GITHUB_WEBHOOK_SECRET: requiredString(),
-  SYNC_SECRET: requiredString(),
+  SYNC_SECRET: sharedSecret(),
 });
+
+/**
+ * The sync secret from `env`, validated like `parseEnv` does (trimmed, not blank, long enough),
+ * or `null` when it is unusable. Lets `POST /api/sync` authenticate before it loads the rest of
+ * the configuration or touches the database. Never throws and never reports the value.
+ */
+export function readSyncSecret(env: EnvSource): Secret<string> | null {
+  const parsed = envSchema.shape.SYNC_SECRET.safeParse(env.SYNC_SECRET, { reportInput: false });
+  return parsed.success ? new Secret(parsed.data) : null;
+}
 
 const PEM_PATTERN =
   /^-----BEGIN ([A-Z0-9 ]+)-----\r?\n([A-Za-z0-9+/=\r\n:, -]+?)\r?\n-----END \1-----$/;

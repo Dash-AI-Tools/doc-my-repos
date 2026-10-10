@@ -113,7 +113,7 @@ function validEnv(overrides: Record<string, string | undefined> = {}): EnvSource
     GITHUB_APP_PRIVATE_KEY_PATH: "",
     GITHUB_APP_INSTALLATION_ID: "67890",
     GITHUB_WEBHOOK_SECRET: "webhook-secret",
-    SYNC_SECRET: "sync-secret",
+    SYNC_SECRET: "sync-secret-0123456",
     ...overrides,
   };
 }
@@ -183,7 +183,7 @@ describe("loadConfig with a valid setup", () => {
     );
     expect(loaded.env.githubAppPrivateKey.reveal()).toBe(RSA_PEM);
     expect(loaded.env.githubWebhookSecret.reveal()).toBe("webhook-secret");
-    expect(loaded.env.syncSecret.reveal()).toBe("sync-secret");
+    expect(loaded.env.syncSecret.reveal()).toBe("sync-secret-0123456");
   });
 
   it("returns a deeply frozen result", () => {
@@ -196,9 +196,11 @@ describe("loadConfig with a valid setup", () => {
   });
 
   it("trims surrounding whitespace from values", () => {
-    const loaded = load(validEnv({ GITHUB_APP_ID: " 12345\n", SYNC_SECRET: "  sync-secret \n" }));
+    const loaded = load(
+      validEnv({ GITHUB_APP_ID: " 12345\n", SYNC_SECRET: "  sync-secret-0123456 \n" }),
+    );
     expect(loaded.env.githubAppId).toBe(12345);
-    expect(loaded.env.syncSecret.reveal()).toBe("sync-secret");
+    expect(loaded.env.syncSecret.reveal()).toBe("sync-secret-0123456");
   });
 
   it("accepts postgresql:// URLs", () => {
@@ -817,6 +819,16 @@ describe("ConfigError", () => {
       ["Invalid configuration (5 problems):", ...error.problems.map((p) => `  - ${p}`)].join("\n"),
     );
     expect(error.cause).toBeUndefined();
+  });
+
+  it("rejects a SYNC_SECRET shorter than 16 characters without echoing it", () => {
+    const short = "SHORTsecret-15ch";
+    expect(short.length).toBe(16);
+    expect(load(validEnv({ SYNC_SECRET: short })).env.syncSecret.reveal()).toBe(short);
+    const tooShort = "SHORTsecret-15c";
+    const error = catchConfigError(() => load(validEnv({ SYNC_SECRET: `  ${tooShort}\n` })));
+    expect(error.problems).toEqual(["SYNC_SECRET: must be at least 16 characters"]);
+    expect(`${error.message}${inspect(error)}`).not.toContain(tooShort);
   });
 
   it("uses the singular for one problem", () => {

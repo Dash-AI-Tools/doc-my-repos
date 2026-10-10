@@ -170,4 +170,65 @@ describe("runtime", () => {
     expect(third).not.toBe(first);
     await closeRuntime();
   });
+  it("reloadRuntime re-reads the config, keeps the database handle and replaces the cache", async () => {
+    const { getRuntime, reloadRuntime, closeRuntime } = await import("./runtime");
+    const files: Record<string, string> = { "/etc/docmyrepos.yml": CONFIG_YAML };
+    const db = fakeDb();
+    const first = getRuntime({ env: env(), readFile: readFile(files), createDb: () => db });
+    expect(first.sync.config.repos).toEqual([
+      "handbook",
+      { name: "metrics", docsPath: "handbook" },
+    ]);
+
+    files["/etc/docmyrepos.yml"] = "repos:\n  - runbooks\n";
+    const second = reloadRuntime({ env: env(), readFile: readFile(files) });
+    expect(second).not.toBe(first);
+    expect(second.sync.config.repos).toEqual(["runbooks"]);
+    // The pool is shared, never closed or reopened by a reload.
+    expect(second.db).toBe(db);
+    expect(second.sync.pool).toBe(db.pool);
+    expect(db.closed).toBe(0);
+    expect(getRuntime()).toBe(second);
+    // The earlier runtime (maybe mid-sync) keeps the config it started with.
+    expect(first.sync.config.repos).toEqual([
+      "handbook",
+      { name: "metrics", docsPath: "handbook" },
+    ]);
+
+    await closeRuntime();
+    expect(db.closed).toBe(1);
+  });
+
+  it("reloadRuntime keeps the previous runtime when the new config is invalid", async () => {
+    const { getRuntime, reloadRuntime, closeRuntime } = await import("./runtime");
+    const files: Record<string, string> = { "/etc/docmyrepos.yml": CONFIG_YAML };
+    const db = fakeDb();
+    const first = getRuntime({ env: env(), readFile: readFile(files), createDb: () => db });
+
+    files["/etc/docmyrepos.yml"] = "reposs: SENTINELfileText\n";
+    let error: unknown;
+    try {
+      reloadRuntime({ env: env(), readFile: readFile(files) });
+    } catch (e) {
+      error = e;
+    }
+    expect((error as Error).name).toBe("ConfigError");
+    expect(`${String(error)}${inspect(error)}`).not.toContain("SENTINELfileText");
+    expect(getRuntime()).toBe(first);
+    expect(db.closed).toBe(0);
+    await closeRuntime();
+  });
+
+  it("reloadRuntime builds a runtime when none exists yet", async () => {
+    const { getRuntime, reloadRuntime, closeRuntime } = await import("./runtime");
+    const db = fakeDb();
+    const rt = reloadRuntime({
+      env: env(),
+      readFile: readFile({ "/etc/docmyrepos.yml": CONFIG_YAML }),
+      createDb: () => db,
+    });
+    expect(getRuntime()).toBe(rt);
+    await closeRuntime();
+    expect(db.closed).toBe(1);
+  });
 });

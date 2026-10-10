@@ -657,6 +657,39 @@ describeDb("sync engine against a fixture-backed fake GitHub", () => {
     expect(await repoCount()).toBe(2);
   });
 
+  it("syncOne accepts a bare repository name (the installation has one owner)", async () => {
+    const fake = fixture();
+    const ctx = ctxFor(fake);
+    const result = await syncOne(ctx, { name: "Metrics" }, { trigger: "manual" });
+    expect(result.status === "synced" && result.repo.githubId).toBe(METRICS_ID);
+    expect((await syncOne(ctx, { name: "nope" }, { trigger: "manual" })).status).toBe("not_found");
+    expect(await syncOne(ctx, { name: "sandbox" }, { trigger: "manual" })).toMatchObject({
+      status: "not_configured",
+      reason: "excluded",
+    });
+    await expect(syncOne(ctx, { name: "" }, { trigger: "manual" })).rejects.toThrow(TypeError);
+    await expect(syncOne(ctx, { owner: "", name: "x" }, { trigger: "manual" })).rejects.toThrow(
+      TypeError,
+    );
+
+    fake.fail({ path: "/installation/repositories", status: 404 });
+    const failed = await syncOne(ctx, { name: "metrics" }, { trigger: "manual" });
+    expect(failed.status).toBe("discovery_failed");
+    expect((await runs()).map((r) => r.scope)).toEqual(["acme/metrics", "acme/metrics"]);
+    const never = await syncOne(ctx, { name: "ghost" }, { trigger: "manual" });
+    expect(never.status).toBe("discovery_failed");
+    expect((await runs()).at(-1)?.scope).toBe("ghost");
+  });
+
+  it("syncAll reports the error that stopped the run as fatal", async () => {
+    const fake = fixture();
+    const ctx = ctxFor(fake);
+    expect((await syncAll(ctx, { trigger: "manual" })).fatal).toBeNull();
+    fake.fail({ path: "/installation/repositories", status: 404 });
+    const failed = await syncAll(ctx, { trigger: "manual" });
+    expect(failed.fatal).toMatchObject({ kind: "installation_unavailable", retryable: true });
+  });
+
   it("syncOne reports unknown and unconfigured repos without starting a run", async () => {
     const fake = fixture();
     const ctx = ctxFor(fake);

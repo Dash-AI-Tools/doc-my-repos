@@ -1,3 +1,6 @@
+/** Shortest accepted shared secret (the sync secret). Guessing 16 random characters is not feasible. */
+export const MIN_SECRET_LENGTH = 16;
+
 const REDACTED = "[redacted]";
 const INSPECT = Symbol.for("nodejs.util.inspect.custom");
 

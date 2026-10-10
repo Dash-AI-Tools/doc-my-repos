@@ -474,6 +474,8 @@ export interface SyncAllResult {
   discoveredGithubIds: number[];
   /** What the removal step did per planned repo (task 5.9); empty when it did not run. */
   removals: RemovalOutcome[];
+  /** The error that stopped the run (failed listing, rate limit, ...), or null. Fixed messages only. */
+  fatal: SyncErrorInfo | null;
 }
 
 /**
@@ -500,6 +502,7 @@ export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promis
   await reapStaleRuns(ctx.db, ctx.pool);
   let discovery: DiscoveryResult | null = null;
   let removals: RemovalOutcome[] = [];
+  let fatal: SyncErrorInfo | null = null;
   const run = await withRun(
     ctx.db,
     ctx.pool,
@@ -510,6 +513,7 @@ export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promis
       discovery = await discoverRepositories(ctx.github, ctx.config, { signal });
       if (!discovery.complete) {
         await recordDiscoveryFailure(ctx, ledger, discovery.error, "all");
+        fatal = ledger.fatal;
         return [...ledger.results];
       }
       ledger.add(
@@ -539,6 +543,7 @@ export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promis
         }
       }
       if (ledger.fatal === null) await recordInaccessible(ctx, ledger, discovery, handled);
+      fatal = ledger.fatal;
       return [...ledger.results];
     },
   );
@@ -548,13 +553,18 @@ export async function syncAll(ctx: SyncContext, options: SyncAllOptions): Promis
     discovery: found,
     discoveredGithubIds: found?.complete ? found.repos.map((r) => r.githubId) : [],
     removals,
+    fatal,
   };
 }
 
 // ---------------------------------------------------------------------------------------------
 // syncOne
 
-export type SyncOneTarget = { owner: string; name: string } | { githubId: number };
+/**
+ * A repository by name (the owner is optional: an installation belongs to one account, so the name
+ * is unambiguous there) or by GitHub id.
+ */
+export type SyncOneTarget = { owner?: string; name: string } | { githubId: number };
 
 export interface SyncOneOptions {
   trigger: RunTrigger;
@@ -596,7 +606,8 @@ function sameName(a: string, b: string): boolean {
 function matches(target: SyncOneTarget, repo: { githubId: number; owner: string; name: string }) {
   return "githubId" in target
     ? repo.githubId === target.githubId
-    : sameName(repo.owner, target.owner) && sameName(repo.name, target.name);
+    : (target.owner === undefined || sameName(repo.owner, target.owner)) &&
+        sameName(repo.name, target.name);
 }
 
 function validateTarget(target: SyncOneTarget): void {
@@ -605,12 +616,11 @@ function validateTarget(target: SyncOneTarget): void {
       throw new TypeError("githubId must be a positive integer");
     }
   } else if (
-    typeof target.owner !== "string" ||
+    (target.owner !== undefined && (typeof target.owner !== "string" || target.owner === "")) ||
     typeof target.name !== "string" ||
-    target.owner === "" ||
     target.name === ""
   ) {
-    throw new TypeError("owner and name must be non-empty strings");
+    throw new TypeError("name (and owner, when given) must be non-empty strings");
   }
 }
 
@@ -639,7 +649,11 @@ export async function syncOne(
         ? stored
           ? `${stored.owner}/${stored.name}`
           : `github:${target.githubId}`
-        : `${target.owner}/${target.name}`;
+        : stored
+          ? `${stored.owner}/${stored.name}`
+          : target.owner === undefined
+            ? target.name
+            : `${target.owner}/${target.name}`;
     let error: SyncErrorInfo = describeSyncError(listingError(discovery.error), ctx.now());
     const run = await withRun(
       ctx.db,
@@ -701,7 +715,9 @@ async function findStoredRow(
   const where =
     "githubId" in target
       ? eq(repos.githubId, target.githubId)
-      : sql`lower(${repos.owner}) = lower(${target.owner}) and lower(${repos.name}) = lower(${target.name})`;
+      : target.owner === undefined
+        ? sql`lower(${repos.name}) = lower(${target.name})`
+        : sql`lower(${repos.owner}) = lower(${target.owner}) and lower(${repos.name}) = lower(${target.name})`;
   const [row] = await ctx.db
     .select({ githubId: repos.githubId, owner: repos.owner, name: repos.name })
     .from(repos)
