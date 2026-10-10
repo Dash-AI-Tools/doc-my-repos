@@ -112,4 +112,4 @@
 - [ ] 14.1 Run against a real GitHub App installation on an org (one plain-Markdown repo, one OKF repo, one private repo) and verify the home grid, private badge, README, code owners, TOC, and Mermaid diagrams all render
 - [ ] 14.2 Push a doc change and verify the webhook updates the page within seconds; delete a doc and verify it disappears from TOC and search
 - [x] 14.3 Verify the full Playwright suite passes in light and dark themes and capture the screenshots for the README
-- [ ] 14.4 Run `openspec validate docmyrepos-mvp` and confirm every spec scenario is covered by at least one test or documented manual check
+- [x] 14.4 Run `openspec validate docmyrepos-mvp` and confirm every spec scenario is covered by at least one test or documented manual check

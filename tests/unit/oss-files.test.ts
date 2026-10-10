@@ -66,6 +66,55 @@ describe("project files", () => {
   });
 });
 
+/**
+ * Spec "New contributor": a contributor who reads the README and the contributing guide can
+ * install, start the database, migrate and run the tests with the documented commands. A real
+ * fresh clone is the manual check of task 13.4; what is checked here is that every `pnpm`
+ * command the two documents show is something that exists, so a renamed script cannot leave
+ * the documentation behind.
+ */
+describe("documented commands", () => {
+  const scripts = new Set(
+    Object.keys((JSON.parse(read("package.json")) as { scripts: Record<string, string> }).scripts),
+  );
+  const builtIn = new Set(["install", "exec", "add", "dlx", "update", "remove", "run"]);
+
+  /** The code spans and fenced blocks of a Markdown file: that is where commands are shown. */
+  function codeOf(text: string): string {
+    const fenced = [...text.matchAll(/```[^\n]*\n([\s\S]*?)```/g)].map((m) => m[1] ?? "");
+    const inline = [...text.replace(/```[\s\S]*?```/g, "").matchAll(/`([^`\n]+)`/g)].map(
+      (m) => m[1] ?? "",
+    );
+    return [...fenced, ...inline].join("\n");
+  }
+
+  function pnpmCommands(text: string): string[] {
+    const found: string[] = [];
+    for (const m of codeOf(text).matchAll(/\bpnpm\s+(?:run\s+)?([a-z][a-z0-9:-]*)/g)) {
+      found.push(m[1] ?? "");
+    }
+    return found;
+  }
+
+  it.each(["README.md", "CONTRIBUTING.md"])("%s shows only pnpm commands that exist", (file) => {
+    const commands = pnpmCommands(read(file));
+    expect(commands.length, file).toBeGreaterThan(3);
+    for (const command of commands) {
+      expect(scripts.has(command) || builtIn.has(command), `${file}: pnpm ${command}`).toBe(true);
+    }
+  });
+
+  it("the contributing guide's set-up path is install, database, migrations, tests", () => {
+    const commands = pnpmCommands(read("CONTRIBUTING.md"));
+    for (const command of ["install", "db:up", "db:migrate", "test", "test:e2e", "dev"]) {
+      expect(commands, command).toContain(command);
+    }
+    for (const script of ["db:up", "db:migrate", "test", "test:e2e", "dev", "typecheck", "lint"]) {
+      expect(scripts.has(script), script).toBe(true);
+    }
+  });
+});
+
 describe("README screenshots", () => {
   const readme = read("README.md");
   const sources = [...readme.matchAll(/(?:src|srcset)="(docs-assets\/screenshots\/[^"]+)"/g)].map(

@@ -588,6 +588,24 @@ describe("with the GitHub client", () => {
     expect(h.calls).toHaveLength(2);
   });
 
+  // Spec "Token reuse and refresh": several requests within one sync while the token is near expiry.
+  it("near expiry, many requests of one sync cause one fresh token and none fails", async () => {
+    const { h, client, auths } = wire(() => 200);
+    await client.getRepo("o", "r");
+    expect(auths).toEqual([`Bearer ${TOKEN_PREFIX}1`]);
+
+    h.setClock(T0 + 58 * MINUTE);
+    const answers = await Promise.all(Array.from({ length: 10 }, () => client.getRepo("o", "r")));
+    expect(answers).toHaveLength(10);
+    expect(h.calls).toHaveLength(2);
+    expect(auths.slice(1)).toEqual(Array.from({ length: 10 }, () => `Bearer ${TOKEN_PREFIX}2`));
+
+    // The fresh token is reused afterwards: no further mint, no rejected request.
+    await client.getRepo("o", "r");
+    expect(h.calls).toHaveLength(2);
+    expect(auths.at(-1)).toBe(`Bearer ${TOKEN_PREFIX}2`);
+  });
+
   it("surfaces installation_unavailable from the provider", async () => {
     const { h, client, auths } = wire(() => 200);
     h.script.push(() => json(404, { message: "Not Found" }));
