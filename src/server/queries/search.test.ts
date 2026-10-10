@@ -171,7 +171,8 @@ async function seed(db: Db): Promise<Seed> {
     }),
     doc(api, "docs/odd-headings.md", "Odd headings", {
       body: "oddheading text",
-      headings: sql`'[{"depth":"x","text":"oddheading","slug":"bad"},null,{"depth":2,"text":"oddheading","slug":""},{"depth":2,"text":"oddheading ok","slug":"ok"}]'::jsonb` as unknown as Heading[],
+      headings:
+        sql`'[{"depth":"x","text":"oddheading","slug":"bad"},null,{"depth":2,"text":"oddheading","slug":""},{"depth":2,"text":"oddheading ok","slug":"ok"}]'::jsonb` as unknown as Heading[],
     }),
     doc(api, "docs/scalar-headings.md", "Scalar headings", {
       body: "oddheading text",
@@ -363,14 +364,22 @@ describeDb("search on a real database", () => {
       });
       expect(typeof hit.rank).toBe("number");
       // The first heading with every term wins over partial matches and later duplicates.
-      expect(hit.heading).toEqual({ depth: 2, text: "Rate limit headers", slug: "rate-limit-headers" });
+      expect(hit.heading).toEqual({
+        depth: 2,
+        text: "Rate limit headers",
+        slug: "rate-limit-headers",
+      });
       expect(JSON.stringify(r)).not.toMatch(/searchVector|search_vector/);
     });
 
     it("returns OKF fields as authored", async () => {
       const r = await search({ q: "facetword", type: "Guide", repo: "Acme/Handbook" });
       const hit = r.hits.find((h) => h.doc.path === "docs/guide-a.md");
-      expect(hit?.doc).toMatchObject({ type: "Guide", tags: ["onboarding", "setup"], status: "draft" });
+      expect(hit?.doc).toMatchObject({
+        type: "Guide",
+        tags: ["onboarding", "setup"],
+        status: "draft",
+      });
     });
 
     it("picks a partially matching heading when none has every term, else null", async () => {

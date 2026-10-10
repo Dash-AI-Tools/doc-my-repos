@@ -32,7 +32,8 @@ export const MAX_FILTER_CHARS = 256;
 
 // C0/C1 controls other than tab/newline/CR, lone surrogates, and the highlight markers.
 const UNSAFE_QUERY_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
-const LONE_SURROGATE_SOURCE = "[\\uD800-\\uDBFF](?![\\uDC00-\\uDFFF])|(?<![\\uD800-\\uDBFF])[\\uDC00-\\uDFFF]";
+const LONE_SURROGATE_SOURCE =
+  "[\\uD800-\\uDBFF](?![\\uDC00-\\uDFFF])|(?<![\\uD800-\\uDBFF])[\\uDC00-\\uDFFF]";
 const LONE_SURROGATES = new RegExp(LONE_SURROGATE_SOURCE, "g");
 const HAS_LONE_SURROGATE = new RegExp(LONE_SURROGATE_SOURCE);
 
@@ -90,7 +91,8 @@ export function normalizeFilterValues(value: unknown): readonly string[] | undef
 }
 
 /** A repository filter value: `owner/name` from a URL, or a row id. */
-export type RepoFilterValue = { readonly owner: string; readonly name: string } | { readonly id: number };
+export type RepoFilterValue =
+  { readonly owner: string; readonly name: string } | { readonly id: number };
 
 const MAX_INT4 = 2_147_483_647;
 

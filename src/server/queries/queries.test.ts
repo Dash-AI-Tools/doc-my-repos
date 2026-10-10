@@ -312,7 +312,8 @@ function flipCases(s: Seed): Record<keyof typeof QUERY_FUNCTIONS, FlipCase[]> {
       {
         label: "hits",
         run: (db, o) => searchDocuments(db, { q: "private" }, o),
-        seen: (r) => (r as { hits: { repo: { id: number } }[] }).hits.some((h) => h.repo.id === s.secret),
+        seen: (r) =>
+          (r as { hits: { repo: { id: number } }[] }).hits.some((h) => h.repo.id === s.secret),
       },
       {
         label: "total",
