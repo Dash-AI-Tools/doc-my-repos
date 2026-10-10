@@ -1,1 +1,43 @@
 @import "tailwindcss";
+
+/* Dark mode follows the `dark` class on <html> (next-themes, attribute="class"). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Shiki dual themes (task 7.3). The server emits both palettes as custom properties
+ * (--shiki-light / --shiki-dark, -bg on the pre, -font-style etc. where a theme sets them);
+ * these rules pick one set, so a theme switch needs no re-render.
+ */
+pre.shiki {
+  color: var(--shiki-light);
+  background-color: var(--shiki-light-bg);
+  overflow-x: auto;
+  padding: 1rem;
+  border-radius: 0.375rem;
+}
+pre.shiki span {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style, inherit);
+  font-weight: var(--shiki-light-font-weight, inherit);
+  text-decoration: var(--shiki-light-text-decoration, inherit);
+}
+.dark pre.shiki {
+  color: var(--shiki-dark);
+  background-color: var(--shiki-dark-bg);
+}
+.dark pre.shiki span {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style, inherit);
+  font-weight: var(--shiki-dark-font-weight, inherit);
+  text-decoration: var(--shiki-dark-text-decoration, inherit);
+}
+
+/* Copy button host (src/components/code-copy.tsx): top right of the block. */
+pre:has(> .dmr-copy-host) {
+  position: relative;
+}
+.dmr-copy-host {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+}

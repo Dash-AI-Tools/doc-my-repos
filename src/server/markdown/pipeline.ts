@@ -263,6 +263,11 @@ export async function renderMarkdown(
     const processor = createProcessor(options);
     const file = new VFile({ value: body });
     const hast = await processor.run(parseBody(body, warnings), file);
+    // Plugins in the slots report fixed-text warnings through `file.data.warnings`.
+    const fromPlugins = file.data.warnings;
+    if (Array.isArray(fromPlugins)) {
+      for (const w of fromPlugins) if (typeof w === "string") warnings.push(w);
+    }
     return {
       html: String(processor.stringify(hast, file)),
       headings: (file.data.headings as Heading[] | undefined) ?? [],
