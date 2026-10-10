@@ -1,7 +1,11 @@
-import { flattenDocsTree, toNavTree, type DocsTreeFolder } from "@/lib/docs-tree";
+import Link from "next/link";
+
+import { flattenDocsTree, toNavTree, type DocsTreeDoc, type DocsTreeFolder } from "@/lib/docs-tree";
 import { docUrl } from "@/lib/routes";
+import { withFilterQuery, type TocFilterView } from "@/lib/toc-filters";
 
 import { DocsTree } from "./docs-tree";
+import { OkfFilters } from "./okf-filters";
 import { documentCountLabel } from "./repo-card";
 import { ResponsiveDetails } from "./responsive-details";
 
@@ -21,6 +25,13 @@ import { ResponsiveDetails } from "./responsive-details";
  * - synced, but no Markdown file under a docs folder: "No documentation files found", with the
  *   hint for adding some;
  * - otherwise the tree, with `currentPath` (a document page) marked and its folders open.
+ *
+ * OKF filters (tasks 11.2 and 11.3): `filters` is the view of the type, tag and status controls,
+ * present only for an OKF repository (null/absent: nothing OKF renders). They sit above the tree.
+ * `tree` is already narrowed by them (the page filters the rows before building it); with a
+ * filter selected the tree starts fully open and is re-keyed so the open set resets, its links
+ * carry the filters (so they survive moving between documents), and a selection that matches
+ * nothing says so with a way to clear it instead of the "no documentation files" state.
  */
 export interface DocsNavSlotProps {
   readonly docCount: number;
@@ -32,6 +43,8 @@ export interface DocsNavSlotProps {
   /** The repository has never been synced. */
   readonly awaitingSync?: boolean;
   readonly variant?: "card" | "sidebar";
+  /** The OKF filter controls; null/absent for a repository that is not OKF. */
+  readonly filters?: TocFilterView | null;
 }
 
 const TREE_ID = "docs-tree";
@@ -44,7 +57,11 @@ function NavBody({
   currentPath,
   awaitingSync,
   variant,
-}: Required<Omit<DocsNavSlotProps, "currentPath">> & { currentPath: string | null }) {
+  filters,
+}: Required<Omit<DocsNavSlotProps, "currentPath" | "filters">> & {
+  currentPath: string | null;
+  filters: TocFilterView | null;
+}) {
   if (awaitingSync) {
     return (
       <p data-testid="docs-nav-pending" className="mt-2 text-sm text-muted-foreground">
@@ -52,7 +69,13 @@ function NavBody({
       </p>
     );
   }
-  if (flattenDocsTree(tree).length === 0) {
+  const filtered = filters?.active === true;
+  const query = filters?.query ?? "";
+  const hrefFor = (doc: DocsTreeDoc): string | null => {
+    const href = docUrl(owner, repo, doc.path, tree.path);
+    return href === null ? null : withFilterQuery(href, query);
+  };
+  if (flattenDocsTree(tree).length === 0 && !filtered) {
     return (
       <div data-testid="docs-nav-empty" className="mt-2 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">No documentation files found</p>
@@ -72,12 +95,29 @@ function NavBody({
           {documentCountLabel(docCount)}
         </p>
       ) : null}
-      <DocsTree
-        tree={toNavTree(tree, (doc) => docUrl(owner, repo, doc.path, tree.path))}
-        currentPath={currentPath}
-        id={TREE_ID}
-        className={variant === "card" ? "max-h-[32rem] overflow-y-auto" : undefined}
-      />
+      {filters !== null ? <OkfFilters view={filters} /> : null}
+      {filters !== null && filters.active && filters.matches === 0 ? (
+        <div data-testid="docs-nav-no-match" className="mt-3 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">No documents match these filters</p>
+          <p className="mt-1">
+            <Link href={filters.clearHref} prefetch={false} className="text-link">
+              Clear filters
+            </Link>{" "}
+            to see every document.
+          </p>
+        </div>
+      ) : null}
+      {flattenDocsTree(tree).length > 0 ? (
+        <DocsTree
+          // A new filter is a new tree: closed or opened folders of the old one mean nothing.
+          key={query}
+          tree={toNavTree(tree, hrefFor)}
+          currentPath={currentPath}
+          id={TREE_ID}
+          expandAll={filtered}
+          className={variant === "card" ? "max-h-[32rem] overflow-y-auto" : undefined}
+        />
+      ) : null}
     </>
   );
 }
@@ -90,6 +130,7 @@ export function DocsNavSlot({
   currentPath = null,
   awaitingSync = false,
   variant = "card",
+  filters = null,
 }: DocsNavSlotProps) {
   const body = (
     <NavBody
@@ -100,6 +141,7 @@ export function DocsNavSlot({
       currentPath={currentPath}
       awaitingSync={awaitingSync}
       variant={variant}
+      filters={filters}
     />
   );
   return (

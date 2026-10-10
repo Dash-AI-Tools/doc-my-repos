@@ -11,7 +11,8 @@
  *   acme/brand-new         public, pending: row exists, never synced, no content
  *   acme/flaky-service     public, last sync failed, still has stored content
  *   acme/internal-tools    private, README, 2 docs
- *   acme/knowledge-base    public, OKF (okf_version 0.2), typed concepts, index.md and log.md
+ *   acme/knowledge-base    public, OKF (okf_version 0.2), 12 documents plus index.md and log.md;
+ *                          the filter data of task 11.2 and 11.3 (see "OKF filter data" below)
  *   acme/long-description  public, 700-character description and a very long name
  *   globex/handbook        private and OKF (typed docs, no okf_version)
  *   acme/no-readme         public, NO README; CODEOWNERS with many patterns, case variants, an
@@ -28,6 +29,17 @@
  *                          match, a heading match and body matches for "deployment", a
  *                          markup-heavy doc, a hostile frontmatter title, a "rate limit" doc and 25
  *                          "changelog" docs to fill several pages
+ *
+ * OKF filter data (tasks 11.2 and 11.3), acme/knowledge-base, counts over its 12 documents (index.md
+ * and log.md are never counted; docs/notes/meeting.md has no type, tag or status):
+ *   type    Runbook 3, concept 3, Decision 2, Table 2, Concept 1  (`Concept` and `concept` differ
+ *           only by case and stay two values; ties sort by byte order, so `Runbook` < `concept`)
+ *   tag     database 5, finance 4, infrastructure 3, oncall 2, billing 1, deployment 1, glossary 1
+ *           (7 tags: one more than a group shows before "Show more")
+ *   status  active 6, draft 3, deprecated 2
+ *   type=concept: billing, release-pipeline, tax. + tag=finance: billing, tax. + status=draft: tax.
+ *   type=Runbook + status=active: failover.   type=Runbook + type=Table: 5 documents.
+ * globex/handbook (private OKF) has types policy only; acme/api-service is plain Markdown.
  *
  * Search data (task 10.3). The word "deployment" (the spec's "Title outranks body") appears in:
  *   title (rank A)         search-lab "Deployment"
@@ -292,6 +304,34 @@ export const SEED_REPOS: readonly SeedRepo[] = [
         path: "docs/glossary/terms.md",
         text: "---\ntype: Concept\ntags: [glossary]\nstatus: active\ndescription: Words used in this knowledge base.\n---\n\n# Terms\n\nA deployment is one release of the service.\n",
       },
+      // Filter data (task 11.2 and 11.3). None of these says "deployment", "release" or any
+      // other word the search specs look for, so their results do not change.
+      {
+        path: "docs/concepts/tax.md",
+        text: "---\ntype: concept\ntags: [finance]\nstatus: draft\ndescription: How tax is calculated.\n---\n\n# Tax\n\nTax is applied per region.\n",
+      },
+      {
+        path: "docs/data/customers.md",
+        text: "---\ntype: Table\ntags: [finance, database]\nstatus: active\ndescription: One row per customer.\n---\n\n# Customers\n\nThe customer table.\n",
+      },
+      {
+        path: "docs/data/invoices.md",
+        text: "---\ntype: Table\ntags: [finance, database]\nstatus: deprecated\ndescription: The old invoice table.\n---\n\n# Invoices table\n\nReplaced by the ledger.\n",
+      },
+      {
+        path: "docs/runbooks/failover.md",
+        text: "---\ntype: Runbook\ntags: [database, oncall]\nstatus: active\ndescription: Switch to the replica.\n---\n\n# Failover\n\nPromote the replica.\n",
+      },
+      {
+        path: "docs/runbooks/restore.md",
+        text: "---\ntype: Runbook\ntags: [database]\nstatus: draft\ndescription: Restore from a backup.\n---\n\n# Restore\n\nRestore the latest backup.\n",
+      },
+      {
+        path: "docs/decisions/use-queues.md",
+        text: "---\ntype: Decision\ntags: [infrastructure]\nstatus: active\ndescription: Why jobs run on a queue.\n---\n\n# Use queues\n\nBackground jobs run on a queue.\n",
+      },
+      // No frontmatter at all: part of the repository, never matches a filter.
+      { path: "docs/notes/meeting.md", text: "# Meeting notes\n\nAn untyped note.\n" },
       {
         path: "docs/log.md",
         text: "# Log\n\n## 2026-03-12\n\nAdded the billing concept.\n",

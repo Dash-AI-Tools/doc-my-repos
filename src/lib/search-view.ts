@@ -83,17 +83,37 @@ export const FACET_LABELS: Readonly<Record<FilterKind, string>> = {
   status: "Status",
 };
 
+/**
+ * How a state becomes a link. The search page uses `buildSearchUrl`; the table of contents of a
+ * repository (task 11.2) uses `buildFilterUrl` with its own page as the base path, so the same
+ * facet options link to the page they are shown on.
+ */
+export type HrefForState = (state: SearchState) => string;
+
+export interface FacetGroupOptions {
+  /** Default `buildSearchUrl` (the `/search` page). */
+  readonly href?: HrefForState;
+  /**
+   * Selected options first (default, the search panel). `false` keeps the order the counts arrive
+   * in (count, then value), so chips do not jump when one is selected; selected values with no
+   * count are still listed, after the counted ones.
+   */
+  readonly selectedFirst?: boolean;
+}
+
 function optionsFor(
   state: SearchState,
   kind: FilterKind,
   counted: readonly { value: string; label: string; count: number }[],
+  hrefFor: HrefForState,
+  selectedFirst: boolean,
 ): FacetOption[] {
   const options: FacetOption[] = counted.map((c) => ({
     value: c.value,
     label: c.label,
     count: c.count,
     selected: isFilterSelected(state, kind, c.value),
-    href: buildSearchUrl(toggleFilter(state, kind, c.value)),
+    href: hrefFor(toggleFilter(state, kind, c.value)),
   }));
   // A selected value that is not counted matches nothing under the other filters (or fell off the
   // end of the top-N list): still shown, so it can be removed.
@@ -104,10 +124,11 @@ function optionsFor(
         label: value,
         count: 0,
         selected: true,
-        href: buildSearchUrl(toggleFilter(state, kind, value)),
+        href: hrefFor(toggleFilter(state, kind, value)),
       });
     }
   }
+  if (!selectedFirst) return options;
   return [...options.filter((o) => o.selected), ...options.filter((o) => !o.selected)];
 }
 
@@ -120,7 +141,13 @@ function sameValue(kind: FilterKind, a: string, b: string): boolean {
  * has nothing to offer: no counted value and nothing selected. That hides the OKF groups (type,
  * tag, status) for results without such values, so non-OKF repositories show no OKF controls.
  */
-export function buildFacetGroups(state: SearchState, facets: FacetCounts): FacetGroup[] {
+export function buildFacetGroups(
+  state: SearchState,
+  facets: FacetCounts,
+  groupOptions: FacetGroupOptions = {},
+): FacetGroup[] {
+  const hrefFor = groupOptions.href ?? buildSearchUrl;
+  const selectedFirst = groupOptions.selectedFirst ?? true;
   const byKind: Record<FilterKind, FacetOption[]> = {
     repo: optionsFor(
       state,
@@ -130,21 +157,29 @@ export function buildFacetGroups(state: SearchState, facets: FacetCounts): Facet
         label: `${r.owner}/${r.name}`,
         count: r.count,
       })),
+      hrefFor,
+      selectedFirst,
     ),
     type: optionsFor(
       state,
       "type",
       facets.types.map((t) => ({ ...t, label: t.value })),
+      hrefFor,
+      selectedFirst,
     ),
     tag: optionsFor(
       state,
       "tag",
       facets.tags.map((t) => ({ ...t, label: t.value })),
+      hrefFor,
+      selectedFirst,
     ),
     status: optionsFor(
       state,
       "status",
       facets.statuses.map((t) => ({ ...t, label: t.value })),
+      hrefFor,
+      selectedFirst,
     ),
   };
   return FILTER_KINDS.filter((kind) => byKind[kind].length > 0).map((kind) => ({
@@ -155,20 +190,26 @@ export function buildFacetGroups(state: SearchState, facets: FacetCounts): Facet
 }
 
 /** The selected filters, each with the URL that removes it. */
-export function buildActiveFilters(state: SearchState): ActiveFilter[] {
+export function buildActiveFilters(
+  state: SearchState,
+  hrefFor: HrefForState = buildSearchUrl,
+): ActiveFilter[] {
   return FILTER_KINDS.flatMap((kind) =>
     filterValues(state, kind).map((value) => ({
       kind,
       kindLabel: FACET_LABELS[kind],
       value,
-      removeHref: buildSearchUrl(toggleFilter(state, kind, value)),
+      removeHref: hrefFor(toggleFilter(state, kind, value)),
     })),
   );
 }
 
 /** The URL with every filter removed (the query is kept). */
-export function clearFiltersHref(state: SearchState): string {
-  return buildSearchUrl(clearFilters(state));
+export function clearFiltersHref(
+  state: SearchState,
+  hrefFor: HrefForState = buildSearchUrl,
+): string {
+  return hrefFor(clearFilters(state));
 }
 
 /** How many options of a long facet list are shown before "Show more". Selected ones always are. */

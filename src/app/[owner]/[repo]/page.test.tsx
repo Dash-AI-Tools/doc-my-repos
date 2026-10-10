@@ -2,12 +2,21 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildDocsTree, type DocsTreeRow } from "@/lib/docs-tree";
+import {
+  countTocRows,
+  filterDocsRows,
+  parseTocFilters,
+  type TocData,
+  type TocFilterState,
+} from "@/lib/toc-filters";
 import type { RepoDetail } from "@/server/queries";
 import type { RepoPageData } from "@/server/repo-page";
 
-const loadRepoPage = vi.fn<(owner: string, name: string) => Promise<RepoPageData>>();
+const loadRepoPage =
+  vi.fn<(owner: string, name: string, filters: TocFilterState) => Promise<RepoPageData>>();
 vi.mock("@/server/repo-page", () => ({
-  loadRepoPage: (owner: string, name: string) => loadRepoPage(owner, name),
+  loadRepoPage: (owner: string, name: string, _deps: unknown, filters: TocFilterState) =>
+    loadRepoPage(owner, name, filters),
 }));
 
 import RepoPage, { dynamic, generateMetadata } from "./page";
@@ -62,11 +71,21 @@ function ok(over: Partial<RepoDetail> = {}) {
     repo: { ...repo, ...over },
     readme: { status: "rendered" as const, html: "<h1>Hello</h1>" },
     tree,
+    toc: null,
   };
 }
 
-async function html(owner = "acme", name = "api"): Promise<string> {
-  return renderToStaticMarkup(await RepoPage({ params: Promise.resolve({ owner, repo: name }) }));
+async function html(
+  owner = "acme",
+  name = "api",
+  searchParams: Record<string, string | string[] | undefined> = {},
+): Promise<string> {
+  return renderToStaticMarkup(
+    await RepoPage({
+      params: Promise.resolve({ owner, repo: name }),
+      searchParams: Promise.resolve(searchParams),
+    }),
+  );
 }
 
 beforeEach(() => {
@@ -156,7 +175,10 @@ describe("repository page", () => {
 
 describe("generateMetadata", () => {
   const meta = (owner: string, name: string) =>
-    generateMetadata({ params: Promise.resolve({ owner, repo: name }) });
+    generateMetadata({
+      params: Promise.resolve({ owner, repo: name }),
+      searchParams: Promise.resolve({}),
+    });
 
   it("titles the page with the stored owner/name", async () => {
     loadRepoPage.mockResolvedValue(ok());
@@ -173,5 +195,136 @@ describe("generateMetadata", () => {
   it("uses the plain site title for the in-page error state", async () => {
     loadRepoPage.mockResolvedValue({ status: "error", loadedAt: NOW });
     expect(await meta("acme", "api")).toEqual({ title: "DocMyRepos" });
+  });
+});
+
+describe("repository page, OKF filters (tasks 11.1 to 11.3)", () => {
+  const typed = (path: string, title: string, over: Partial<DocsTreeRow>): DocsTreeRow => ({
+    ...docRow(path, title),
+    ...over,
+  });
+  const rows: DocsTreeRow[] = [
+    typed("docs/index.md", "Overview", { reserved: "index" }),
+    typed("docs/guides/setup.md", "Setup", { type: "Concept", tags: ["core"], status: "active" }),
+    typed("docs/guides/tuning.md", "Tuning", { type: "concept", tags: ["core"], status: "draft" }),
+    typed("docs/reference/endpoints.md", "Endpoints", { type: "Table", status: "active" }),
+  ];
+
+  function okfData(filters: TocFilterState, over: Partial<RepoDetail> = {}) {
+    const toc: TocData = {
+      state: filters,
+      facets: {
+        types: [
+          { value: "Concept", count: 1 },
+          { value: "Table", count: 1 },
+          { value: "concept", count: 1 },
+        ],
+        tags: [{ value: "core", count: 2 }],
+        statuses: [
+          { value: "active", count: 2 },
+          { value: "draft", count: 1 },
+        ],
+      },
+      counts: countTocRows(rows, filters),
+    };
+    return {
+      ...ok({ isOkf: true, okfVersion: "0.2", ...over }),
+      tree: buildDocsTree(filterDocsRows(rows, filters), "docs"),
+      toc,
+    };
+  }
+
+  it("parses the filters of the URL and passes them to the loader", async () => {
+    loadRepoPage.mockResolvedValue(okfData(parseTocFilters({})));
+    await html("acme", "api", { type: ["Table", "Concept"], tag: "core", status: "draft", q: "x" });
+    const state = loadRepoPage.mock.calls[0]?.[2];
+    expect(state).toMatchObject({
+      types: ["Concept", "Table"],
+      tags: ["core"],
+      statuses: ["draft"],
+      repos: [],
+      q: "",
+    });
+  });
+
+  it("shows the badge, the filter groups and chips with counts for an OKF repository", async () => {
+    loadRepoPage.mockResolvedValue(okfData(parseTocFilters({})));
+    const out = await html();
+    expect(out).toContain('data-testid="okf-badge"');
+    expect(out).toContain("OKF v0.2");
+    expect(out).toContain('data-testid="okf-filters"');
+    for (const group of ["type", "tag", "status"]) {
+      expect(out).toContain(`data-testid="okf-filter-${group}"`);
+    }
+    // Chips link to this page with the value toggled; case variants are two chips.
+    expect(out).toContain('href="/acme/api?type=Concept"');
+    expect(out).toContain('href="/acme/api?type=concept"');
+    expect(out).toContain('href="/acme/api?type=Table"');
+    expect(out).toContain('href="/acme/api?tag=core"');
+    expect(out).toContain('href="/acme/api?status=draft"');
+    // Not filtered: no summary, no clear link, plain document links.
+    expect(out).not.toContain("okf-filter-clear");
+    expect(out).toContain('href="/acme/api/docs/guides/setup"');
+  });
+
+  it("narrows the tree, marks the selection, shows the summary and keeps the filters in links", async () => {
+    const filters = parseTocFilters({ type: "Concept", tag: "core" });
+    loadRepoPage.mockResolvedValue(okfData(filters));
+    const out = await html("acme", "api", { type: "Concept", tag: "core" });
+    expect(out).toContain("1 of 3 documents match");
+    expect(out).toContain('href="/acme/api/docs/guides/setup?tag=core&amp;type=Concept"');
+    expect(out).not.toContain("/docs/guides/tuning");
+    expect(out).not.toContain("/docs/reference/endpoints");
+    expect(out).toContain(", selected, press to remove this filter");
+    expect(out).toContain('aria-current="true"');
+    // Toggling a selected chip removes only that value; the clear link removes all.
+    expect(out).toContain('href="/acme/api?tag=core"');
+    expect(out).toContain('href="/acme/api?type=Concept"');
+    expect(out).toContain('data-testid="okf-filter-clear"');
+  });
+
+  it("says nothing matches, with a way out, when the selection matches no document", async () => {
+    const filters = parseTocFilters({ type: "Runbook" });
+    loadRepoPage.mockResolvedValue(okfData(filters));
+    const out = await html("acme", "api", { type: "Runbook" });
+    expect(out).toContain("No documents match these filters");
+    expect(out).toContain("0 of 3 documents match");
+    // One clear link, in the message (the filter summary leaves its own out).
+    expect(out).toContain('data-testid="docs-nav-no-match"');
+    expect(out).not.toContain('data-testid="okf-filter-clear"');
+    expect(out.match(/Clear filters/g)).toHaveLength(1);
+    expect(out).not.toContain("No documentation files found");
+    // The selected value is listed (count 0) so it can be removed.
+    expect(out).toContain('href="/acme/api"');
+  });
+
+  it("keeps the filters when redirecting to the stored spelling", async () => {
+    loadRepoPage.mockResolvedValue(okfData(parseTocFilters({ type: "Concept" })));
+    await expect(html("ACME", "API", { type: "Concept" })).rejects.toMatchObject({
+      digest: expect.stringContaining("/acme/api?type=Concept"),
+    });
+  });
+
+  it("shows no OKF UI at all for a plain repository, even when the URL carries filters", async () => {
+    // A plain repository: the loader returns toc null, whatever the URL says; its documents may
+    // have a `type` (stale data) and still must not get chips.
+    loadRepoPage.mockResolvedValue({
+      ...ok({ isOkf: false, okfVersion: null }),
+      tree: buildDocsTree(rows, "docs"),
+      toc: null,
+    });
+    for (const params of [{}, { type: "Concept", tag: "core", status: "draft" }]) {
+      const out = await html("acme", "api", params);
+      expect(out).not.toContain("okf-badge");
+      expect(out).not.toContain("okf-filter");
+      expect(out).not.toContain("Filter documents");
+      expect(out).not.toMatch(/OKF/);
+      expect(out).not.toContain("Clear filters");
+      expect(out).not.toContain("No documents match");
+      // The whole tree, no filter query on its links.
+      expect(out).toContain('href="/acme/api/docs/guides/setup"');
+      expect(out).toContain('href="/acme/api/docs/reference/endpoints"');
+      expect(out).not.toContain("?type=");
+    }
   });
 });

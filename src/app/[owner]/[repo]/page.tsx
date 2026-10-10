@@ -8,6 +8,8 @@ import { ReadmeSection } from "@/components/readme-section";
 import { RepoHeader } from "@/components/repo-header";
 import { RepoLoadError } from "@/components/repo-load-error";
 import { repoUrl } from "@/lib/routes";
+import { buildFilterQuery } from "@/lib/search-params";
+import { buildTocFilterView, parseTocFilters, withFilterQuery } from "@/lib/toc-filters";
 import { loadRepoPage } from "@/server/repo-page";
 
 /**
@@ -30,27 +32,54 @@ import { loadRepoPage } from "@/server/repo-page";
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ owner: string; repo: string }>;
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-/** One read per request, shared by `generateMetadata` and the page. */
-const load = cache(loadRepoPage);
+/**
+ * One read per request, shared by `generateMetadata` and the page. Keyed by the canonical filter
+ * query (`type=..&tag=..`): the OKF filters of the table of contents (tasks 11.2 and 11.3), which
+ * only narrow the tree of an OKF repository.
+ */
+const load = cache((owner: string, repo: string, filterQuery: string) =>
+  loadRepoPage(owner, repo, {}, parseTocFilters(new URLSearchParams(filterQuery))),
+);
 
-export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: SearchParams;
+}): Promise<Metadata> {
   const { owner, repo } = await params;
   // The title comes from the stored repository, never from the address as typed.
-  const data = await load(owner, repo);
+  const data = await load(owner, repo, buildFilterQuery(parseTocFilters(await searchParams)));
   if (data.status === "ok") return { title: `${data.repo.owner}/${data.repo.name} · DocMyRepos` };
   if (data.status === "not_found") return { title: "Repository not found · DocMyRepos" };
   return { title: "DocMyRepos" };
 }
 
-export default async function RepoPage({ params }: { params: Params }) {
+export default async function RepoPage({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: SearchParams;
+}) {
   const { owner, repo: name } = await params;
-  const data = await load(owner, name);
+  const filterQuery = buildFilterQuery(parseTocFilters(await searchParams));
+  const data = await load(owner, name, filterQuery);
   if (data.status === "not_found") notFound();
   if (data.status === "error") return <RepoLoadError href={repoUrl(owner, name)} />;
 
-  const { repo, readme, tree, loadedAt } = data;
-  if (repo.owner !== owner || repo.name !== name) redirect(repoUrl(repo.owner, repo.name));
+  const { repo, readme, tree, toc, loadedAt } = data;
+  if (repo.owner !== owner || repo.name !== name) {
+    redirect(withFilterQuery(repoUrl(repo.owner, repo.name), filterQuery));
+  }
+  const basePath = repoUrl(repo.owner, repo.name);
+  const filters =
+    toc === null
+      ? null
+      : buildTocFilterView({ basePath, state: toc.state, facets: toc.facets, counts: toc.counts });
   const awaitingSync = repo.syncStatus === "pending" || repo.lastSyncedAt === null;
 
   return (
@@ -69,6 +98,7 @@ export default async function RepoPage({ params }: { params: Params }) {
             owner={repo.owner}
             repo={repo.name}
             awaitingSync={awaitingSync}
+            filters={filters}
           />
           <CodeOwnersPanel rules={repo.codeOwners} awaitingSync={awaitingSync} />
         </div>

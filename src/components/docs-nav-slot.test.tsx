@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildDocsTree, type DocsTreeRow } from "@/lib/docs-tree";
+import {
+  buildTocFilterView,
+  countTocRows,
+  filterDocsRows,
+  parseTocFilters,
+  type TocFilterView,
+} from "@/lib/toc-filters";
 
 import { DocsNavSlot } from "./docs-nav-slot";
 
@@ -81,5 +88,148 @@ describe("DocsNavSlot, sidebar (document page)", () => {
     );
     // the sidebar scrolls as a whole: the tree has no height limit of its own
     expect(screen.getByTestId("docs-tree").className).not.toContain("overflow-y-auto");
+  });
+});
+
+describe("DocsNavSlot, OKF filters (tasks 11.1 to 11.3)", () => {
+  const typed = (path: string, title: string, over: Partial<DocsTreeRow>): DocsTreeRow => ({
+    ...row(path, title),
+    ...over,
+  });
+  const rows: DocsTreeRow[] = [
+    typed("docs/guides/setup.md", "Setup", { type: "Concept", tags: ["core"], status: "active" }),
+    typed("docs/guides/advanced/tuning.md", "Tuning", { type: "Table", status: "draft" }),
+    typed("docs/ref.md", "Ref", { type: "Concept" }),
+  ];
+  const facets = {
+    types: [
+      { value: "Concept", count: 2 },
+      { value: "Table", count: 1 },
+    ],
+    tags: [{ value: "core", count: 1 }],
+    statuses: [
+      { value: "active", count: 1 },
+      { value: "draft", count: 1 },
+    ],
+  };
+
+  function props(query: Record<string, string | string[]>, keep: string | null = null) {
+    const state = parseTocFilters(query);
+    return {
+      docCount: 3,
+      owner: "acme",
+      repo: "kb",
+      tree: buildDocsTree(filterDocsRows(rows, state, keep), "docs"),
+      filters: buildTocFilterView({
+        basePath: "/acme/kb",
+        state,
+        facets,
+        counts: countTocRows(rows, state),
+      }) as TocFilterView,
+    };
+  }
+
+  it("renders the filters above the tree, inside the Documentation landmark", () => {
+    render(<DocsNavSlot {...props({})} />);
+    const nav = screen.getByRole("navigation", { name: "Documentation" });
+    const filters = within(nav).getByTestId("okf-filters");
+    const tree = within(nav).getByTestId("docs-tree");
+    expect(filters.compareDocumentPosition(tree) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Unfiltered: the whole tree, plain links.
+    expect(within(nav).getByRole("link", { name: "Ref" }).getAttribute("href")).toBe(
+      "/acme/kb/docs/ref",
+    );
+  });
+
+  it("renders no OKF UI without a filters view (a plain repository)", () => {
+    render(<DocsNavSlot docCount={3} tree={buildDocsTree(rows, "docs")} owner="acme" repo="kb" />);
+    expect(screen.queryByTestId("okf-filters")).toBeNull();
+    expect(screen.queryByText(/filter/i)).toBeNull();
+    expect(screen.queryByText(/OKF/)).toBeNull();
+    render(
+      <DocsNavSlot
+        docCount={3}
+        tree={buildDocsTree(rows, "docs")}
+        owner="acme"
+        repo="kb"
+        filters={null}
+        variant="sidebar"
+      />,
+    );
+    expect(screen.queryByTestId("okf-filters")).toBeNull();
+  });
+
+  it("narrows the tree, hides folders with no match, and opens the rest", () => {
+    render(<DocsNavSlot {...props({ type: "Table" })} />);
+    const tree = screen.getByTestId("docs-tree");
+    expect(within(tree).getByRole("link", { name: "Tuning" })).toBeTruthy();
+    expect(within(tree).queryByRole("link", { name: "Setup" })).toBeNull();
+    expect(within(tree).queryByRole("link", { name: "Ref" })).toBeNull();
+    // `guides` and `advanced` hold the match: open, so it is visible, not hidden in a closed folder.
+    for (const name of ["guides", "advanced"]) {
+      expect(within(tree).getByRole("button", { name }).getAttribute("aria-expanded")).toBe("true");
+    }
+    expect(screen.getByRole("status").textContent).toBe("1 of 3 documents match");
+  });
+
+  it("carries the filters in every document link", () => {
+    render(<DocsNavSlot {...props({ type: "Concept", status: "active" })} />);
+    expect(screen.getByRole("link", { name: "Setup" }).getAttribute("href")).toBe(
+      "/acme/kb/docs/guides/setup?status=active&type=Concept",
+    );
+  });
+
+  it("says no document matches, with a clear link, instead of the 'no files' state", () => {
+    render(<DocsNavSlot {...props({ type: "Nope" })} />);
+    const box = screen.getByTestId("docs-nav-no-match");
+    expect(box.textContent).toContain("No documents match these filters");
+    expect(within(box).getByRole("link", { name: "Clear filters" }).getAttribute("href")).toBe(
+      "/acme/kb",
+    );
+    expect(screen.queryByTestId("docs-nav-empty")).toBeNull();
+    expect(screen.queryByTestId("docs-tree")).toBeNull();
+    // The selected value stays listed so it can be removed.
+    const type = screen.getByTestId("okf-filter-type");
+    const nope = within(type).getByRole("link", { name: /Nope/ });
+    expect(nope.getAttribute("aria-current")).toBe("true");
+  });
+
+  it("keeps the page being read in the sidebar even when it does not match", () => {
+    render(
+      <DocsNavSlot
+        {...props({ type: "Table" }, "docs/ref.md")}
+        variant="sidebar"
+        currentPath="docs/ref.md"
+      />,
+    );
+    const current = screen.getByRole("link", { name: "Ref" });
+    expect(current.getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("link", { name: "Tuning" })).toBeTruthy();
+    expect(screen.queryByTestId("docs-nav-no-match")).toBeNull();
+  });
+
+  it("still shows the page being read next to the no-match message", () => {
+    render(
+      <DocsNavSlot
+        {...props({ type: "Nope" }, "docs/ref.md")}
+        variant="sidebar"
+        currentPath="docs/ref.md"
+      />,
+    );
+    expect(screen.getByTestId("docs-nav-no-match")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Ref" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  it("resets the open folders when the filter changes", () => {
+    const { rerender } = render(<DocsNavSlot {...props({ type: "Table" })} />);
+    fireEvent.click(screen.getByRole("button", { name: "advanced" }));
+    expect(screen.getByRole("button", { name: "advanced" }).getAttribute("aria-expanded")).toBe(
+      "false",
+    );
+    // A different filter is a different tree: folders start open again.
+    rerender(<DocsNavSlot {...props({ type: "Table", status: "draft" })} />);
+    expect(screen.getByRole("button", { name: "advanced" }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
   });
 });

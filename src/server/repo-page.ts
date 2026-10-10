@@ -1,7 +1,8 @@
 import "server-only";
 
-import { buildDocsTree, type DocsTreeFolder } from "@/lib/docs-tree";
+import type { DocsTreeFolder } from "@/lib/docs-tree";
 import { isReservedOwner } from "@/lib/routes";
+import { parseTocFilters, type TocData, type TocFilterState } from "@/lib/toc-filters";
 
 import type { Db } from "./db/client";
 import { isValidOwner, isValidRepoName } from "./github/client";
@@ -15,6 +16,7 @@ import {
 } from "./markdown/pipeline";
 import { getDocsTree, getRepo, type RepoDetail } from "./queries";
 import { getRuntime } from "./runtime";
+import { loadToc } from "./toc-data";
 
 /**
  * Data for the repository page `/<owner>/<repo>` (tasks 9.3, 9.4 and 9.6). Reads only through the
@@ -22,6 +24,10 @@ import { getRuntime } from "./runtime";
  * table of contents (`tree`) and the `docPaths` set the README's link resolver needs. The README is rendered here, on the
  * server, from the stored Markdown with the same options every document uses (link and image
  * rewriting for this repository, Shiki highlighting); the sanitizer is the last pipeline step.
+ *
+ * `filters` are the type, tag and status filters of the URL (`parseTocFilters`). They narrow the
+ * table of contents of an OKF repository only; for any other repository they are ignored
+ * (`src/server/toc-data.ts`).
  *
  * Outcomes:
  * - `not_found`: the parameters are not a valid GitHub owner and repository name (checked with
@@ -47,8 +53,13 @@ export type RepoPageData =
       readonly status: "ok";
       readonly repo: RepoDetail;
       readonly readme: ReadmeView;
-      /** The docs table of contents (empty when the repository has no docs folder). */
+      /**
+       * The docs table of contents (empty when the repository has no docs folder), narrowed by the
+       * type, tag and status filters when the repository is OKF.
+       */
       readonly tree: DocsTreeFolder;
+      /** The filter controls' data; null for a repository that is not OKF (no OKF UI). */
+      readonly toc: TocData | null;
       /** When the data was read; the page formats "x minutes ago" against this. */
       readonly loadedAt: Date;
     }
@@ -120,6 +131,7 @@ export async function loadRepoPage(
   owner: string,
   name: string,
   deps: RepoPageDeps = {},
+  filters: TocFilterState = parseTocFilters({}),
 ): Promise<RepoPageData> {
   if (!isRepoRoute(owner, name)) return { status: "not_found" };
   const now = deps.now ?? (() => new Date());
@@ -131,9 +143,9 @@ export async function loadRepoPage(
     const repo = await getRepo(handle, owner, name);
     if (repo === null) return { status: "not_found" };
     const rows = await getDocsTree(handle, { id: repo.id });
-    const tree = buildDocsTree(rows, repo.docsPath);
+    const { tree, toc } = await loadToc(handle, repo, rows, filters);
     const readme = await readmeView(repo, new Set(rows.map((r) => r.path)), render, log);
-    return { status: "ok", repo, readme, tree, loadedAt: now() };
+    return { status: "ok", repo, readme, tree, toc, loadedAt: now() };
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;

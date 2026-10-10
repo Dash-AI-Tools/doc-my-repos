@@ -11,6 +11,7 @@ import {
 import { githubBlobUrl } from "@/lib/github-links";
 import { buildOutline, startsWithTitleHeading, type OutlineItem } from "@/lib/outline";
 import { docPathCandidates, docRouteStem, docUrl } from "@/lib/routes";
+import { parseTocFilters, type TocData, type TocFilterState } from "@/lib/toc-filters";
 
 import type { Db } from "./db/client";
 import { expectedFailureKind } from "./home";
@@ -26,6 +27,7 @@ import { getDocsTree, getDocumentByPath, getRepo, type DocumentDetail } from "./
 import type { RepoDetail } from "./queries";
 import { getRuntime } from "./runtime";
 import { isRepoRoute } from "./repo-page";
+import { loadToc } from "./toc-data";
 
 /**
  * Data for the document page `/<owner>/<repo>/docs/<path>` (task 9.7). Reads only through the
@@ -39,6 +41,10 @@ import { isRepoRoute } from "./repo-page";
  * links, the breadcrumb and the `docPaths` set the link resolver needs, so there is no separate
  * `getDocPaths` or `getAdjacentDocs` query: `adjacentInTree` is what `getAdjacentDocs` runs
  * too, so the order is the same.
+ *
+ * `filters` (the URL's type, tag and status, `parseTocFilters`) only narrow the sidebar of an OKF
+ * repository (`navTree`); previous/next follow the whole table of contents, and a repository that
+ * is not OKF ignores them (`src/server/toc-data.ts`).
  *
  * Outcomes:
  * - `not_found`: invalid or reserved parameters (no query runs), an unknown or hidden
@@ -73,8 +79,15 @@ export interface DocPageOk {
   readonly notice: string | null;
   /** "On this page" entries from the render result; empty when the body is plain text. */
   readonly outline: readonly OutlineItem[];
-  /** The repository's whole table of contents (the sidebar). */
+  /** The repository's whole table of contents (previous/next, breadcrumb, redirects). */
   readonly tree: DocsTreeFolder;
+  /**
+   * The sidebar's table of contents: `tree` narrowed by the type, tag and status filters of the
+   * URL when the repository is OKF (the document being read stays in it), else `tree`.
+   */
+  readonly navTree: DocsTreeFolder;
+  /** The filter controls' data; null for a repository that is not OKF (no OKF UI). */
+  readonly toc: TocData | null;
   readonly previous: DocsTreeDoc | null;
   readonly next: DocsTreeDoc | null;
   /** Folders above the document, outermost first. */
@@ -125,6 +138,7 @@ export async function loadDocPage(
   name: string,
   segments: readonly string[],
   deps: DocPageDeps = {},
+  filters: TocFilterState = parseTocFilters({}),
 ): Promise<DocPageData> {
   if (!isRepoRoute(owner, name) || segments.length === 0) return { status: "not_found" };
   const now = deps.now ?? (() => new Date());
@@ -162,6 +176,7 @@ export async function loadDocPage(
       render,
       log,
     });
+    const nav = repo.isOkf ? await loadToc(handle, repo, rows, filters, found.path) : null;
     const around = adjacentInTree(tree, found.path);
     return {
       status: "ok",
@@ -171,6 +186,8 @@ export async function loadDocPage(
       notice: rendered.notice,
       outline: rendered.outline,
       tree,
+      navTree: nav?.tree ?? tree,
+      toc: nav?.toc ?? null,
       previous: around?.previous ?? null,
       next: around?.next ?? null,
       crumbs: crumbsFor(tree, repo, found.path),

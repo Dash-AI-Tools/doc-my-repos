@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_FILTER_VALUES, MAX_QUERY_CHARS } from "./search";
 import {
   buildFilterQuery,
+  buildFilterUrl,
   buildSearchUrl,
   clearFilters,
   computePaging,
@@ -350,5 +351,33 @@ describe("computePaging", () => {
       lastPage: 11,
       capped: true,
     });
+  });
+});
+
+describe("buildFilterUrl", () => {
+  const filters = { repos: [], types: ["Table", "Concept"], tags: ["b", "a"], statuses: ["draft"] };
+
+  it("puts the canonical filter query after any base path", () => {
+    expect(buildFilterUrl("/acme/kb", filters)).toBe(
+      "/acme/kb?status=draft&tag=a&tag=b&type=Concept&type=Table",
+    );
+    expect(buildFilterUrl("/acme/kb/docs/guides/setup", filters)).toBe(
+      "/acme/kb/docs/guides/setup?status=draft&tag=a&tag=b&type=Concept&type=Table",
+    );
+  });
+
+  it("is the bare base path without filters", () => {
+    expect(buildFilterUrl("/acme/kb", EMPTY_SEARCH_STATE)).toBe("/acme/kb");
+  });
+
+  it("agrees with buildSearchUrl on the filter part, so the two grammars cannot drift", () => {
+    expect(buildFilterUrl("/search", filters)).toBe(buildSearchUrl(filters));
+  });
+
+  it("round-trips through parseSearchParams for hostile values", () => {
+    const hostile = { ...filters, types: ['A&b=c"<x>#y', "a b", "日本"] };
+    const url = buildFilterUrl("/x", hostile);
+    const parsed = parseSearchParams(new URL(url, "http://localhost").searchParams);
+    expect(parsed.types).toEqual([...hostile.types].sort());
   });
 });

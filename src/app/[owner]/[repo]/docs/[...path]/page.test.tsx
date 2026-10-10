@@ -2,14 +2,32 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildDocsTree, type DocsTreeRow } from "@/lib/docs-tree";
+import {
+  countTocRows,
+  filterDocsRows,
+  parseTocFilters,
+  type TocFilterState,
+} from "@/lib/toc-filters";
 import type { DocPageData, DocPageOk } from "@/server/doc-page";
 import type { RepoDetail } from "@/server/queries";
 
 const loadDocPage =
-  vi.fn<(owner: string, name: string, segments: readonly string[]) => Promise<DocPageData>>();
+  vi.fn<
+    (
+      owner: string,
+      name: string,
+      segments: readonly string[],
+      filters: TocFilterState,
+    ) => Promise<DocPageData>
+  >();
 vi.mock("@/server/doc-page", () => ({
-  loadDocPage: (owner: string, name: string, segments: readonly string[]) =>
-    loadDocPage(owner, name, segments),
+  loadDocPage: (
+    owner: string,
+    name: string,
+    segments: readonly string[],
+    _deps: unknown,
+    filters: TocFilterState,
+  ) => loadDocPage(owner, name, segments, filters),
 }));
 
 import DocPage, { dynamic, generateMetadata } from "./page";
@@ -79,6 +97,8 @@ function ok(over: Partial<DocPageOk> = {}): DocPageOk {
     notice: null,
     outline: [{ text: "Install", id: "install", depth: 2, children: [] }],
     tree,
+    navTree: tree,
+    toc: null,
     previous: null,
     next: null,
     crumbs: [{ label: "guides", href: null }],
@@ -92,8 +112,13 @@ function ok(over: Partial<DocPageOk> = {}): DocPageOk {
 const params = (path: string[], owner = "acme", repoName = "api") =>
   Promise.resolve({ owner, repo: repoName, path });
 
-async function html(path = ["guides", "setup"]): Promise<string> {
-  return renderToStaticMarkup(await DocPage({ params: params(path) }));
+async function html(
+  path = ["guides", "setup"],
+  searchParams: Record<string, string | string[] | undefined> = {},
+): Promise<string> {
+  return renderToStaticMarkup(
+    await DocPage({ params: params(path), searchParams: Promise.resolve(searchParams) }),
+  );
 }
 
 beforeEach(() => {
@@ -191,7 +216,12 @@ describe("document page", () => {
   it("percent-decodes the address once before loading", async () => {
     loadDocPage.mockResolvedValue({ status: "not_found" });
     await expect(html(["special", "100%25%20done"])).rejects.toBeDefined();
-    expect(loadDocPage).toHaveBeenCalledWith("acme", "api", ["special", "100% done"]);
+    expect(loadDocPage).toHaveBeenCalledWith(
+      "acme",
+      "api",
+      ["special", "100% done"],
+      parseTocFilters({}),
+    );
   });
 
   it("answers not found for a malformed escape without loading", async () => {
@@ -204,7 +234,10 @@ describe("document page", () => {
 
 describe("generateMetadata", () => {
   const meta = (path: string[], owner = "acme", repoName = "api") =>
-    generateMetadata({ params: params(path, owner, repoName) });
+    generateMetadata({
+      params: params(path, owner, repoName),
+      searchParams: Promise.resolve({}),
+    });
 
   it("titles the page with the stored title and owner/name, and sets the canonical URL", async () => {
     loadDocPage.mockResolvedValue(ok());
@@ -225,7 +258,12 @@ describe("generateMetadata", () => {
   it("uses the segments as Next.js passes them to metadata (already decoded)", async () => {
     loadDocPage.mockResolvedValue(ok());
     await meta(["special", "100% done"]);
-    expect(loadDocPage).toHaveBeenCalledWith("acme", "api", ["special", "100% done"]);
+    expect(loadDocPage).toHaveBeenCalledWith(
+      "acme",
+      "api",
+      ["special", "100% done"],
+      parseTocFilters({}),
+    );
   });
 
   it("never echoes an address that names nothing", async () => {
@@ -240,5 +278,85 @@ describe("generateMetadata", () => {
     expect(await meta(["a"])).toEqual({ title: "DocMyRepos" });
     loadDocPage.mockResolvedValue({ status: "redirect", to: "/x" });
     expect(await meta(["a"])).toEqual({ title: "DocMyRepos" });
+  });
+});
+
+describe("document page, OKF filters (tasks 11.1 to 11.3)", () => {
+  const typed = (path: string, title: string, over: Partial<DocsTreeRow>): DocsTreeRow => ({
+    ...docRow(path, title),
+    ...over,
+  });
+  const rows: DocsTreeRow[] = [
+    typed("docs/guides/setup.md", "Setup", { type: "Concept", tags: ["core"], status: "active" }),
+    typed("docs/guides/tuning.md", "Tuning", { type: "Table", status: "draft" }),
+    typed("docs/ref.md", "Ref", { type: "Concept", status: "active" }),
+  ];
+  const okfRepo: RepoDetail = { ...repo, isOkf: true, okfVersion: "0.2" };
+
+  function okfPage(filters: TocFilterState): DocPageOk {
+    return ok({
+      repo: okfRepo,
+      tree: buildDocsTree(rows, "docs"),
+      // The sidebar keeps the page being read (docs/guides/tuning.md) even when it is filtered out.
+      navTree: buildDocsTree(filterDocsRows(rows, filters, "docs/guides/tuning.md"), "docs"),
+      toc: {
+        state: filters,
+        facets: {
+          types: [
+            { value: "Concept", count: 2 },
+            { value: "Table", count: 1 },
+          ],
+          tags: [{ value: "core", count: 1 }],
+          statuses: [
+            { value: "active", count: 2 },
+            { value: "draft", count: 1 },
+          ],
+        },
+        counts: countTocRows(rows, filters),
+      },
+      doc: { ...ok().doc, path: "docs/guides/tuning.md", title: "Tuning" },
+      url: "/acme/api/docs/guides/tuning",
+    });
+  }
+
+  it("passes the URL's filters to the loader", async () => {
+    loadDocPage.mockResolvedValue(okfPage(parseTocFilters({})));
+    await html(["guides", "tuning"], { type: "Table", status: ["draft", "active"] });
+    expect(loadDocPage.mock.calls[0]?.[3]).toMatchObject({
+      types: ["Table"],
+      statuses: ["active", "draft"],
+    });
+  });
+
+  it("narrows the sidebar, keeps the current page and the filters in every link", async () => {
+    const filters = parseTocFilters({ type: "Concept" });
+    loadDocPage.mockResolvedValue(okfPage(filters));
+    const out = await html(["guides", "tuning"], { type: "Concept" });
+    expect(out).toContain("2 of 3 documents match");
+    expect(out).toContain('href="/acme/api/docs/guides/setup?type=Concept"');
+    expect(out).toContain('href="/acme/api/docs/ref?type=Concept"');
+    // The page being read stays, marked as current, though it is a Table.
+    expect(out).toContain('href="/acme/api/docs/guides/tuning?type=Concept"');
+    expect(out).toContain('aria-current="page"');
+    // The chips link to THIS document with the value toggled.
+    expect(out).toContain('href="/acme/api/docs/guides/tuning?type=Concept&amp;type=Table"');
+    expect(out).toContain('data-testid="okf-filter-clear"');
+  });
+
+  it("keeps the filters when redirecting to the canonical address", async () => {
+    loadDocPage.mockResolvedValue({ status: "redirect", to: "/acme/api/docs/guides/setup" });
+    await expect(html(["GUIDES", "SETUP"], { type: "Concept", tag: "core" })).rejects.toMatchObject(
+      { digest: expect.stringContaining("/acme/api/docs/guides/setup?tag=core&type=Concept") },
+    );
+  });
+
+  it("shows no OKF UI for a plain repository, whatever the URL says", async () => {
+    loadDocPage.mockResolvedValue(ok());
+    const out = await html(["guides", "setup"], { type: "Concept", tag: "x", status: "draft" });
+    expect(out).not.toMatch(/OKF/);
+    expect(out).not.toContain("okf-");
+    expect(out).not.toContain("Filter documents");
+    expect(out).not.toContain("?type=");
+    expect(out).toContain('aria-label="Documentation"');
   });
 });

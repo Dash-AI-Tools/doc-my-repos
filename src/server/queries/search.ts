@@ -17,6 +17,7 @@ import {
 import type { Db } from "../db/client";
 import { documents, repos, SEARCH_TEXT_CONFIG } from "../db/schema";
 import type { RepoVisibility } from "./repos";
+import { repoCondition, type RepoRef } from "./repo-ref";
 import { visibleRepos, type QueryOptions } from "./visibility";
 
 /**
@@ -503,4 +504,99 @@ export async function searchFacets(
     }
   }
   return { query: p.query, total, repos: repoCounts, types, tags, statuses };
+}
+
+/** The type, tag and status filters of a repository's table of contents (task 11.2, 11.3). */
+export interface RepoFacetFilters {
+  /** OKF types, exact and case-sensitive. */
+  readonly type?: unknown;
+  /** Tags, exact. A document matches when it has any of them. */
+  readonly tag?: unknown;
+  /** Statuses, exact. */
+  readonly status?: unknown;
+}
+
+export interface RepoFacets {
+  /** Documents passing every filter (what the narrowed tree shows). */
+  readonly total: number;
+  /** Non-null types as authored (`Metric` and `metric` are two values), by count then value. */
+  readonly types: readonly FacetCount[];
+  readonly tags: readonly FacetCount[];
+  readonly statuses: readonly FacetCount[];
+}
+
+/**
+ * Facet counts for one repository's table of contents: the distinct `type`, tag and `status`
+ * values of its documents with how many documents have each. Disjunctive like `searchFacets`: each
+ * kind is counted over the documents passing the OTHER kinds' filters, so selecting a type still
+ * shows the counts of the other types. Reserved files (`index.md`, `log.md`) and documents without
+ * a value are never counted: they are not typed concepts. Values are exact (no case folding or
+ * trimming). Empty for an unknown or hidden repository (visibility filter applied), never throws
+ * on input.
+ */
+export async function getRepoFacets(
+  db: Db,
+  repo: RepoRef,
+  filters: RepoFacetFilters = {},
+  options: QueryOptions = {},
+): Promise<RepoFacets> {
+  const empty: RepoFacets = { total: 0, types: [], tags: [], statuses: [] };
+  const where = await repoCondition(db, repo, options);
+  if (where === null) return empty;
+  const typeFilter = valueFilter(normalizeFilterValues(filters.type), sql`${documents.type}`);
+  const tagFilterSql = tagFilter(normalizeFilterValues(filters.tag));
+  const statusFilter = valueFilter(normalizeFilterValues(filters.status), sql`${documents.status}`);
+
+  const result = await db.execute(sql`
+    with m as materialized (
+      select ${documents.id} as "id", ${documents.type} as "type", ${documents.tags} as "tags",
+        ${documents.status} as "status", coalesce(${typeFilter}, false) as "ty", coalesce(${tagFilterSql}, false) as "tg",
+        coalesce(${statusFilter}, false) as "s"
+      from ${documents}
+      inner join ${repos} on ${repos.id} = ${documents.repoId}
+      where ${visibleRepos(options)} and ${where} and ${documents.reserved} is null
+    )
+    select 'total' as "kind", null::text as "value", count(*)::int as "count"
+    from m where ty and tg and s
+    union all
+    (select 'type', type, count(*)::int
+      from m where tg and s and type is not null
+      group by type order by count(*) desc, type collate "C"
+      limit ${MAX_FACET_VALUES.types})
+    union all
+    (select 'tag', t.tag, count(distinct m.id)::int
+      from m cross join lateral unnest(m.tags) as t(tag)
+      where ty and s
+      group by t.tag order by count(distinct m.id) desc, t.tag collate "C"
+      limit ${MAX_FACET_VALUES.tags})
+    union all
+    (select 'status', status, count(*)::int
+      from m where ty and tg and status is not null
+      group by status order by count(*) desc, status collate "C"
+      limit ${MAX_FACET_VALUES.statuses})
+  `);
+
+  let total = 0;
+  const types: FacetCount[] = [];
+  const tags: FacetCount[] = [];
+  const statuses: FacetCount[] = [];
+  for (const row of result.rows) {
+    const count = int(row.count);
+    const value = str(row.value);
+    switch (row.kind) {
+      case "total":
+        total = count;
+        break;
+      case "type":
+        if (value !== null) types.push({ value, count });
+        break;
+      case "tag":
+        if (value !== null) tags.push({ value, count });
+        break;
+      case "status":
+        if (value !== null) statuses.push({ value, count });
+        break;
+    }
+  }
+  return { total, types, tags, statuses };
 }

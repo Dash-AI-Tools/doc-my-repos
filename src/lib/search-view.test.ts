@@ -151,3 +151,39 @@ describe("splitFacetOptions", () => {
     expect(more).toHaveLength(4);
   });
 });
+
+describe("href builder and ordering options (task 11.2)", () => {
+  const here = (s: SearchState) => `/acme/kb?n=${s.types.length + s.tags.length}`;
+
+  it("links groups, active filters and the clear link through the given builder", () => {
+    const selected = state({ q: "", types: ["concept"] });
+    const groups = buildFacetGroups(selected, FACETS, { href: here });
+    expect(groups.find((g) => g.kind === "type")?.options.map((o) => o.href)).toEqual([
+      "/acme/kb?n=0", // removing `concept`
+      "/acme/kb?n=2", // adding `Concept`
+    ]);
+    expect(buildActiveFilters(selected, here)[0]?.removeHref).toBe("/acme/kb?n=0");
+    expect(clearFiltersHref(selected, here)).toBe("/acme/kb?n=0");
+  });
+
+  it("still defaults to the search URL", () => {
+    const groups = buildFacetGroups(state({}), FACETS);
+    expect(groups.find((g) => g.kind === "tag")?.options[0]?.href).toBe(
+      "/search?q=deploy&tag=infra",
+    );
+  });
+
+  it("keeps the facet order with selectedFirst false, selected values without a count last", () => {
+    const selected = state({ types: ["Concept", "Gone"] });
+    const first = buildFacetGroups(selected, FACETS).find((g) => g.kind === "type");
+    expect(first?.options.map((o) => o.value)).toEqual(["Concept", "Gone", "concept"]);
+    const stable = buildFacetGroups(selected, FACETS, { selectedFirst: false }).find(
+      (g) => g.kind === "type",
+    );
+    expect(stable?.options.map((o) => [o.value, o.count, o.selected])).toEqual([
+      ["concept", 2, false],
+      ["Concept", 1, true],
+      ["Gone", 0, true],
+    ]);
+  });
+});

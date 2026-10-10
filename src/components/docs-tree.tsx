@@ -46,6 +46,12 @@ export interface DocsTreeProps {
   readonly id?: string;
   /** Extra classes for the scrolling area (the repository page limits its height). */
   readonly className?: string;
+  /**
+   * Start with every folder open. The table of contents narrowed by a filter (task 11.2) is
+   * short, and a match hidden in a closed folder would look like a missing one. The parent
+   * re-keys the tree when the filter changes, which resets the open set.
+   */
+  readonly expandAll?: boolean;
 }
 
 /** The folder paths on the way to `path`: `docs/a/b/x.md` is in `docs/a` and `docs/a/b`. */
@@ -77,7 +83,12 @@ function allFolders(folder: NavFolder, into: string[] = []): string[] {
 }
 
 /** The folders open before the visitor does anything. */
-export function initialOpen(tree: NavFolder, currentPath: string | null): Set<string> {
+export function initialOpen(
+  tree: NavFolder,
+  currentPath: string | null,
+  expandAll = false,
+): Set<string> {
+  if (expandAll) return new Set(allFolders(tree));
   const open = new Set(ancestorPaths(tree, currentPath));
   if (countPages(tree) <= OPEN_ALL_UP_TO) {
     for (const child of tree.children) if (child.kind === "folder") open.add(child.path);
@@ -230,8 +241,16 @@ function NodeList({
   );
 }
 
-export function DocsTree({ tree, currentPath = null, id = "docs-tree", className }: DocsTreeProps) {
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => initialOpen(tree, currentPath));
+export function DocsTree({
+  tree,
+  currentPath = null,
+  id = "docs-tree",
+  className,
+  expandAll = false,
+}: DocsTreeProps) {
+  const [open, setOpen] = useState<ReadonlySet<string>>(() =>
+    initialOpen(tree, currentPath, expandAll),
+  );
   const [seenPath, setSeenPath] = useState(currentPath);
   const container = useRef<HTMLDivElement>(null);
 

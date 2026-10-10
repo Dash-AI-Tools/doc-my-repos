@@ -7,7 +7,7 @@ import {
   getDocumentByPath,
 } from "./documents";
 import { getRepo, listCodeOwners, listRepos } from "./repos";
-import { searchDocuments, searchFacets } from "./search";
+import { getRepoFacets, searchDocuments, searchFacets } from "./search";
 
 /**
  * The shared read layer (task 9.1, design decision 5b). Pages and route handlers import reads
@@ -34,6 +34,7 @@ export const QUERY_FUNCTIONS = {
   findAssetRepo,
   searchDocuments,
   searchFacets,
+  getRepoFacets,
 } as const;
 
 /** Registered queries that may read `documents.search_vector` (search only, design decision 2). */
@@ -84,11 +85,14 @@ export {
   type RepoVisibility,
 } from "./repos";
 export {
+  getRepoFacets,
   MAX_FACET_VALUES,
   searchDocuments,
   searchFacets,
   type FacetCount,
   type RepoFacetCount,
+  type RepoFacetFilters,
+  type RepoFacets,
   type SearchFacets,
   type SearchHeading,
   type SearchHit,

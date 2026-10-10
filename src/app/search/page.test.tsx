@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { EMPTY_SEARCH_STATE, type SearchState } from "@/lib/search-params";
-import type { SearchPageView } from "@/lib/search-view";
+import { computePaging, EMPTY_SEARCH_STATE, type SearchState } from "@/lib/search-params";
+import { buildFacetGroups, type SearchPageView } from "@/lib/search-view";
 
 const loadSearchPage = vi.fn<(state: SearchState) => Promise<SearchPageView>>();
 vi.mock("@/server/search-page", () => ({
@@ -83,5 +83,49 @@ describe("search page metadata", () => {
   it("is not indexed", async () => {
     expect((await meta({ q: "x" })).robots).toEqual({ index: false, follow: true });
     expect((await meta({})).robots).toEqual({ index: false, follow: true });
+  });
+});
+
+describe("search page, plain repositories (task 11.1)", () => {
+  it("offers only the Repository facet, and no OKF controls, when no hit has OKF values", async () => {
+    loadSearchPage.mockImplementation((state) =>
+      Promise.resolve({
+        status: "ok",
+        state,
+        query: "deploy",
+        total: 1,
+        hits: [
+          {
+            key: "1:docs/a.md",
+            title: "Deploy",
+            href: "/acme/api/docs/a",
+            repoLabel: "acme/api",
+            repoHref: "/acme/api",
+            path: "docs/a.md",
+            section: null,
+            snippet: "How we deploy.",
+            isPrivate: false,
+            type: null,
+            status: null,
+            tags: [],
+          },
+        ],
+        groups: buildFacetGroups(state, {
+          repos: [{ owner: "acme", name: "api", count: 1 }],
+          types: [],
+          tags: [],
+          statuses: [],
+        }),
+        active: [],
+        paging: computePaging(state, 1, 1),
+      }),
+    );
+    const out = await html({ q: "deploy" });
+    expect(out).toContain('data-testid="facet-group-repo"');
+    for (const kind of ["type", "tag", "status"]) {
+      expect(out).not.toContain(`data-testid="facet-group-${kind}"`);
+    }
+    expect(out).not.toMatch(/okf/i);
+    expect(out).not.toContain('data-testid="result-type"');
   });
 });

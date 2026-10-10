@@ -264,3 +264,23 @@ describe("DocsTree, many documents", () => {
     expect(toggled).toBeLessThan(2000);
   });
 });
+
+describe("DocsTree expandAll (filtered table of contents)", () => {
+  it("starts with every folder open, however large the tree", () => {
+    const many = nav(
+      Array.from({ length: OPEN_ALL_UP_TO + 5 }, (_, i) => row(`docs/f${i}/sub/p.md`, `P${i}`)),
+    );
+    expect([...initialOpen(many, null)]).toEqual([]);
+    const open = initialOpen(many, null, true);
+    expect(open.has("docs/f0")).toBe(true);
+    expect(open.has("docs/f0/sub")).toBe(true);
+    expect(open.size).toBe((OPEN_ALL_UP_TO + 5) * 2);
+  });
+
+  it("renders the nested folders open", () => {
+    render(<DocsTree tree={NESTED} expandAll />);
+    for (const name of ["guides", "advanced"]) {
+      expect(screen.getByRole("button", { name }).getAttribute("aria-expanded")).toBe("true");
+    }
+  });
+});

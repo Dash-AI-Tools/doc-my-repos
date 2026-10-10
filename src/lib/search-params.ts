@@ -181,6 +181,20 @@ export function buildSearchUrl(state: Partial<SearchState> = {}): string {
   return parts.length === 0 ? SEARCH_PATH : `${SEARCH_PATH}?${parts.join("&")}`;
 }
 
+/**
+ * `basePath` plus the canonical filter query (`?status=..&tag=..&type=..`), or just `basePath`
+ * when no filter is set. How the table of contents of a repository (task 11.2) links to itself:
+ * the same grammar as `/search`, on the page the visitor is reading. `basePath` is a root-relative
+ * path built by the caller (`repoUrl`, `docUrl`); it is not parsed or encoded here.
+ */
+export function buildFilterUrl(
+  basePath: string,
+  filters: Pick<SearchState, "repos" | "types" | "tags" | "statuses">,
+): string {
+  const query = buildFilterQuery(filters);
+  return query === "" ? basePath : `${basePath}?${query}`;
+}
+
 const LIST_KEY = {
   repo: "repos",
   type: "types",

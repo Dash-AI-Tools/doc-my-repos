@@ -85,9 +85,9 @@
 
 ## 11. OKF support (okf-support)
 
-- [ ] 11.1 Surface `is_okf`/`okf_version` in queries and show the OKF badge on cards and repo header, and verify a test that plain repos show no OKF UI
-- [ ] 11.2 Build the type filter chips with counts on the repo TOC (hidden for non-OKF repos), and verify a Playwright test narrowing the tree
-- [ ] 11.3 Add tag and status filters combinable with type, persisted in the URL, and verify a test for combined filters and reload restore
+- [x] 11.1 Surface `is_okf`/`okf_version` in queries and show the OKF badge on cards and repo header, and verify a test that plain repos show no OKF UI
+- [x] 11.2 Build the type filter chips with counts on the repo TOC (hidden for non-OKF repos), and verify a Playwright test narrowing the tree
+- [x] 11.3 Add tag and status filters combinable with type, persisted in the URL, and verify a test for combined filters and reload restore
 - [ ] 11.4 Build the OKF metadata card (type, tags, status, description, resource, sources, generated/verified, unknown keys), and verify component tests including `type`-only docs and unknown keys
 - [ ] 11.5 Add deprecation/draft notices and `stale_after` warnings, and verify tests with past and future dates
 - [ ] 11.6 Render `log.md` as a change log and keep `index.md`/`log.md` out of typed lists, and verify a test

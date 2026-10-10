@@ -9,6 +9,8 @@ import { DocsNavSlot } from "@/components/docs-nav-slot";
 import { OutlineNav } from "@/components/outline-nav";
 import { RepoLoadError } from "@/components/repo-load-error";
 import { docUrl, repoUrl } from "@/lib/routes";
+import { buildFilterQuery } from "@/lib/search-params";
+import { buildTocFilterView, parseTocFilters, withFilterQuery } from "@/lib/toc-filters";
 import { formatAbsoluteTime, formatRelativeTime } from "@/lib/time";
 import { loadDocPage, type DocPageOk } from "@/server/doc-page";
 
@@ -34,6 +36,7 @@ import { loadDocPage, type DocPageOk } from "@/server/doc-page";
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ owner: string; repo: string; path: string[] }>;
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 /**
  * The catch-all segments of the address, percent-decoded exactly once, or null when an escape is
@@ -54,17 +57,38 @@ function decodeSegments(raw: readonly string[]): string[] | null {
 }
 
 /** One read per request, shared by `generateMetadata` and the page. */
-const load = cache((owner: string, repo: string, key: string) =>
-  loadDocPage(owner, repo, JSON.parse(key) as string[]),
+const load = cache((owner: string, repo: string, key: string, filterQuery: string) =>
+  loadDocPage(
+    owner,
+    repo,
+    JSON.parse(key) as string[],
+    {},
+    parseTocFilters(new URLSearchParams(filterQuery)),
+  ),
 );
 
-const loadFor = (owner: string, repo: string, segments: readonly string[]) =>
-  load(owner, repo, JSON.stringify(segments));
+/**
+ * `filterQuery` is the canonical `type=..&tag=..&status=..` of the URL (tasks 11.2 and 11.3): it
+ * only narrows the sidebar's table of contents of an OKF repository.
+ */
+const loadFor = (owner: string, repo: string, segments: readonly string[], filterQuery: string) =>
+  load(owner, repo, JSON.stringify(segments), filterQuery);
 
-export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: SearchParams;
+}): Promise<Metadata> {
   const { owner, repo, path } = await params;
   // The title comes from the stored document, never from the address as typed.
-  const data = await loadFor(owner, repo, path);
+  const data = await loadFor(
+    owner,
+    repo,
+    path,
+    buildFilterQuery(parseTocFilters(await searchParams)),
+  );
   if (data.status === "ok") {
     // `description` only when the document has one: an explicit undefined would replace the
     // site description instead of inheriting it.
@@ -90,13 +114,21 @@ function pagerLink(
 const BUTTON =
   "inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-input bg-secondary px-3 text-sm font-medium text-secondary-foreground no-underline hover:bg-accent";
 
-export default async function DocPage({ params }: { params: Params }) {
+export default async function DocPage({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: SearchParams;
+}) {
   const { owner, repo: name, path: rawPath } = await params;
   const path = decodeSegments(rawPath);
   if (path === null) notFound();
-  const data = await loadFor(owner, name, path);
+  const filterQuery = buildFilterQuery(parseTocFilters(await searchParams));
+  const data = await loadFor(owner, name, path, filterQuery);
   if (data.status === "not_found") notFound();
-  if (data.status === "redirect") redirect(data.to);
+  // A redirect to the canonical address keeps the filters of the sidebar.
+  if (data.status === "redirect") redirect(withFilterQuery(data.to, filterQuery));
   if (data.status === "error") {
     return (
       <RepoLoadError
@@ -105,7 +137,16 @@ export default async function DocPage({ params }: { params: Params }) {
     );
   }
 
-  const { repo, doc, body, notice, outline, tree, crumbs, sourceUrl, loadedAt } = data;
+  const { repo, doc, body, notice, outline, navTree, toc, crumbs, sourceUrl, loadedAt } = data;
+  const filters =
+    toc === null
+      ? null
+      : buildTocFilterView({
+          basePath: data.url,
+          state: toc.state,
+          facets: toc.facets,
+          counts: toc.counts,
+        });
   const syncedAt = repo.lastSyncedAt;
   const awaitingSync = repo.syncStatus === "pending" || repo.lastSyncedAt === null;
   const description = doc.description?.trim() ?? "";
@@ -199,11 +240,12 @@ export default async function DocPage({ params }: { params: Params }) {
           <DocsNavSlot
             variant="sidebar"
             docCount={repo.docCount}
-            tree={tree}
+            tree={navTree}
             owner={repo.owner}
             repo={repo.name}
             currentPath={doc.path}
             awaitingSync={awaitingSync}
+            filters={filters}
           />
         </div>
       </div>

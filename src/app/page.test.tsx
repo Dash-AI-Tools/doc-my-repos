@@ -55,6 +55,24 @@ describe("home page", () => {
     expect(out).not.toContain("Nothing synced yet");
   });
 
+  it("shows the OKF badge on OKF cards only, and no OKF wording for plain repositories (task 11.1)", async () => {
+    loadHome.mockResolvedValue({
+      status: "ok",
+      loadedAt: NOW,
+      repos: [
+        { ...repo, id: 2, name: "kb", isOkf: true, okfVersion: "0.2" },
+        { ...repo, id: 3, name: "plain" },
+      ],
+    });
+    const out = await html();
+    expect(out.match(/data-testid="okf-badge"/g)).toHaveLength(1);
+    expect(out).toContain("OKF v0.2");
+
+    loadHome.mockResolvedValue({ status: "ok", loadedAt: NOW, repos: [repo] });
+    const plain = await html();
+    expect(plain).not.toMatch(/okf/i);
+  });
+
   it("renders the empty state, with the search bar, when nothing is synced", async () => {
     loadHome.mockResolvedValue({ status: "ok", loadedAt: NOW, repos: [] });
     const out = await html();

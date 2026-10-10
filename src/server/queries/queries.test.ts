@@ -19,6 +19,7 @@ import {
   getDocsTree,
   getDocumentByPath,
   getRepo,
+  getRepoFacets,
   listCodeOwners,
   listRepos,
   NOT_QUERIES,
@@ -326,6 +327,18 @@ function flipCases(s: Seed): Record<keyof typeof QUERY_FUNCTIONS, FlipCase[]> {
         seen: (r) => (r as { total: number }).total > 0,
       },
     ],
+    getRepoFacets: [
+      {
+        label: "by id",
+        run: (db, o) => getRepoFacets(db, byId, {}, o),
+        seen: (r) => (r as { total: number }).total > 0,
+      },
+      {
+        label: "by name",
+        run: (db, o) => getRepoFacets(db, byName, undefined, o),
+        seen: (r) => (r as { total: number }).total > 0,
+      },
+    ],
     searchFacets: [
       {
         label: "repo counts",
@@ -430,6 +443,8 @@ describeDb("query layer on a real database", () => {
         readme: { path: "README.md", markdown: "# Handbook\n\nWelcome.", sha: "readme-sha" },
         codeownersPath: ".github/CODEOWNERS",
         docCount: 10,
+        isOkf: true,
+        okfVersion: "0.2",
       });
       expect(repo?.codeOwners).toEqual([
         {
@@ -453,6 +468,25 @@ describeDb("query layer on a real database", () => {
           ],
           sourcePath: ".github/CODEOWNERS",
         },
+      ]);
+    });
+
+    it("exposes isOkf and okfVersion for OKF and for plain repositories (task 11.1)", async () => {
+      expect(await getRepo(t.db, "acme", "handbook")).toMatchObject({
+        isOkf: true,
+        okfVersion: "0.2",
+      });
+      // The seeded repositories that are not OKF: false and no version, in detail and in the list.
+      expect(await getRepo(t.db, "acme", "secret")).toMatchObject({
+        isOkf: false,
+        okfVersion: null,
+      });
+      const list = await listRepos(t.db);
+      expect(list.map((r) => [r.name, r.isOkf, r.okfVersion])).toEqual([
+        ["Handbook", true, "0.2"],
+        ["secret", false, null],
+        ["empty", false, null],
+        ["big", false, null],
       ]);
     });
 

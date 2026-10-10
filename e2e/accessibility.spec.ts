@@ -215,6 +215,48 @@ const PAGES: readonly PageCase[] = [
     },
   },
   {
+    name: "repo page, OKF filters, nothing selected (seeded)",
+    path: "/acme/knowledge-base",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("okf-filters")).toBeVisible();
+      await expect(page.getByTestId("okf-badge")).toBeVisible();
+      await expect(page.getByTestId("okf-filter-chip").first()).toBeVisible();
+    },
+  },
+  {
+    name: "repo page, OKF filters selected and the tree narrowed (seeded)",
+    path: "/acme/knowledge-base?status=active&type=Runbook&type=Table",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("okf-filter-summary")).toHaveText("2 of 12 documents match");
+      await expect(
+        page.locator('[data-testid=okf-filter-chip][aria-current="true"]').first(),
+      ).toBeVisible();
+    },
+  },
+  {
+    name: "repo page, OKF filters with no matching document (seeded)",
+    path: "/acme/knowledge-base?type=Runbook&tag=glossary",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByTestId("docs-nav-no-match")).toBeVisible();
+    },
+  },
+  {
+    name: "document page, OKF filters in the sidebar (seeded)",
+    path: "/acme/knowledge-base/docs/concepts/billing?type=Runbook",
+    stack: "seeded",
+    ready: async (page) => {
+      await expect(page.getByRole("heading", { level: 1, name: "Billing" })).toBeVisible();
+      await expect(page.getByTestId("okf-filter-summary")).toHaveText("3 of 12 documents match");
+      // The page being read stays in the narrowed sidebar.
+      await expect(page.getByTestId("docs-nav").locator('a[aria-current="page"]')).toHaveText(
+        "Billing",
+      );
+    },
+  },
+  {
     name: "search, results with facets (seeded)",
     path: "/search?q=deployment",
     stack: "seeded",
