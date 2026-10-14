@@ -47,7 +47,7 @@
 - [x] 6.2 Implement `POST /api/webhooks/github` with raw-body signature verification using the App webhook secret, and verify tests for valid, invalid, and missing signatures
 - [x] 6.3 Route events: `push` (default branch only), `repository` (renamed/deleted/archived/visibility), `installation_repositories` (add/remove repos), and `installation` (deleted/suspended -> error state, content kept); ignore unknown repos and branches; verify unit tests per event
 - [x] 6.4 Make processing idempotent and coalesce concurrent syncs per repo, and verify duplicate-delivery and concurrent-request tests
-- [ ] 6.5 Write the GitHub App setup guide in `docs/` (read-only permissions for contents and metadata, subscribed events, webhook URL and secret, App manifest, obtaining App id, private key and installation id, local tunnel) and verify the steps by registering and installing a test App
+- [x] 6.5 Write the GitHub App setup guide in `docs/` (read-only permissions for contents and metadata, subscribed events, webhook URL and secret, App manifest, obtaining App id, private key and installation id, local tunnel) and verify the steps by registering and installing a test App
 
 ## 7. Markdown rendering (markdown-rendering)
 
@@ -109,7 +109,7 @@
 
 ## 14. End-to-end acceptance
 
-- [ ] 14.1 Run against a real GitHub App installation on an org (one plain-Markdown repo, one OKF repo, one private repo) and verify the home grid, private badge, README, code owners, TOC, and Mermaid diagrams all render
-- [ ] 14.2 Push a doc change and verify the webhook updates the page within seconds; delete a doc and verify it disappears from TOC and search
+- [x] 14.1 Run against a real GitHub App installation on an org (one plain-Markdown repo, one OKF repo, one private repo) and verify the home grid, private badge, README, code owners, TOC, and Mermaid diagrams all render
+- [x] 14.2 Push a doc change and verify the webhook updates the page within seconds; delete a doc and verify it disappears from TOC and search
 - [x] 14.3 Verify the full Playwright suite passes in light and dark themes and capture the screenshots for the README
 - [x] 14.4 Run `openspec validate docmyrepos-mvp` and confirm every spec scenario is covered by at least one test or documented manual check
