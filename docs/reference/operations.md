@@ -21,10 +21,11 @@ This page is for whoever runs a DocMyRepos instance. Deployment itself (Docker, 
 
 ## Health
 
-`GET /api/status` is the health check. `200` means the app and its database answer. `503` with `{"error":"unavailable"}` means the database or the configuration is unusable. A failed repository sync does not change the status code, so read the body to see sync problems:
+`GET /api/health` is the health check. It needs no login and returns only the verdict: `200 {"status":"ok"}` means the app and its database answer. `503` with `{"error":"unavailable"}` means the database or the configuration is unusable. A failed repository sync does not change the status code. `GET /api/status` has the sync details, but it lists repositories and needs a login (a session cookie), so an anonymous `curl` gets `401`:
 
 ```bash
-curl -fsS http://127.0.0.1:3000/api/status | jq '{summary, lastRun: .lastRun.status}'
+curl -fsS http://127.0.0.1:3000/api/health
+curl -fsS -b 'dmr_session=<session cookie>' http://127.0.0.1:3000/api/status | jq '{summary, lastRun: .lastRun.status}'
 ```
 
 The Docker image checks it every 30 seconds with a 5 second timeout and a 90 second start period. `docker compose up --wait` waits for that check, so with missing GitHub settings it ends unhealthy. The `/status` page shows the same data for people: the last run and every repository's state, errors and warnings. The full body is in the [HTTP API reference](./api.md#get-apistatus).
@@ -66,7 +67,7 @@ What is never logged: the App private key, installation tokens, App JWTs, the we
 
 | Symptom                                          | Check                                                                                                                     | Action                                                                                                                                                                      |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Home page shows a configuration error            | The problem lines name the variable or config field, never its value. `GET /api/status` answers `503`.                    | Fix `.env` or the config file and restart. A bad config file at `POST /api/sync` keeps the previous one.                                                                    |
+| Home page shows a configuration error            | The problem lines name the variable or config field, never its value. `GET /api/health` answers `503`.                    | Fix `.env` or the config file and restart. A bad config file at `POST /api/sync` keeps the previous one.                                                                    |
 | Container is unhealthy                           | `docker compose logs app` for `status_api.failed` and `sync.scheduler.config_invalid`.                                    | Usually missing GitHub settings or an unreachable database. Fix and restart.                                                                                                |
 | A repository shows the error state               | The `/status` page or `repos[].syncError` in `/api/status`. Messages are fixed texts.                                     | Stored content is kept. Fix the cause, then `POST /api/sync` with `{"repo":"name"}`.                                                                                        |
 | A repository is missing from the portal          | Is it in the App installation? In `repos` or `exclude`? Archived? Does it have a `docs`, `doc` or `documentation` folder? | See [Configuration](../guides/configuration.md#which-repositories-are-synced). Add it to the installation and sync.                                                         |

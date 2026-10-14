@@ -40,21 +40,27 @@ docker run -d --init --name "$NAME" \
   "$IMAGE" >/dev/null
 
 base="http://127.0.0.1:${PORT}"
-echo "waiting up to ${WAIT_SECONDS}s for ${base}/api/status"
+echo "waiting up to ${WAIT_SECONDS}s for ${base}/api/health"
 ready=""
 for _ in $(seq 1 "$WAIT_SECONDS"); do
-  if curl -fsS "${base}/api/status" -o "$workdir/status.json" 2>/dev/null; then ready=1; break; fi
+  if curl -fsS "${base}/api/health" -o "$workdir/status.json" 2>/dev/null; then ready=1; break; fi
   if [ "$(docker inspect -f '{{.State.Running}}' "$NAME")" != "true" ]; then fail "the container exited"; fi
   sleep 1
 done
-[ -n "$ready" ] || fail "/api/status did not answer 200 within ${WAIT_SECONDS}s"
-echo "/api/status: $(cat "$workdir/status.json")"
+[ -n "$ready" ] || fail "/api/health did not answer 200 within ${WAIT_SECONDS}s"
+echo "/api/health: $(cat "$workdir/status.json")"
 
 docker logs "$NAME" 2>&1 | grep -q "applying database migrations" || fail "the entrypoint did not run the migrations"
 
-code="$(curl -sS -o "$workdir/home.html" -D "$workdir/home.headers" -w '%{http_code}' "${base}/")"
-[ "$code" = "200" ] || fail "GET / answered $code"
-grep -qi "DocMyRepos" "$workdir/home.html" || fail "the home page does not mention DocMyRepos"
+# The portal is behind a login: an anonymous visitor to / is redirected to /login, and the unauthenticated
+# /api/status is 401 (it lists repositories). The login page itself is public.
+code="$(curl -sS -o /dev/null -w '%{http_code}' "${base}/")"
+[ "$code" = "307" ] || fail "GET / without a session answered $code, expected a redirect to /login"
+code="$(curl -sS -o /dev/null -w '%{http_code}' "${base}/api/status")"
+[ "$code" = "401" ] || fail "GET /api/status without a session answered $code, expected 401"
+code="$(curl -sS -o "$workdir/home.html" -D "$workdir/home.headers" -w '%{http_code}' "${base}/login")"
+[ "$code" = "200" ] || fail "GET /login answered $code"
+grep -qi "DocMyRepos" "$workdir/home.html" || fail "the login page does not mention DocMyRepos"
 grep -qi '^content-security-policy:' "$workdir/home.headers" || fail "no Content-Security-Policy header"
 if grep -qi '^x-powered-by:' "$workdir/home.headers"; then fail "X-Powered-By is set"; fi
 

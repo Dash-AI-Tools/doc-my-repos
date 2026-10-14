@@ -84,7 +84,7 @@ EXPOSE 3000
 # invalid). Node does the request because the image has no curl. The start period covers the
 # migrations and the wait for a database that is still starting.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/status',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 
 # Node does not need an init process (Next handles SIGTERM), but `docker run --init` or compose
 # `init: true` reaps zombies and is recommended.

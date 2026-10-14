@@ -25,9 +25,10 @@ The portal pages are server-rendered and have no public JSON contract. Five rout
 | -------------------------------------- | ------------- | ------------------------------------- | ---------------------------- |
 | `POST /api/sync`                       | `POST`        | `Authorization: Bearer <SYNC_SECRET>` | Start a sync                 |
 | `POST /api/webhooks/github`            | `POST`        | `X-Hub-Signature-256` HMAC            | Receive GitHub App events    |
-| `GET /api/search`                      | `GET`         | none                                  | Live results for the palette |
-| `GET /api/status`                      | `GET`         | none                                  | Sync status and health       |
-| `GET /api/asset/{owner}/{repo}/{path}` | `GET`, `HEAD` | none                                  | Repository images            |
+| `GET /api/search`                      | `GET`         | session cookie                        | Live results for the palette |
+| `GET /api/status`                      | `GET`         | session cookie                        | Sync status                  |
+| `GET /api/health`                      | `GET`         | none                                  | Health check, verdict only   |
+| `GET /api/asset/{owner}/{repo}/{path}` | `GET`, `HEAD` | session cookie                        | Repository images            |
 
 Every other method on a route answers `405` with an `Allow` header, without reading the request. Responses of the JSON routes carry `Cache-Control: no-store`. Put a rate limit in front of `/api/search`, `/api/sync` and `/api/status`: the app only caps how much work runs at once.
 

@@ -261,6 +261,11 @@ describe("proxy: auth gate (access-control)", () => {
     }
   });
 
+  it("lets /api/health through but keeps /api/status behind the login", async () => {
+    expect((await gated("/api/health")).headers.get("x-middleware-next")).toBe("1");
+    expect((await gated("/api/status")).status).toBe(401);
+  });
+
   it("lets a valid session through and rejects tampered or expired ones", async () => {
     const { signSession, newSessionPayload } = await import("./server/auth/session");
     const valid = signSession(SECRET, newSessionPayload(1, "admin", 0));

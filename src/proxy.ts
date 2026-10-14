@@ -28,6 +28,9 @@ function isPublicPath(pathname: string): boolean {
     // Machine endpoints: authenticated by SYNC_SECRET and the webhook HMAC, not by a session.
     pathname === "/api/sync" ||
     pathname === "/api/webhooks/github" ||
+    // Health check for the Docker HEALTHCHECK and load balancers: verdict only, no repository data
+    // (`/api/status` lists repositories and stays behind the login).
+    pathname === "/api/health" ||
     // Fixture pages for component tests (gated separately by E2E_FIXTURES, see e2e-fixtures.ts).
     pathname.startsWith("/e2e/")
   );

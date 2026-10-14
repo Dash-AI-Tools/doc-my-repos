@@ -66,10 +66,10 @@ describe("Dockerfile", () => {
     expect(last).not.toMatch(/root|\b0\b/);
   });
 
-  it("has a health check on /api/status and exposes port 3000", () => {
+  it("has a health check on /api/health and exposes port 3000", () => {
     const health = lines.find((l) => /^HEALTHCHECK /i.test(l));
     expect(health).toBeDefined();
-    expect(health).toContain("/api/status");
+    expect(health).toContain("/api/health");
     expect(lines).toContain("EXPOSE 3000");
   });
 

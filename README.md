@@ -103,7 +103,8 @@ The app authenticates as a **GitHub App installation** (read-only, never a perso
 | `/`                                    | Repository grid and search box                                            |
 | `/<owner>/<repo>`, `.../docs/<path>`   | Repository space and documents                                            |
 | `/search`, `GET /api/search`           | Search page and JSON search for the palette                               |
-| `/status`, `GET /api/status`           | Sync status page and JSON (also the health check)                         |
+| `/status`, `GET /api/status`           | Sync status page and JSON (needs a login)                                 |
+| `GET /api/health`                      | Health check (no login, verdict only)                                     |
 | `POST /api/webhooks/github`            | GitHub App webhook, verified against the raw body with the webhook secret |
 | `POST /api/sync`                       | Manual sync, guarded by `SYNC_SECRET` (`Authorization: Bearer <secret>`)  |
 | `GET /api/asset/<owner>/<repo>/<path>` | Image proxy for documents; images only, path must be inside a synced repo |
@@ -131,7 +132,7 @@ Open <http://127.0.0.1:3000>. The first full sync starts about 10 seconds after 
 curl -X POST -H "Authorization: Bearer <SYNC_SECRET from .env>" http://127.0.0.1:3000/api/sync
 ```
 
-The GitHub values in `.env.example` are blank on purpose and **must be real**. With them blank the server still starts, but `/api/status` answers `503` and `docker compose up --wait` fails because the container never becomes healthy. The home page then only says that the repositories could not be loaded; the container log names the missing variables (`docker compose logs app`, event `sync.scheduler.config_invalid`). To narrow the repositories, see [Configuration](#configuration).
+The GitHub values in `.env.example` are blank on purpose and **must be real**. With them blank the server still starts, but `/api/health` answers `503` and `docker compose up --wait` fails because the container never becomes healthy. The home page then only says that the repositories could not be loaded; the container log names the missing variables (`docker compose logs app`, event `sync.scheduler.config_invalid`). To narrow the repositories, see [Configuration](#configuration).
 
 ### On your machine (development)
 
@@ -223,7 +224,7 @@ docker run -d --init --name docmyrepos -p 127.0.0.1:3000:3000 --env-file .env \
 - **Config file:** compose mounts `docker/docmyrepos.config.default.yml` (empty: every repository the App can access) at `/app/docmyrepos.config.yml`. To use your own, set `DOCMYREPOS_CONFIG=./docmyrepos.config.yml` in `.env`. The file must exist before `docker compose up`, otherwise Docker creates a directory in its place.
 - **Private key from a file:** instead of `GITHUB_APP_PRIVATE_KEY`, uncomment the `secrets` blocks in `docker-compose.yml` and set `GITHUB_APP_PRIVATE_KEY_PATH=/run/secrets/github_app_key`. The container user (uid 1000) must be able to read the file: `chown 1000 github-app.private-key.pem && chmod 400 github-app.private-key.pem`. Keep the key out of the repository (`*.pem` is ignored).
 - **Start-up:** the entrypoint waits up to `DB_WAIT_SECONDS` for the database, applies the migrations in `/app/drizzle` under a Postgres advisory lock (several containers may start together; one migrates, the others wait), then starts the server. If the database stays unreachable or a migration fails, the container prints why (never the connection string) and exits with status 1. Migrations are forward-only.
-- **Health:** the image has a `HEALTHCHECK` on `GET /api/status` (200: the app and its database answer; 503: they do not, or the configuration is invalid), with a 90 second start period.
+- **Health:** the image has a `HEALTHCHECK` on `GET /api/health` (no login; 200: the app and its database answer; 503: they do not, or the configuration is invalid), with a 90 second start period.
 - **Stopping:** `docker stop` sends `SIGTERM`. The scheduler stops, a running sync is aborted, and Next.js exits with status 143 (128 + SIGTERM), which Docker treats as a normal stop. Run with `--init` (compose has `init: true`).
 - **Hardening in compose:** read-only root file system with a `tmpfs` at `/tmp`, all capabilities dropped, `no-new-privileges`, a process limit, rotated logs (3 files of 10 MB). The app is published on `127.0.0.1:3000` and the database on `127.0.0.1:5432` for development; **in production remove the `db` ports entry**, and change `APP_BIND` only if your reverse proxy runs on another host.
 - **External database:** set `APP_DATABASE_URL` (percent-encode special characters in the password) and remove the `db` service and the `depends_on` in `docker-compose.yml`. Connect directly to Postgres or through a pooler in **session** mode: the sync and migration locks are session-level advisory locks, which do not work through PgBouncer in transaction mode.
@@ -252,7 +253,7 @@ location / {
 
 ## Operations
 
-- **Health and sync status:** `/status` shows the last sync run and every repository's state, errors and warnings. `GET /api/status` serves the same data as JSON (no authentication, never cached, no secrets; it shows what the pages show). `200` means the app and its database answer; `503 {"error":"unavailable"}` means they do not. A failed repository sync does not change the status code: read `summary.error` or `lastRun.status`.
+- **Health and sync status:** `/status` shows the last sync run and every repository's state, errors and warnings. `GET /api/status` serves the same data as JSON (needs a login, never cached, no secrets; it shows what the pages show). For health checks use `GET /api/health`, which needs no login and returns only the verdict: `200 {"status":"ok"}` means the app and its database answer; `503 {"error":"unavailable"}` means they do not. A failed repository sync does not change the status code: read `summary.error` or `lastRun.status` on `/api/status`.
 - **Scheduler:** it runs the startup and periodic full syncs (with ±10 % jitter, retrying failures sooner with backoff up to 15 minutes) and, every minute, any per-repository syncs left waiting by busy repositories or a restart. With several instances only one runs a scheduled full sync at a time. `SYNC_SCHEDULER=0` turns it off.
 - **Logs:** one JSON object per line, `debug` and `info` on stdout, `warn` and `error` on stderr (`docker compose logs app`). Event names are stable dotted names such as `sync.run.finished`, `webhook.received` and `sync.discovery.failed`. Keep `LOG_LEVEL` at `info` or above in production. Credentials, request bodies, error messages and stacks are never logged, and the logger redacts anything that looks like a secret.
 - **Backups:** everything in the database is derived from GitHub, so a lost database is rebuilt by a full sync (the sync history is lost). To keep it: `docker compose exec db pg_dump -U docmyrepos docmyrepos > backup.sql`.

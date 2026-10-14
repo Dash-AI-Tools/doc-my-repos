@@ -18,6 +18,12 @@ Authenticated access to the portal with admin-managed users and per-repo allow/b
 - **WHEN** an unauthenticated visitor requests `/`
 - **THEN** they are redirected to `/login`.
 
+- **SHALL** expose `GET /api/health` without a session for the container healthcheck. It returns only the verdict (`200 {"status":"ok"}` or `503`), never repository names or sync detail; `GET /api/status`, which lists repositories, stays behind the login.
+
+#### Scenario: Health check is public and leaks nothing
+- **WHEN** an unauthenticated request reaches `/api/health`
+- **THEN** it answers 200 or 503 with no repository data, while an unauthenticated `/api/status` is 401.
+
 #### Scenario: Machine endpoints are not behind the session gate
 - **WHEN** a request without a session cookie reaches `/api/sync` or `/api/webhooks/github`
 - **THEN** the proxy passes it through, and the route's own secret or signature check decides the answer.
