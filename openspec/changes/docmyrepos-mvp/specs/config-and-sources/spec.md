@@ -45,6 +45,10 @@ The system SHALL validate the config file and required environment variables (da
 - **WHEN** the GitHub App id, private key, or installation id is not set
 - **THEN** startup fails with an error that names the missing variable and does not print any secret value
 
+#### Scenario: Weak shared secret
+- **WHEN** the webhook secret or the sync secret is shorter than 16 characters after trimming whitespace
+- **THEN** startup fails with an error that names the variable and does not print the value
+
 #### Scenario: Unreadable private key
 - **WHEN** the private key is not a valid PEM key or the key file path cannot be read
 - **THEN** startup fails with an error that identifies the variable and never prints the key
@@ -52,3 +56,19 @@ The system SHALL validate the config file and required environment variables (da
 #### Scenario: Invalid config
 - **WHEN** the config file contains a field of the wrong type or an unknown field
 - **THEN** startup fails with an error that identifies the field and file
+
+#### Scenario: Conflicting narrowing
+- **WHEN** the config declares both a repository list and an exclusion list
+- **THEN** startup fails with an error that identifies the `exclude` field and says only one of `repos` or `exclude` may be set
+
+#### Scenario: Empty list
+- **WHEN** the config declares `repos` or `exclude` as an empty list, or leaves the key with no value
+- **THEN** startup fails with an error that identifies the field, so an empty list is never read as "show nothing" or "no narrowing"
+
+#### Scenario: Config file location
+- **WHEN** the `CONFIG_PATH` environment variable is set
+- **THEN** the system reads the config file from that path, and startup fails with an error naming `CONFIG_PATH` if the file cannot be read
+
+#### Scenario: No config file
+- **WHEN** `CONFIG_PATH` is not set and `docmyrepos.config.yml` does not exist in the working directory
+- **THEN** the system behaves as if the file declared neither a repository list nor exclusions, so every accessible repository is shown

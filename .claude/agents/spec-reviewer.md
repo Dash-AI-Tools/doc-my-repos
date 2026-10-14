@@ -25,3 +25,7 @@ Do not edit files. Report:
 - `VERDICT:` `pass` or `fail`
 - `FINDINGS:` a list, each with `file:line`, what is wrong, and the concrete input or state that breaks it. Only real defects; no style nitpicks.
 - `MISSING TESTS:` scenarios without coverage
+
+## Report style
+
+When the caller says to use caveman ultra, write your report as terse fragments with no filler. Code, file contents, specs, docs and commit messages stay in normal prose.

@@ -1,0 +1,75 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. If this is a **security problem**, do not file it here: see [SECURITY.md](https://github.com/Dash-AI-Tools/doc-my-repos/blob/main/SECURITY.md).
+
+        Please never paste secrets: the GitHub App private key, tokens, `SYNC_SECRET`, the webhook secret or database passwords.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: For a rendering or search problem, include the smallest Markdown document that triggers it.
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Sync (GitHub, webhooks, scheduler)
+        - Markdown rendering or Mermaid
+        - Search or command palette
+        - OKF support
+        - Repository pages or home
+        - Themes or accessibility
+        - Docker or deployment
+        - Configuration
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Commit SHA or image revision (`org.opencontainers.image.revision`).
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run it?
+      options:
+        - Docker Compose
+        - Docker image
+        - pnpm dev or pnpm start
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and `/api/status`
+      description: Relevant JSON log lines (they never contain secrets) and, for sync problems, the output of `GET /api/status`. Remove anything private, such as private repository names.
+      render: shell
+  - type: textarea
+    id: config
+    attributes:
+      label: Config
+      description: Your `docmyrepos.config.yml`, if relevant. No secrets belong in it.
+      render: yaml
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and theme
+      description: For UI problems, for example "Firefox 140, dark theme".

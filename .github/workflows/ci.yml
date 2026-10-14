@@ -1,0 +1,186 @@
+# Continuous integration (task 13.3): lint, formatting, types, unit tests, production build,
+# end-to-end tests, the Docker image and the OpenSpec change on every pull request and on pushes
+# to main.
+#
+# - No secrets are used and the workflow runs with a read-only GITHUB_TOKEN, so it is safe for
+#   pull requests from forks. Do not switch the trigger to pull_request_target.
+# - GitHub is never contacted: the tests use fixtures and a throwaway Postgres, with placeholder
+#   credentials only. The e2e fixture-server switch is set by playwright.config.ts, never here.
+# - Actions are pinned to commit SHAs (the comment names the release). Dependabot keeps them
+#   current (.github/dependabot.yml).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  lint-typecheck:
+    name: Lint, format and types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: docmyrepos
+          POSTGRES_PASSWORD: docmyrepos
+          POSTGRES_DB: docmyrepos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U docmyrepos -d docmyrepos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # The database tests create and drop throwaway databases on this server.
+      DATABASE_URL: postgres://docmyrepos:docmyrepos@127.0.0.1:5432/docmyrepos
+      TEST_DATABASE_URL: postgres://docmyrepos:docmyrepos@127.0.0.1:5432/docmyrepos
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm test
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: pnpm build
+      - run: pnpm build:migrate
+      - name: Check the migration bundle exists
+        run: test -s dist/db-migrate.mjs
+
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: docmyrepos
+          POSTGRES_PASSWORD: docmyrepos
+          POSTGRES_DB: docmyrepos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U docmyrepos -d docmyrepos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # The e2e run creates and drops its own databases on this server.
+      DATABASE_URL_E2E: postgres://docmyrepos:docmyrepos@127.0.0.1:5432/docmyrepos
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run Playwright (builds the app, starts the servers)
+        run: pnpm test:e2e
+      - name: Upload the Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  docker:
+    # Builds the production image on linux/amd64 (the Alpine/musl native modules of Next.js and
+    # Tailwind are the part the arm64 development builds could not confirm) and starts it against
+    # a throwaway Postgres. Nothing is pushed. The smoke test is scripts/docker-smoke.sh.
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: docmyrepos
+          POSTGRES_PASSWORD: docmyrepos
+          POSTGRES_DB: docmyrepos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U docmyrepos -d docmyrepos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: docmyrepos:ci
+          build-args: |
+            REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test the image
+        env:
+          IMAGE: docmyrepos:ci
+          # The container reaches the service container through the published host port.
+          DATABASE_URL: postgres://docmyrepos:docmyrepos@host.docker.internal:5432/docmyrepos
+        run: scripts/docker-smoke.sh
+
+  openspec:
+    # The change under openspec/ is the source of truth; a spec that no longer validates fails here.
+    name: OpenSpec validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OPENSPEC_TELEMETRY: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npx --yes @fission-ai/openspec@1.12.0 validate docmyrepos-mvp

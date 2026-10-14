@@ -1,0 +1,1 @@
+ALTER TABLE "repos" ADD COLUMN "sync_warnings" jsonb DEFAULT '[]'::jsonb NOT NULL;

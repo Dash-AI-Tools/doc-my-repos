@@ -30,3 +30,7 @@ End with, in this order:
 - `FILES:` files created or changed
 - `VERIFIED:` the exact commands run and their result
 - `NOTES:` deviations, open questions, anything the reviewer should check
+
+## Report style
+
+When the caller says to use caveman ultra, write your report as terse fragments with no filler. Code, file contents, specs, docs and commit messages stay in normal prose.

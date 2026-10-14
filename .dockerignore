@@ -1,0 +1,38 @@
+# Keep the build context small and free of secrets. The context is everything `COPY . .` can see.
+
+# Dependencies and build output are produced inside the image.
+node_modules
+.next
+dist
+out
+coverage
+*.tsbuildinfo
+next-env.d.ts
+
+# Version control and local tooling
+.git
+.gitignore
+.claude
+.vitest
+.vercel
+.DS_Store
+
+# Secrets and local environment: never part of an image. (.env.example is documentation only.)
+.env
+.env.*
+*.pem
+*.key
+
+# Test output. The e2e and tests folders stay: `next build` type-checks the whole project,
+# including playwright.config.ts and the files it imports.
+playwright-report
+test-results
+
+# Planning artifacts and local config; the image needs neither
+openspec
+docmyrepos.config.yml
+
+# The Docker files themselves
+Dockerfile
+.dockerignore
+docker-compose*.yml

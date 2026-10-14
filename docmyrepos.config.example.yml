@@ -1,0 +1,54 @@
+# Sample DocMyRepos config. Copy it to docmyrepos.config.yml and edit the copy.
+#
+# This file only narrows the repositories that the GitHub App installation can
+# access. It never grants access. With neither `repos` nor `exclude`, every
+# accessible repository is synced and shown.
+#
+# Secrets never go in this file. They come from environment variables; see
+# .env.example for the names and placeholders.
+
+# Only these repositories are synced and shown. Use bare names (no owner prefix).
+# An entry can also be an object with a `docsPath` that overrides the docs folder
+# for that repository. `repos` and `exclude` cannot both be set, so `exclude` is
+# commented out below. To use it, comment out this whole `repos` block and
+# uncomment the `exclude` block.
+repos:
+  - api-service
+  - name: web-app
+    docsPath: user-guide
+  - handbook
+
+# Docs folder candidates, tried in order and matched case-insensitively, for every
+# repository that has no `docsPath` of its own.
+defaults:
+  docsPaths:
+    - docs
+    - doc
+    - documentation
+
+# Per-repository sync limits. Both are optional; the values below are the
+# defaults. A repository with more documentation files than `maxDocsPerRepo`
+# shows only the first ones in path order, and files larger than
+# `maxFileBytes` (at most 262144, 256 KB) are not synced. Both cases are shown
+# as a warning on the repository page and on /status.
+limits:
+  maxDocsPerRepo: 2000
+  maxFileBytes: 262144
+
+# Background sync, the fallback for missed webhook deliveries. Both are
+# optional; the values below are the defaults. `intervalMinutes` is how often
+# a full sync runs (0 turns periodic runs off, otherwise at least 5).
+# `onStartup` runs one full sync shortly after the server starts. The
+# scheduler itself runs in production (NODE_ENV=production) and is off in
+# development and tests; set SYNC_SCHEDULER=1 or SYNC_SCHEDULER=0 in the
+# environment to force it on or off. Changes here apply after a restart.
+sync:
+  intervalMinutes: 60
+  onStartup: true
+
+# Alternative to `repos`: every accessible repository except the listed ones.
+# BEGIN alternative: exclude
+# exclude:
+#   - sandbox
+#   - legacy-wiki
+# END alternative: exclude
