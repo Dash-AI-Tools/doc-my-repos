@@ -156,7 +156,11 @@
   }
   html {
     scrollbar-color: var(--input) transparent;
-    scroll-padding-top: 5rem;
+    /* The sticky header, plus the document bar where there is one, plus a little air. The two
+       heights are measured and published by `HeaderHeight` and `DocNavBar`; the fallbacks are the
+       header's usual heights (one row from 640px, two rows on a phone). */
+    --site-header-h: 4rem;
+    scroll-padding-top: calc(var(--site-header-h) + var(--doc-bar-h, 0px) + 1rem);
   }
   input,
   textarea {
@@ -229,7 +233,7 @@ pre.shiki span {
 /* Copy button host (src/components/code-copy.tsx): top right of the block. */
 @media (max-width: 639px) {
   html {
-    scroll-padding-top: 7rem;
+    --site-header-h: 6rem;
   }
 }
 pre:has(> .dmr-copy-host) {
@@ -265,7 +269,7 @@ pre:has(> .dmr-copy-host) {
  * (`a.heading-anchor`); the icon is drawn here and shown on hover or keyboard focus.
  */
 .markdown-body {
-  font-size: 1.0625rem;
+  font-size: 1.125rem;
   line-height: 1.7;
   overflow-wrap: break-word;
   min-width: 0;
@@ -489,4 +493,78 @@ pre:has(> .dmr-copy-host) {
   height: 0.625rem;
   border-radius: 9999px;
   background: var(--primary);
+}
+
+/*
+ * The docs structure of a document page (`DocNavPanel`, spec "docs-reader-layout"). A column from
+ * 1024px (placement and stickiness are utilities on the element). Below it, once scripts have run
+ * (`data-enhanced` on `.doc-reader`), a panel that slides in from the left over a backdrop; before
+ * that it is a plain block after the article, so nothing depends on a button that cannot work yet.
+ */
+.doc-panel__backdrop,
+.doc-panel__close {
+  display: none;
+}
+@media (max-width: 1023.98px) {
+  .doc-reader[data-enhanced="true"] .doc-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    visibility: hidden;
+    transition: visibility 0s linear 0.2s;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel[data-open="true"] {
+    visibility: visible;
+    transition-delay: 0s;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel__backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: rgb(0 0 0 / 0.45);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel[data-open="true"] .doc-panel__backdrop {
+    opacity: 1;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel__sheet {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: min(20rem, 85vw);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1.25rem;
+    background: var(--background);
+    border-right: 1px solid var(--border);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel[data-open="true"] .doc-panel__sheet {
+    transform: none;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel__close {
+    display: inline-block;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doc-reader .doc-panel,
+  .doc-reader .doc-panel__backdrop,
+  .doc-reader .doc-panel__sheet {
+    transition: none !important;
+  }
+}
+
+/*
+ * Full-width reading pages (spec "docs-reader-layout", "Full viewport width"). The header, `main`
+ * and footer share `.site-shell` (a centred 88rem column). A page that contains `.doc-reader`, the
+ * document page and the repository page, lifts the cap for all three from 1024px, so the columns
+ * reach the viewport edges with the header's own padding and the three stay aligned. Other pages
+ * never contain `.doc-reader` and keep the cap.
+ */
+@media (min-width: 1024px) {
+  body:has(.doc-reader) .site-shell {
+    max-width: none;
+  }
 }

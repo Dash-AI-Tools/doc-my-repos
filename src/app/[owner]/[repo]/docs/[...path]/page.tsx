@@ -3,14 +3,16 @@ import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 
 import { ChangeLog } from "@/components/change-log";
-import { ContentsJump } from "@/components/contents-jump";
 import { DocBody } from "@/components/doc-body";
 import { DocBreadcrumb } from "@/components/doc-breadcrumb";
+import { DocNavBar } from "@/components/doc-nav-bar";
 import { DocPager } from "@/components/doc-pager";
+import { DocReader } from "@/components/doc-reader";
 import { DocsNavSlot } from "@/components/docs-nav-slot";
 import { OkfMetadataCard } from "@/components/okf-metadata-card";
 import { OkfNotices } from "@/components/okf-notices";
 import { OutlineNav } from "@/components/outline-nav";
+import { ReaderGrid } from "@/components/reader-grid";
 import { RepoLoadError } from "@/components/repo-load-error";
 import { buildOkfMeta } from "@/lib/okf-meta";
 import { docUrl, repoUrl } from "@/lib/routes";
@@ -40,9 +42,12 @@ import { loadDocPage, type DocPageOk } from "@/server/doc-page";
  * documents: the reserved `index.md` and `log.md` get no card. Time-dependent output (the stale
  * warning) uses `loadedAt`, the time the page was loaded.
  *
- * Layout: the content column, then the sidebar (outline, then table of contents) after it in the
- * DOM, so keyboard users reach the document first. The sidebar sticks to the viewport on large
- * screens and is collapsed on small ones.
+ * Layout (spec "docs-reader-layout"): the breadcrumb sits in the content column, above the title,
+ * so it lines up with the document and the side columns start level with it. The document first in the DOM, then the headings, then the
+ * docs structure, so keyboard users reach the document first. From `xl` three columns (structure,
+ * document, headings), both rails sticky; from `lg` two (the headings become a dropdown in the
+ * document bar); below that one column, with the structure in a slide-in panel opened from the
+ * bar. Without JavaScript the headings and the structure stay as lists after the document.
  */
 export const dynamic = "force-dynamic";
 
@@ -177,11 +182,27 @@ export default async function DocPage({
     showCard && okfMeta.description !== null ? "" : (doc.description?.trim() ?? "");
 
   return (
-    <div className="flex flex-col gap-8">
-      <DocBreadcrumb owner={repo.owner} repo={repo.name} crumbs={crumbs} title={doc.title} />
-      <div className="grid items-start gap-x-12 gap-y-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:grid-rows-[auto_1fr] xl:grid-cols-[16rem_minmax(0,1fr)_14rem] xl:grid-rows-none">
-        <div className="flex max-w-[44rem] min-w-0 flex-col gap-12 lg:col-start-2 lg:row-span-2 lg:row-start-1 xl:row-span-1">
-          <ContentsJump />
+    <DocReader>
+      <DocNavBar hasOutline={outline.length > 0}>
+        <OutlineNav items={outline} variant="menu" />
+      </DocNavBar>
+      <ReaderGrid
+        outline={outline}
+        nav={
+          <DocsNavSlot
+            docCount={repo.docCount}
+            tree={navTree}
+            owner={repo.owner}
+            repo={repo.name}
+            currentPath={doc.path}
+            awaitingSync={awaitingSync}
+            filters={filters}
+            okf={repo.isOkf}
+          />
+        }
+      >
+        <div className="flex flex-col gap-8">
+          <DocBreadcrumb owner={repo.owner} repo={repo.name} crumbs={crumbs} title={doc.title} />
           <article
             aria-labelledby="doc-title"
             data-testid="doc-article"
@@ -272,34 +293,10 @@ export default async function DocPage({
               )}
             </div>
           </article>
-
-          <DocPager previous={pagerLink(data.previous, data)} next={pagerLink(data.next, data)} />
         </div>
 
-        <div
-          data-testid="doc-sidebar"
-          className="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-start-2 xl:sticky xl:top-24 xl:col-start-3 xl:row-start-1 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto"
-        >
-          <OutlineNav items={outline} />
-        </div>
-
-        <div
-          data-testid="doc-nav"
-          className="min-w-0 lg:col-start-1 lg:row-start-1 xl:sticky xl:top-24 xl:row-start-1 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto"
-        >
-          <DocsNavSlot
-            variant="sidebar"
-            docCount={repo.docCount}
-            tree={navTree}
-            owner={repo.owner}
-            repo={repo.name}
-            currentPath={doc.path}
-            awaitingSync={awaitingSync}
-            filters={filters}
-            okf={repo.isOkf}
-          />
-        </div>
-      </div>
-    </div>
+        <DocPager previous={pagerLink(data.previous, data)} next={pagerLink(data.next, data)} />
+      </ReaderGrid>
+    </DocReader>
   );
 }

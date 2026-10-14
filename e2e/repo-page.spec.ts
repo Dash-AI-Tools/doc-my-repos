@@ -96,7 +96,7 @@ test.describe("repository page, seeded database", () => {
       ).toBeVisible();
 
       const nav = page.getByRole("navigation", { name: "Documentation" });
-      await expect(nav.getByRole("heading", { level: 2, name: "Documentation" })).toBeVisible();
+      await expect(nav.getByText("Documentation", { exact: true })).toBeVisible();
       await expect(nav).toContainText("4 documents");
       await expect(page.getByRole("heading", { level: 2, name: /^Code owners/ })).toBeVisible();
       expect(errors).toEqual([]);
@@ -184,29 +184,82 @@ test.describe("repository page, seeded database", () => {
       await expect(page.getByRole("link", { name: "@acme/docs-team" })).toBeFocused();
     });
 
-    test("puts the sidebar next to the README on wide screens and below it on phones", async ({
+    const box = async (page: Page, testId: string) => {
+      const b = await page.getByTestId(testId).boundingBox();
+      if (!b) throw new Error(`no box for ${testId}`);
+      return b;
+    };
+    const sideways = (page: Page) =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+
+    test("shows three columns at 1440: structure, README with the code owners, headings", async ({
       page,
     }) => {
-      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.setViewportSize({ width: 1440, height: 900 });
       await page.goto(path(SEEDED.full));
-      const readme = await page.getByTestId("readme-section").boundingBox();
-      const nav = await page.getByTestId("docs-nav").boundingBox();
-      const panel = await page.getByTestId("code-owners").boundingBox();
-      if (!readme || !nav || !panel) throw new Error("missing layout boxes");
-      expect(nav.x).toBeGreaterThan(readme.x + readme.width - 1);
-      expect(panel.x).toBeGreaterThan(readme.x + readme.width - 1);
-      expect(panel.y).toBeGreaterThan(nav.y);
+      const nav = await box(page, "doc-nav");
+      const readme = await box(page, "readme-section");
+      const owners = await box(page, "code-owners");
+      const outline = await box(page, "doc-sidebar");
+      expect(nav.x + nav.width).toBeLessThanOrEqual(readme.x);
+      expect(outline.x).toBeGreaterThanOrEqual(readme.x + readme.width - 1);
+      // the code owners follow the README in the centre column
+      expect(owners.y).toBeGreaterThan(readme.y + readme.height - 1);
+      expect(owners.x).toBeGreaterThanOrEqual(readme.x - 1);
+      await expect(page.getByTestId("doc-bar")).toBeHidden();
+      // the README's headings
+      const links = page.getByTestId("outline").getByRole("link");
+      await expect(links).toHaveText(["Quick start"]);
+      await expect(links.first()).toHaveAttribute("href", "#quick-start");
+      await expect(page.getByTestId("docs-nav-count")).toHaveText("4 documents");
+    });
 
+    test("shows two columns at 1100 with the README headings as a dropdown", async ({ page }) => {
+      await page.setViewportSize({ width: 1100, height: 900 });
+      await page.goto(path(SEEDED.full));
+      const nav = await box(page, "doc-nav");
+      const readme = await box(page, "readme-section");
+      expect(nav.x + nav.width).toBeLessThanOrEqual(readme.x);
+      await expect(page.getByTestId("doc-sidebar")).toBeHidden();
+      const menu = page.getByTestId("outline-menu");
+      await menu.getByRole("button", { name: "On this page" }).click();
+      await menu.getByRole("link", { name: "Quick start" }).click();
+      await expect(menu.getByTestId("outline-menu-list")).toBeHidden();
+      await expect(page).toHaveURL(/#quick-start$/);
+      expect(await sideways(page)).toBeLessThanOrEqual(0);
+    });
+
+    test("is one column at 375: the hamburger opens the structure, the dropdown the headings", async ({
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
       await page.setViewportSize({ width: 375, height: 800 });
-      const phoneReadme = await page.getByTestId("readme-section").boundingBox();
-      const phoneNav = await page.getByTestId("docs-nav").boundingBox();
-      if (!phoneReadme || !phoneNav) throw new Error("missing layout boxes");
-      expect(phoneNav.y).toBeGreaterThan(phoneReadme.y + phoneReadme.height - 1);
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        ),
-      ).toBeLessThanOrEqual(0);
+      await page.goto(path(SEEDED.full));
+      const readme = await box(page, "readme-section");
+      expect(readme.x + readme.width).toBeLessThanOrEqual(375);
+      await expect(page.getByTestId("doc-nav")).toBeHidden();
+      await expect(page.getByTestId("doc-bar")).toBeVisible();
+      await page.getByTestId("doc-nav-toggle").click();
+      await expect(page.getByRole("dialog", { name: "Documentation menu" })).toBeVisible();
+      await expect(page.getByTestId("docs-tree")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("doc-nav")).toBeHidden();
+      await page.getByTestId("outline-menu").getByRole("button").click();
+      await page.getByTestId("outline-menu").getByRole("link", { name: "Quick start" }).click();
+      await expect(page.locator("#quick-start")).toBeInViewport();
+      expect(await sideways(page)).toBeLessThanOrEqual(0);
+    });
+
+    test("has no headings column or dropdown for a README without headings", async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(path(SEEDED.noCodeowners));
+      await expect(page.getByTestId("outline")).toHaveCount(0);
+      await expect(page.getByTestId("outline-menu")).toHaveCount(0);
+      await expect(page.getByTestId("doc-nav")).toBeVisible();
+      await page.setViewportSize({ width: 1100, height: 900 });
+      await expect(page.getByTestId("doc-bar")).toBeHidden();
     });
 
     test("redirects a differently cased address to the stored spelling", async ({ page }) => {

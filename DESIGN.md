@@ -49,7 +49,7 @@ typography:
     letterSpacing: "-0.015em"
   body:
     fontFamily: "Hanken Grotesk Variable, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "17px"
+    fontSize: "18px"
     fontWeight: 400
     lineHeight: 1.7
   label:
@@ -102,6 +102,15 @@ components:
     typography: "{typography.label}"
   outline-link-current:
     textColor: "{colors.ink}"
+  doc-bar:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    height: "44px"
+  docs-panel:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    width: "320px"
+    padding: "20px"
   pager-link:
     textColor: "{colors.ink}"
     typography: "{typography.title}"
@@ -148,7 +157,7 @@ Light and dark are both first-class. Dark is a near-black surface with lighter a
 - Ink, paper and one blue. Grey carries secondary text and nothing else.
 - Hairline rules and bold ink rules draw structure; no shadows at rest.
 - Near-square corners (2px on code and keys).
-- Document-first reading column near 44rem, with navigation as flanking columns.
+- Document-first reading column near 60rem, with navigation as flanking columns.
 
 ## Colors
 
@@ -193,7 +202,7 @@ A monochrome ink-on-paper palette with a single electric blue; dark mode swaps t
 - **Display** (700, 36px / 48px / 60px at base / sm / xl, line-height 1.05, tracking -0.035em): document and repository titles. The home hero is 48px / 60px at 1.02.
 - **Headline** (700, 26px, 1.25, -0.02em): `h2` inside Markdown, each opened by a hairline top rule with 20px padding. Section heads on the home page are 24px bold, tracking-tight.
 - **Title** (700, 20px, 1.25, -0.015em): Markdown `h3`, repo-row names (20px), pager targets (18px bold).
-- **Body** (400, 17px, 1.7): rendered Markdown. Reading column caps at 44rem (about 65-72ch). Lead paragraph under the document title is 20px, Quiet Ink.
+- **Body** (400, 18px, 1.7): rendered Markdown. Reading column caps at 60rem (about 100ch at 18px). Lead paragraph under the document title is 20px, Quiet Ink.
 - **Label** (400-500, 14px; 12px for chips and tree controls): navigation, metadata, breadcrumbs. Active labels go bold, not larger.
 
 ### Named Rules
@@ -203,9 +212,9 @@ A monochrome ink-on-paper palette with a single electric blue; dark mode swaps t
 
 ## Layout
 
-A Swiss grid expressed as flush-left columns inside a container capped at 88rem with 20px / 32px / 64px side padding (base / sm / lg). Margins are generous and everything aligns to the left edge.
+A Swiss grid expressed as flush-left columns inside a container capped at 88rem with 20px / 32px / 64px side padding (base / sm / lg). Margins are generous and everything aligns to the left edge. The two reading pages (document and repository) are the exception: from 1024px the header, page and footer drop the cap and span the full viewport width with the same side padding, so the rails sit at the viewport edges and the three stay aligned; the content column keeps its line length instead.
 
-Document page: at xl, three columns of 16rem tree, fluid article (max 44rem), 14rem outline, with a 48px column gap; tree and outline stick at 96px from the top and scroll independently. At lg the outline stacks beneath the tree in the left 15rem column and the article takes the right. Below lg everything is a single column. The DOM is document-first (article before navigation), and below lg a "Contents" jump link (underlined, medium weight) takes the reader to the navigation. Anchored headings keep an 80px scroll offset (112px on narrow screens) for the sticky header.
+Document page and repository page (the repository header and the README are its content, the code owners follow it): at xl (1280px), three columns of 16rem tree (18rem from 2xl), fluid content track holding a content column of at most 60rem centred in it, 14rem outline (16rem from 2xl), with a 48px column gap; tree and outline stick at 96px from the top and scroll independently. At lg (1024px) two columns: the 15rem tree on the left and the article beside it, with the outline moved into a dropdown in the document bar. Below lg one column: the document fills the width, the tree is a slide-in panel and the outline is the same dropdown, both opened from the document bar. The DOM is document-first (article before navigation), so without scripts the outline and tree stay as plain lists after the article. Anchored headings keep a scroll offset equal to the sticky header, plus the document bar where there is one, plus 16px; the header and bar publish their measured heights (`--site-header-h`, `--doc-bar-h`) for this.
 
 Header is 64px minimum, sticky, with a bottom hairline: wordmark left, Repositories / Search / Status links, then an underline-style search field and the theme toggle pushed right. On narrow screens the links wrap onto their own row.
 
@@ -240,10 +249,16 @@ A three-option radio group (28px icon buttons). The selected option is Ink with 
 Left navigation. Folder names are bold 14px Ink and hover to Signal Blue; leaf links are Quiet Ink and go to Ink on hover. The current page is Signal Blue and bold. Nested levels indent 12px behind a Hairline rule; a chevron rotates 90 degrees when a folder opens. Expand/collapse-all controls are small underlined text buttons. Typed (OKF) pages carry a small Blue Wash badge only in OKF repos.
 
 ### On-this-page Outline
-Right navigation on a Hairline spine. The active heading gets a 1px Signal Blue bar overlapping the spine, Ink semibold text; others are transparent-barred Quiet Ink, to Ink on hover. Nested headings indent 12px.
+Right navigation on a Hairline spine. The active heading gets a 1px Signal Blue bar overlapping the spine, Ink semibold text; others are transparent-barred Quiet Ink, to Ink on hover. Nested headings indent 12px. Below xl the same list opens from a dropdown (see Document Bar).
+
+### Document Bar
+Below xl, a bar above the reading columns that sticks beneath the site header: 44px minimum, Paper background, bottom Hairline, flush left and right. Left, a hamburger button (16px three-line icon and "Documentation", 14px medium Ink, hover Signal Blue; shown below lg) that opens the docs panel. Right, an "On this page" button (14px medium, chevron that turns when open) that opens the headings dropdown: a 2px-cornered Paper popover with a Hairline border, the list inside it scrolling at 60vh, right-aligned to the bar and at most 22rem wide, directly under the bar's rule. Both buttons state their open state with `aria-expanded`. Until scripts have run the bar keeps its height but is invisible, so the document does not shift.
+
+### Docs Panel
+Below lg the contents tree and OKF filters are a panel from the left edge: 20rem or 85vw wide, Paper background with a 1px Hairline right rule, 20px padding, over a 45% black backdrop. It slides in over 200ms (instantly under reduced motion). A "Close" text button (underlined, 14px) is its first control; Esc, the backdrop and choosing a document also close it, filter chips keep it open. It is a modal dialog only while it is a panel: focus is contained, the page behind does not scroll, and focus returns to the hamburger. From lg it is the plain sticky left column.
 
 ### Breadcrumb and Pager
-Breadcrumb is 14px Quiet Ink with Ink links, the current page medium weight. The pager is two ruled links with a top Hairline that turns Ink on hover; the label is Quiet Ink and the target is bold 18px, shifting to the link color on hover. Next aligns right.
+The breadcrumb sits in the content column above the title, not across the page. It is 14px Quiet Ink with Ink links, the current page medium weight. The pager is two ruled links with a top Hairline that turns Ink on hover; the label is Quiet Ink and the target is bold 18px, shifting to the link color on hover. Next aligns right.
 
 ### Repository Rows
 Home and repo lists are ruled rows: a bold 20px name, metadata beneath, a Hairline bottom rule, 24px vertical padding; the whole row is one link via a stretched pseudo-element and the name turns Signal Blue on hover. The list is capped above by a 1px Ink rule.
@@ -252,10 +267,10 @@ Home and repo lists are ruled rows: a bold 20px name, metadata beneath, a Hairli
 Results are ruled rows (Hairline bottom, 20px padding) with a 18px semibold linked title, a metadata line, path in mono, and highlighted snippets on Blue Wash. Metadata chips: type on Blue Wash, status on Secondary with a border, tags outlined. The facet panel opens with an Ink top rule, lists options as 14px rows with counts, and uses a Tint hover fill.
 
 ### Markdown Body
-17px / 1.7 prose; `h2` carries a Hairline top rule; links are underlined; blockquote is a 2px Control Edge left rule in Quiet Ink; inline code and code blocks sit on Tint at 2px radius, highlighted by Shiki dual themes (light and dark palettes selected by the `.dark` class, no re-render), with a top-right copy button. Heading anchors (`#`) appear only on hover or focus.
+18px / 1.7 prose; `h2` carries a Hairline top rule; links are underlined; blockquote is a 2px Control Edge left rule in Quiet Ink; inline code and code blocks sit on Tint at 2px radius, highlighted by Shiki dual themes (light and dark palettes selected by the `.dark` class, no re-render), with a top-right copy button. Heading anchors (`#`) appear only on hover or focus.
 
 ### Motion and State
-Motion is minimal: the tree chevron rotates, and color changes on hover; nothing animates on load or scroll. Focus is a 2px Signal Blue outline with 2px offset on every `:focus-visible` element. Hover is a color shift to Ink or Signal Blue, or a Tint fill on option rows. Selected is expressed by weight and blue (tree, outline) or an underline (theme toggle), never a filled chip.
+Motion is minimal: the tree chevron rotates, the docs panel slides in (200ms, none under reduced motion), and color changes on hover; nothing animates on load or scroll. Focus is a 2px Signal Blue outline with 2px offset on every `:focus-visible` element, except text fields (inputs, selects, textareas), which show focus on their own edge: the border turns Ink and its bottom edge thickens to 2px. Hover is a color shift to Ink or Signal Blue, or a Tint fill on option rows. Selected is expressed by weight and blue (tree, outline) or an underline (theme toggle), never a filled chip.
 
 ## Do's and Don'ts
 
@@ -263,7 +278,8 @@ Motion is minimal: the tree chevron rotates, and color changes on hover; nothing
 - **Do** mark the current location with Signal Blue plus bold (tree) or the 1px blue bar (outline), and use blue for nothing else decorative.
 - **Do** separate content with a 1px rule: Ink above panels and lists, Hairline below rows.
 - **Do** build hierarchy from size, weight (400 or 700) and tracking (-0.035em on display titles).
-- **Do** keep the document column near 44rem and put the article before the navigation in the DOM.
+- **Do** keep the document column near 60rem and put the article before the navigation in the DOM.
+- **Do** give every navigation part one control when it cannot be a column: hamburger for the tree, dropdown for the outline.
 - **Do** add any new color to both token blocks and to `CONTRAST_PAIRS`, and check light and dark.
 - **Do** keep monospace for code and paths only.
 

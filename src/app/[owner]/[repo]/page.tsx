@@ -3,7 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 
 import { CodeOwnersPanel } from "@/components/code-owners-panel";
+import { DocNavBar } from "@/components/doc-nav-bar";
+import { DocReader } from "@/components/doc-reader";
 import { DocsNavSlot } from "@/components/docs-nav-slot";
+import { OutlineNav } from "@/components/outline-nav";
+import { ReaderGrid } from "@/components/reader-grid";
 import { ReadmeSection } from "@/components/readme-section";
 import { RepoHeader } from "@/components/repo-header";
 import { RepoLoadError } from "@/components/repo-load-error";
@@ -23,9 +27,11 @@ import { loadRepoPage } from "@/server/repo-page";
  * or unusable configuration (HTTP 200, as on the home page). Unexpected errors go to
  * `src/app/error.tsx`.
  *
- * Layout (final): header; below it the README in the main column, and a sidebar column (stacked
- * under the README on narrow screens) with the `Documentation` navigation landmark, then the code
- * owners. No `<aside>`: it would be a complementary landmark nested in `<main>`.
+ * Layout (spec "docs-reader-layout", the same as the document page): three columns, the docs
+ * table of contents (with the OKF filters) on the left, the repository header (breadcrumb, name,
+ * details), the README and the code owners in the centre, the README's headings on the right. Below `xl` the headings are a dropdown
+ * in a bar under the header and below `lg` the table of contents opens from a hamburger in that
+ * bar. No `<aside>`: it would be a complementary landmark nested in `<main>`.
  *
  * `/ACME/API-Service` redirects to the stored spelling, so links and bookmarks have one address.
  */
@@ -71,7 +77,7 @@ export default async function RepoPage({
   if (data.status === "not_found") notFound();
   if (data.status === "error") return <RepoLoadError href={repoUrl(owner, name)} />;
 
-  const { repo, readme, tree, toc, lastRun, loadedAt } = data;
+  const { repo, readme, readmeOutline, tree, toc, lastRun, loadedAt } = data;
   if (repo.owner !== owner || repo.name !== name) {
     redirect(withFilterQuery(repoUrl(repo.owner, repo.name), filterQuery));
   }
@@ -83,15 +89,13 @@ export default async function RepoPage({
   const awaitingSync = repo.syncStatus === "pending" || repo.lastSyncedAt === null;
 
   return (
-    <div className="flex flex-col gap-8">
-      <RepoHeader repo={repo} lastRun={lastRun} now={loadedAt} />
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <ReadmeSection
-          readme={readme}
-          path={repo.readme?.path ?? null}
-          awaitingSync={awaitingSync}
-        />
-        <div className="flex min-w-0 flex-col gap-6">
+    <DocReader>
+      <DocNavBar hasOutline={readmeOutline.length > 0}>
+        <OutlineNav items={readmeOutline} variant="menu" />
+      </DocNavBar>
+      <ReaderGrid
+        outline={readmeOutline}
+        nav={
           <DocsNavSlot
             docCount={repo.docCount}
             tree={tree}
@@ -100,10 +104,18 @@ export default async function RepoPage({
             awaitingSync={awaitingSync}
             filters={filters}
             okf={repo.isOkf}
+            showCount
           />
-          <CodeOwnersPanel rules={repo.codeOwners} awaitingSync={awaitingSync} />
-        </div>
-      </div>
-    </div>
+        }
+      >
+        <RepoHeader repo={repo} lastRun={lastRun} now={loadedAt} />
+        <ReadmeSection
+          readme={readme}
+          path={repo.readme?.path ?? null}
+          awaitingSync={awaitingSync}
+        />
+        <CodeOwnersPanel rules={repo.codeOwners} awaitingSync={awaitingSync} />
+      </ReaderGrid>
+    </DocReader>
   );
 }

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { HeaderHeight } from "./header-height";
 import { LogoutButton } from "./logout-button";
 import { PaletteTrigger } from "./palette-trigger";
 import { ThemeToggle } from "./theme-toggle";
@@ -12,7 +13,8 @@ export interface HeaderUser {
 export function SiteHeader({ user }: { user: HeaderUser | null }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background">
-      <div className="mx-auto flex min-h-16 w-full max-w-[88rem] flex-wrap items-center gap-x-8 px-5 sm:px-8 lg:px-16">
+      <HeaderHeight />
+      <div className="site-shell mx-auto flex min-h-16 w-full max-w-[88rem] flex-wrap items-center gap-x-8 px-5 sm:px-8 lg:px-16">
         <Link
           href="/"
           className="shrink-0 text-lg font-bold tracking-tight text-foreground no-underline hover:text-foreground"

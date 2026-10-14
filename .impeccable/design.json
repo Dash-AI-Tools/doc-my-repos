@@ -19,7 +19,7 @@
       "display": { "displayName": "Display", "purpose": "Document, repository and home titles. 36/48/60px at base/sm/xl, bold, tracking -0.035em." },
       "headline": { "displayName": "Headline", "purpose": "Markdown h2 under a hairline top rule." },
       "title": { "displayName": "Title", "purpose": "Markdown h3, repo-row names, pager targets." },
-      "body": { "displayName": "Body", "purpose": "Rendered Markdown, 17px at 1.7, column near 44rem." },
+      "body": { "displayName": "Body", "purpose": "Rendered Markdown, 18px at 1.7, column near 60rem." },
       "label": { "displayName": "Label", "purpose": "Navigation, metadata, breadcrumbs, chips. Active state is bold, not larger." },
       "code": { "displayName": "Code", "purpose": "Code, inline code and source paths only." }
     },
@@ -89,6 +89,22 @@
       "css": ".ds-outline { width: 224px; font: 400 14px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; } .ds-outline ul { margin: 0; padding: 0; list-style: none; border-left: 1px solid var(--border, #e4e4e4); } .ds-outline a { display: block; margin-left: -1px; padding: 4px 8px 4px 12px; border-left: 1px solid transparent; color: var(--muted-foreground, #5c5c5c); text-decoration: none; } .ds-outline a:hover { color: var(--foreground, #111111); } .ds-outline a.ds-on { border-left-color: var(--primary, #2b59ff); color: var(--foreground, #111111); font-weight: 600; } .ds-outline a:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; }"
     },
     {
+      "name": "Document Bar",
+      "kind": "nav",
+      "refersTo": "doc-bar",
+      "description": "Below xl: a sticky 44px bar with a hamburger for the docs panel on the left and an 'On this page' dropdown on the right.",
+      "html": "<div class=\"ds-bar\"><button class=\"ds-bar-btn\" type=\"button\" aria-expanded=\"false\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M4 6h16M4 12h16M4 18h16\"/></svg>Documentation</button><button class=\"ds-bar-btn\" type=\"button\" aria-expanded=\"false\">On this page</button></div>",
+      "css": ".ds-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; padding: 0 20px; background: var(--background, #ffffff); border-bottom: 1px solid var(--border, #e4e4e4); font: 400 14px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; } .ds-bar-btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0; background: none; border: 0; color: var(--foreground, #111111); font: inherit; font-weight: 500; cursor: pointer; } .ds-bar-btn:hover { color: var(--primary, #2b59ff); } .ds-bar-btn:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Docs Panel",
+      "kind": "nav",
+      "refersTo": "docs-panel",
+      "description": "Below lg: the contents tree and filters as a 320px panel from the left over a dimmed backdrop, with a Close text button first.",
+      "html": "<div class=\"ds-panel\"><button class=\"ds-close\" type=\"button\">Close</button><p class=\"ds-label\">Documentation</p><ul><li>Overview</li><li class=\"ds-current\">Getting started</li><li>Configuration</li></ul></div>",
+      "css": ".ds-panel { width: 320px; max-width: 85vw; padding: 20px; background: var(--background, #ffffff); color: var(--foreground, #111111); border-right: 1px solid var(--border, #e4e4e4); font: 400 14px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; } .ds-close { margin-bottom: 16px; padding: 0; background: none; border: 0; color: var(--foreground, #111111); font: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; } .ds-close:hover { color: var(--primary, #2b59ff); } .ds-label { margin: 0 0 8px; font-weight: 700; font-size: 16px; } .ds-panel ul { margin: 0; padding: 0; list-style: none; color: var(--muted-foreground, #5c5c5c); } .ds-panel li { padding: 4px 0; } .ds-panel li.ds-current { color: var(--primary, #2b59ff); font-weight: 700; }"
+    },
+    {
       "name": "Repository Row",
       "kind": "card",
       "refersTo": "repo-row",
@@ -121,7 +137,7 @@
       "Ink, paper and one blue. Grey carries secondary text and nothing else.",
       "Hairline rules and bold ink rules draw structure; no shadows at rest.",
       "Near-square corners (2px on code and keys).",
-      "Document-first reading column near 44rem, with navigation as flanking columns."
+      "Document-first reading column near 60rem, with navigation as flanking columns."
     ],
     "rules": [
       { "name": "The One Voice Rule", "body": "Signal Blue means \"you are here, or you can act here.\" It is never decoration, never a fill behind body copy, and never a second accent.", "section": "colors" },
@@ -135,7 +151,7 @@
       "Do mark the current location with Signal Blue plus bold (tree) or the 1px blue bar (outline), and use blue for nothing else decorative.",
       "Do separate content with a 1px rule: Ink above panels and lists, Hairline below rows.",
       "Do build hierarchy from size, weight (400 or 700) and tracking (-0.035em on display titles).",
-      "Do keep the document column near 44rem and put the article before the navigation in the DOM.",
+      "Do keep the document column near 60rem and put the article before the navigation in the DOM.",
       "Do add any new color to both token blocks and to CONTRAST_PAIRS, and check light and dark.",
       "Do keep monospace for code and paths only."
     ],

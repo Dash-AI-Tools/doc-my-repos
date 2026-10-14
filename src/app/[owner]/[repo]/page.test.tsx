@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { OutlineItem } from "@/lib/outline";
 import { buildDocsTree, type DocsTreeRow } from "@/lib/docs-tree";
 import {
   countTocRows,
@@ -72,6 +73,7 @@ function ok(over: Partial<RepoDetail> = {}) {
     loadedAt: NOW,
     repo: { ...repo, ...over },
     readme: { status: "rendered" as const, html: "<h1>Hello</h1>" },
+    readmeOutline: [] as OutlineItem[],
     tree,
     toc: null,
     lastRun: null,
@@ -114,12 +116,55 @@ describe("repository page", () => {
     expect(out).toContain('href="/acme/api/docs/guides/advanced/tuning"');
     expect(out).toContain('id="code-owners-heading"');
     expect(out).toContain("@alice");
-    // sidebar order: documentation navigation before the code owners
-    expect(out.indexOf('aria-label="Documentation"')).toBeLessThan(
-      out.indexOf('id="code-owners-heading"'),
-    );
+    // reading order: document bar, repository header (in the content column), README, code
+    // owners, then the structure (the list a visitor without JavaScript uses); the README here has
+    // no headings, so no outline
+    const order = [
+      'data-testid="doc-bar"',
+      'data-testid="repo-header"',
+      'data-testid="readme-section"',
+      'id="code-owners-heading"',
+      'data-testid="doc-nav"',
+    ].map((marker) => out.indexOf(marker));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(out).not.toContain('aria-label="On this page"');
     // no complementary landmark nested in <main>
     expect(out).not.toContain("<aside");
+  });
+
+  it("shows the README headings as a column and as a dropdown in the bar", async () => {
+    const readmeOutline = [
+      {
+        text: "Usage",
+        id: "usage",
+        depth: 2,
+        children: [{ text: "Details", id: "details", depth: 3, children: [] }],
+      },
+    ];
+    loadRepoPage.mockResolvedValue({ ...ok(), readmeOutline });
+    const out = await html();
+    expect(out).toContain('data-testid="outline-menu"');
+    expect(out).toContain('data-testid="doc-sidebar"');
+    expect(out.match(/aria-label="On this page"/g)).toHaveLength(2);
+    expect(out).toContain('href="#usage"');
+    expect(out).toContain('href="#details"');
+    // the headings column comes after the README and before the structure
+    expect(out.indexOf('data-testid="readme-section"')).toBeLessThan(
+      out.indexOf('data-testid="doc-sidebar"'),
+    );
+    expect(out.indexOf('data-testid="doc-sidebar"')).toBeLessThan(
+      out.indexOf('data-testid="doc-nav"'),
+    );
+    // with headings the bar is hidden from xl; without, from lg
+    expect(out.match(/<div[^>]*data-testid="doc-bar"[^>]*>/)?.[0]).toContain("xl:hidden");
+  });
+
+  it("hides the bar from lg when the README has no headings", async () => {
+    loadRepoPage.mockResolvedValue(ok());
+    const bar = (await html()).match(/<div[^>]*data-testid="doc-bar"[^>]*>/)?.[0] ?? "";
+    expect(bar).toMatch(/\blg:hidden\b/);
+    expect(bar).not.toContain("xl:hidden");
   });
 
   it("shows the README empty state and still renders the rest", async () => {
@@ -128,6 +173,7 @@ describe("repository page", () => {
     expect(out).toContain("No README found");
     expect(out).toContain('aria-label="Documentation"');
     expect(out).toContain("@alice");
+    expect(out).not.toContain('aria-label="On this page"');
   });
 
   it("says 'after the first sync' instead of empty states for a never-synced repository", async () => {

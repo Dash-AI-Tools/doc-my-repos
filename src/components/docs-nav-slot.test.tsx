@@ -27,20 +27,19 @@ const tree = buildDocsTree(
 );
 const empty = buildDocsTree([], null);
 
-describe("DocsNavSlot, card (repository page)", () => {
-  it("is the Documentation navigation landmark with its heading, count and tree", () => {
-    render(<DocsNavSlot docCount={2} tree={tree} owner="acme" repo="api" />);
+describe("DocsNavSlot, states and count", () => {
+  it("is the Documentation navigation landmark with its label, count and tree", () => {
+    render(<DocsNavSlot docCount={2} tree={tree} owner="acme" repo="api" showCount />);
     const nav = screen.getByRole("navigation", { name: "Documentation" });
     expect(nav.getAttribute("data-testid")).toBe("docs-nav");
-    const heading = within(nav).getByRole("heading", { level: 2, name: "Documentation" });
-    expect(heading.id).toBe("docs-nav-heading");
+    expect(within(nav).getByText("Documentation").tagName).toBe("P");
     expect(within(nav).getByTestId("docs-nav-count").textContent).toBe("2 documents");
     expect(within(nav).getByRole("link", { name: "Setup" })).toBeTruthy();
   });
 
   it("handles one document", () => {
     const one = buildDocsTree([row("docs/a.md", "A")], "docs");
-    render(<DocsNavSlot docCount={1} tree={one} owner="acme" repo="api" />);
+    render(<DocsNavSlot docCount={1} tree={one} owner="acme" repo="api" showCount />);
     expect(screen.getByTestId("docs-nav-count").textContent).toBe("1 document");
   });
 
@@ -60,17 +59,17 @@ describe("DocsNavSlot, card (repository page)", () => {
     expect(screen.queryByText("No documentation files found")).toBeNull();
   });
 
-  it("limits the height of a long tree inside the card", () => {
+  it("shows no count unless asked, and leaves scrolling to the column or panel", () => {
     render(<DocsNavSlot docCount={2} tree={tree} owner="acme" repo="api" />);
-    expect(screen.getByTestId("docs-tree").className).toContain("overflow-y-auto");
+    expect(screen.queryByTestId("docs-nav-count")).toBeNull();
+    expect(screen.getByTestId("docs-tree").className).not.toContain("overflow-y-auto");
   });
 });
 
-describe("DocsNavSlot, sidebar (document page)", () => {
-  it("keeps the landmark, collapses on small screens and marks the current page", () => {
+describe("DocsNavSlot, as the document page column", () => {
+  it("keeps the landmark, labels it without a heading and marks the current page", () => {
     render(
       <DocsNavSlot
-        variant="sidebar"
         docCount={2}
         tree={tree}
         owner="acme"
@@ -79,10 +78,11 @@ describe("DocsNavSlot, sidebar (document page)", () => {
       />,
     );
     const nav = screen.getByRole("navigation", { name: "Documentation" });
-    // the summary is the label; there is no heading of its own and no count
+    // a plain label, not a heading, and no count; no disclosure (the panel owns open and close)
     expect(within(nav).queryByRole("heading")).toBeNull();
     expect(within(nav).queryByTestId("docs-nav-count")).toBeNull();
-    expect(nav.querySelector(":scope > details > summary")?.textContent).toBe("Documentation");
+    expect(within(nav).getByText("Documentation").tagName).toBe("P");
+    expect(nav.querySelector("details")).toBeNull();
     expect(within(nav).getByRole("link", { name: "Setup" }).getAttribute("aria-current")).toBe(
       "page",
     );
@@ -153,7 +153,6 @@ describe("DocsNavSlot, OKF filters (tasks 11.1 to 11.3)", () => {
         owner="acme"
         repo="kb"
         filters={null}
-        variant="sidebar"
       />,
     );
     expect(screen.queryByTestId("okf-filters")).toBeNull();
@@ -195,13 +194,7 @@ describe("DocsNavSlot, OKF filters (tasks 11.1 to 11.3)", () => {
   });
 
   it("keeps the page being read in the sidebar even when it does not match", () => {
-    render(
-      <DocsNavSlot
-        {...props({ type: "Table" }, "docs/ref.md")}
-        variant="sidebar"
-        currentPath="docs/ref.md"
-      />,
-    );
+    render(<DocsNavSlot {...props({ type: "Table" }, "docs/ref.md")} currentPath="docs/ref.md" />);
     const current = screen.getByRole("link", { name: "Ref" });
     expect(current.getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("link", { name: "Tuning" })).toBeTruthy();
@@ -209,13 +202,7 @@ describe("DocsNavSlot, OKF filters (tasks 11.1 to 11.3)", () => {
   });
 
   it("still shows the page being read next to the no-match message", () => {
-    render(
-      <DocsNavSlot
-        {...props({ type: "Nope" }, "docs/ref.md")}
-        variant="sidebar"
-        currentPath="docs/ref.md"
-      />,
-    );
+    render(<DocsNavSlot {...props({ type: "Nope" }, "docs/ref.md")} currentPath="docs/ref.md" />);
     expect(screen.getByTestId("docs-nav-no-match")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Ref" }).getAttribute("aria-current")).toBe("page");
   });

@@ -61,7 +61,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             content is parsed. It carries the request nonce, so the CSP lets it run. */}
         <ThemeProvider nonce={nonce}>
           <SiteHeader user={user} />
-          <main className="mx-auto w-full max-w-[88rem] flex-1 px-5 py-10 sm:px-8 lg:px-16 lg:py-14">
+          <main className="site-shell mx-auto w-full max-w-[88rem] flex-1 px-5 py-10 sm:px-8 lg:px-16 lg:py-14">
             {children}
           </main>
           <SiteFooter />

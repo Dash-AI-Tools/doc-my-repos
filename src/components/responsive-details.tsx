@@ -3,8 +3,8 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
 /**
- * A disclosure that is open on large screens and closed on small ones (task 9.7: the sidebar
- * navigation of a document page is collapsible on mobile). Rendered on the server as an open
+ * A disclosure that is open on large screens and closed on small ones (the search page's
+ * facet panel). Rendered on the server as an open
  * `<details>`, so with no JavaScript it is simply open; after hydration it closes itself on a
  * viewport narrower than `lg` (1024px) and opens when the viewport grows past it. The `open`
  * state is not controlled by React (it is set through the DOM), so the visitor's own toggling is
