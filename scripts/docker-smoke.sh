@@ -7,7 +7,8 @@
 #
 # Starts the image against the given Postgres with a throwaway GitHub App key (generated here,
 # never a real credential) and the sync scheduler off, so GitHub is never contacted. Checks that
-# the migrations ran, /api/status answers 200, the home page renders, the security headers are
+# the migrations ran, /api/health answers 200, / redirects to /login and /api/status is 401 without a
+# session, the login page renders, the security headers are
 # set, and that `docker stop` ends the container cleanly. Prints the container log on failure.
 set -euo pipefail
 
@@ -36,6 +37,7 @@ docker run -d --init --name "$NAME" \
   -e GITHUB_APP_INSTALLATION_ID=1 \
   -e GITHUB_WEBHOOK_SECRET=smoke-test-webhook-secret \
   -e SYNC_SECRET=smoke-test-sync-secret-value \
+  -e SESSION_SECRET=smoke-test-session-secret-value \
   -e SYNC_SCHEDULER=0 \
   "$IMAGE" >/dev/null
 

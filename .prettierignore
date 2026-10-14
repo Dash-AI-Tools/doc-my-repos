@@ -7,3 +7,8 @@ openspec
 drizzle
 playwright-report
 test-results
+.opencode
+.cursor
+.grok
+.dsh
+.agents

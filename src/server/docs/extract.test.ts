@@ -643,7 +643,8 @@ describe("worst-case time", () => {
         expect(performance.now() - started).toBeLessThan(LIMIT_MS);
       }
     }
-  });
+    // 12 bodies, each held to LIMIT_MS above. Vitest's default 5 s would cap the whole loop, which a slow CI runner exceeds.
+  }, 120_000);
 
   it("scans a whole run of the worst chunk-sized units within the limit", () => {
     const unit = `> a\n${"b\n".repeat(CHUNK_MAX_LINES - 2)}\n`;

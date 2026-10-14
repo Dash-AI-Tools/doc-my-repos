@@ -122,11 +122,12 @@ git clone https://github.com/Dash-AI-Tools/doc-my-repos.git
 cd doc-my-repos
 cp .env.example .env
 # edit .env: set GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, GITHUB_APP_PRIVATE_KEY
-# (or GITHUB_APP_PRIVATE_KEY_PATH), GITHUB_WEBHOOK_SECRET and SYNC_SECRET
+# (or GITHUB_APP_PRIVATE_KEY_PATH), GITHUB_WEBHOOK_SECRET, SYNC_SECRET and SESSION_SECRET,
+# plus ADMIN_EMAIL and ADMIN_PASSWORD for the first admin login
 docker compose up -d --build --wait    # app + Postgres 17; the app applies the migrations on start
 ```
 
-Open <http://127.0.0.1:3000>. The first full sync starts about 10 seconds after the server does (the scheduler is on in the image). To start one yourself:
+Open <http://127.0.0.1:3000>. The portal is behind a login: sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, which create the first admin the first time you log in while no users exist (then remove both from `.env`). Admins add users and choose which repositories are visible under **Admin**. The first full sync starts about 10 seconds after the server does (the scheduler is on in the image). To start one yourself:
 
 ```bash
 curl -X POST -H "Authorization: Bearer <SYNC_SECRET from .env>" http://127.0.0.1:3000/api/sync
@@ -198,6 +199,8 @@ Files left out by the limits are listed as a warning in the repository header an
 | `GITHUB_APP_PRIVATE_KEY` or `GITHUB_APP_PRIVATE_KEY_PATH`            | one      | The App private key: PEM text (in `.env`: one line in double quotes with `\n` for line breaks) or a path to the file. Never both. |
 | `GITHUB_WEBHOOK_SECRET`                                              | yes      | Webhook secret of the App, 16+ characters. Verifies webhook signatures.                                                           |
 | `SYNC_SECRET`                                                        | yes      | Secret protecting `POST /api/sync`, 16+ characters.                                                                               |
+| `SESSION_SECRET`                                                     | yes      | Signs the login session cookie, 16+ characters. Not a placeholder.                                                                |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`                                      | no       | Bootstrap admin, created on first login when no users exist. Password 12+ characters.                                             |
 | `CONFIG_PATH`                                                        | no       | Config file path. Default `docmyrepos.config.yml`.                                                                                |
 | `LOG_LEVEL`                                                          | no       | `debug`, `info` (default), `warn`, `error` or `silent`. An unknown value stops startup.                                           |
 | `SYNC_SCHEDULER`                                                     | no       | `1` or `0` forces the background sync scheduler on or off. Default: on when `NODE_ENV=production`, off otherwise.                 |
