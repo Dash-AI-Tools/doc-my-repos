@@ -158,9 +158,10 @@ describe("worst-case time", () => {
       const result = await renderMarkdown(source);
       const elapsed = performance.now() - started;
       expect(result.html.length).toBeGreaterThan(0);
-      // About 0.2 to 1 s on a laptop; 4 s leaves room for a busy CI machine.
-      expect(elapsed).toBeLessThan(4000);
-    }, 20_000);
+      // About 0.2 to 1 s on a laptop. A quadratic regression takes minutes, so 15 s still catches it
+      // and leaves room for a loaded CI runner (4 to 5 s was seen there).
+      expect(elapsed).toBeLessThan(15_000);
+    }, 30_000);
   }
 
   it("truncates a document with an extreme node count and says so", async () => {

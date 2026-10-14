@@ -15,11 +15,11 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
       <div className="mx-auto flex h-14 w-full max-w-5xl items-center px-4">
         <Link
           href="/"
-          className="text-lg font-semibold tracking-tight text-foreground hover:text-foreground"
+          className="shrink-0 text-base font-semibold tracking-tight text-foreground hover:text-foreground sm:text-lg"
         >
           DocMyRepos
         </Link>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
           <PaletteTrigger />
           <ThemeToggle />
           {user ? (

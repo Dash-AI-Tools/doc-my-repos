@@ -562,7 +562,8 @@ test.describe("command palette, seeded database", () => {
       const popup = page.waitForEvent("popup");
       await page.keyboard.press("ControlOrMeta+Enter");
       const tab = await popup;
-      await tab.waitForLoadState();
+      // A new tab starts at about:blank, so wait for the navigation itself, not for "load".
+      await tab.waitForURL((url) => url.pathname === "/acme/search-lab/docs/deployment");
       expect(new URL(tab.url()).pathname).toBe("/acme/search-lab/docs/deployment");
       await tab.close();
       // the palette stays open on the original page
@@ -573,7 +574,8 @@ test.describe("command palette, seeded database", () => {
         .nth(1)
         .click({ modifiers: ["ControlOrMeta"] });
       const tab2 = await popup2;
-      await tab2.waitForLoadState();
+      // A new tab starts at about:blank, so wait for the navigation itself, not for "load".
+      await tab2.waitForURL((url) => url.pathname === "/acme/search-lab/docs/guides/operations");
       expect(new URL(tab2.url()).pathname).toBe("/acme/search-lab/docs/guides/operations");
       await expect(dialog(page)).toBeVisible();
     });
@@ -585,7 +587,8 @@ test.describe("command palette, seeded database", () => {
       const popup = page.context().waitForEvent("page");
       await options(page).nth(0).click({ button: "middle" });
       const tab = await popup;
-      await tab.waitForLoadState();
+      // A new tab starts at about:blank, so wait for the navigation itself, not for "load".
+      await tab.waitForURL((url) => url.pathname === "/acme/search-lab/docs/deployment");
       expect(new URL(tab.url()).pathname).toBe("/acme/search-lab/docs/deployment");
     });
   });

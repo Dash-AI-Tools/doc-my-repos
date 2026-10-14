@@ -104,7 +104,7 @@
 - [x] 13.1 Write a multi-stage `Dockerfile` that runs migrations on start, and verify `docker build` succeeds and the container serves the home page
 - [x] 13.2 Complete `docker-compose.yml` (app + db) and verify `docker compose up` works from a clean checkout using `.env.example`
 - [ ] 13.3 Add GitHub Actions CI (lint, typecheck, unit, e2e with a Postgres service, build) and verify a green run on a PR
-- [ ] 13.4 Write `README.md` (quickstart, config, screenshots in light and dark), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue and PR templates, and verify the quickstart works on a fresh clone
+- [x] 13.4 Write `README.md` (quickstart, config, screenshots in light and dark), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue and PR templates, and verify the quickstart works on a fresh clone
 - [x] 13.5 Write dogfood `docs/` in OKF (architecture with Mermaid, config, webhooks, search, OKF support), and verify DocMyRepos syncs its own repo and shows type filters
 
 ## 14. End-to-end acceptance

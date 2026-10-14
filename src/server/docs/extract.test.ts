@@ -579,10 +579,11 @@ describe("splitChunks", () => {
   });
 });
 
-describe("worst-case time", () => {
+describe("worst-case time", { timeout: 120_000 }, () => {
   // Measured at the cap on an Apple-silicon laptop: 0.1 to 0.4 s each (the quadratic inputs were
-  // minutes before chunking and the block-only pass). Allow ten times that for slow CI.
-  const LIMIT_MS = 4000;
+  // minutes before chunking and the block-only pass). 15 s still catches a regression and leaves
+  // room for a loaded CI runner.
+  const LIMIT_MS = 15_000;
   const repeatTo = (unit: string, size = MAX_BODY_CHARS) =>
     unit.repeat(Math.ceil(size / unit.length)).slice(0, size);
 
