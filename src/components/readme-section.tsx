@@ -33,7 +33,7 @@ export function ReadmeSection({ readme, path = null, awaitingSync = false }: Rea
     <section
       aria-labelledby="readme-heading"
       data-testid="readme-section"
-      className="min-w-0 rounded-lg border border-border bg-card p-6 text-card-foreground"
+      className="min-w-0 border-t border-foreground pt-6 text-card-foreground"
     >
       <h2
         id="readme-heading"

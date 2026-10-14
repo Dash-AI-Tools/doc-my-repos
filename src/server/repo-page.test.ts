@@ -168,6 +168,14 @@ describeDb("loadRepoPage on a real database", () => {
         "",
         "<script>alert(1)</script>",
         "",
+        "## Usage",
+        "",
+        "Run it.",
+        "",
+        "### Details",
+        "",
+        "More.",
+        "",
       ].join("\n"),
       readmeSha: "sha",
       codeownersPath: ".github/CODEOWNERS",
@@ -253,11 +261,39 @@ describeDb("loadRepoPage on a real database", () => {
     expect(html).not.toContain("<script");
   });
 
+  it("lists the README's h2 to h4 headings as an outline whose ids are in the HTML", async () => {
+    const data = await load("acme", "full");
+    if (data.status !== "ok" || data.readme.status !== "rendered") throw new Error("expected ok");
+    expect(data.readmeOutline).toEqual([
+      {
+        text: "Usage",
+        id: "usage",
+        depth: 2,
+        children: [{ text: "Details", id: "details", depth: 3, children: [] }],
+      },
+    ]);
+    for (const id of ["usage", "details"]) expect(data.readme.html).toContain(`id="${id}"`);
+  });
+
+  it("has no outline for a README with no h2 to h4 headings", async () => {
+    const data = await load("acme", "full", {
+      render: () =>
+        Promise.resolve({
+          html: "<h1>x</h1>",
+          headings: [{ depth: 1, text: "x", slug: "x" }],
+          warnings: [],
+        }),
+    });
+    if (data.status !== "ok") throw new Error("expected ok");
+    expect(data.readmeOutline).toEqual([]);
+  });
+
   it("returns a missing README as such, and an empty code owners list", async () => {
     const data = await load("acme", "bare");
     expect(data.status).toBe("ok");
     if (data.status !== "ok") return;
     expect(data.readme).toEqual({ status: "missing" });
+    expect(data.readmeOutline).toEqual([]);
     // no docs folder: an empty table of contents
     expect(data.tree.children).toEqual([]);
     expect(data.repo.codeOwners).toEqual([]);
@@ -296,6 +332,7 @@ describeDb("loadRepoPage on a real database", () => {
     if (data.readme.status !== "plain") return;
     expect(data.readme.notice).toBe(RENDER_FAILED_NOTICE);
     expect(data.readme.text).toContain("# Full");
+    expect(data.readmeOutline).toEqual([]);
     expect(log).toHaveBeenCalledOnce();
     // fixed text: neither the error nor the README is logged
     expect(JSON.stringify(log.mock.calls)).not.toMatch(/boom|Full/);

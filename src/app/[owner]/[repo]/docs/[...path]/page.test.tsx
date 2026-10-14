@@ -32,6 +32,10 @@ vi.mock("@/server/doc-page", () => ({
 
 import DocPage, { dynamic, generateMetadata } from "./page";
 
+/** The opening tag of the document bar, to read its classes. */
+const barTag = (out: string): string =>
+  out.match(/<div[^>]*data-testid="doc-bar"[^>]*>/)?.[0] ?? "";
+
 const NOW = new Date("2026-10-10T12:00:00Z");
 
 const repo: RepoDetail = {
@@ -165,16 +169,36 @@ describe("document page", () => {
     expect(out).toContain('href="/acme/api/docs/guides/tuning"');
     expect(out).toContain('aria-label="Documentation"');
     expect(out).toContain('aria-current="page"');
-    // the document comes before the sidebar in the DOM (keyboard order)
-    expect(out.indexOf('data-testid="doc-article"')).toBeLessThan(
-      out.indexOf('data-testid="doc-sidebar"'),
-    );
+    // keyboard order: document bar, breadcrumb (in the content column), document, pager, then the
+    // headings and the structure (the lists a visitor without JavaScript uses)
+    const order = [
+      'data-testid="doc-bar"',
+      'aria-label="Breadcrumb"',
+      'data-testid="doc-article"',
+      'data-testid="doc-pager"',
+      'data-testid="doc-sidebar"',
+      'data-testid="doc-nav"',
+    ].map((marker) => out.indexOf(marker));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // not enhanced yet: the page says so and the bar keeps its height without showing
+    expect(out).toContain('data-enhanced="false"');
+    expect(barTag(out)).toContain("invisible");
+    // the headings exist twice (menu below xl, column from xl), the structure once
+    expect(out.match(/aria-label="On this page"/g)).toHaveLength(2);
+    expect(out).toContain('data-testid="outline-menu"');
+    expect(out.match(/data-testid="docs-tree"/g)).toHaveLength(1);
     expect(out).not.toContain("<aside");
   });
 
   it("leaves out the outline of a document with no headings", async () => {
     loadDocPage.mockResolvedValue(ok({ outline: [] }));
-    expect(await html()).not.toContain('aria-label="On this page"');
+    const out = await html();
+    expect(out).not.toContain('aria-label="On this page"');
+    // only the hamburger is left in the bar, which is then hidden from lg
+    expect(out).toContain('data-testid="doc-nav-toggle"');
+    expect(barTag(out)).toMatch(/class="[^"]*\blg:hidden\b/);
+    expect(barTag(out)).not.toContain("xl:hidden");
   });
 
   it("leaves out the source link when the stored path is not linkable", async () => {

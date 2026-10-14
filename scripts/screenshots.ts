@@ -50,7 +50,7 @@ const HIDDEN_REPOS = [
   "handbook",
 ];
 
-const PLACEHOLDER_IMAGE = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="120" viewBox="0 0 640 120"><rect x="1" y="1" width="638" height="118" rx="8" fill="none" stroke="#8b8b8b" stroke-width="2" stroke-dasharray="8 6"/><text x="320" y="66" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#8b8b8b">Image from the repository</text></svg>`;
+const PLACEHOLDER_IMAGE = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="120" viewBox="0 0 640 120"><rect width="640" height="120" rx="2" fill="#8b8b8b" fill-opacity="0.16"/><text x="320" y="66" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#8b8b8b">Image from the repository</text></svg>`;
 
 interface Shot {
   readonly name: string;

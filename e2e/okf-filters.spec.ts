@@ -524,17 +524,33 @@ test.describe("OKF badge and table of contents filters, seeded database", () => 
       expect(errors).toEqual([]);
     });
 
-    test(`keeps the filters usable on a narrow screen in the ${theme} theme`, async ({ page }) => {
+    test(`keeps the filters usable in the slide-in panel of a narrow screen in the ${theme} theme`, async ({
+      page,
+    }) => {
       await setTheme(page, theme);
       await page.setViewportSize({ width: 375, height: 800 });
       await page.goto(`${KB_PATH}/docs/concepts/billing?type=Runbook`);
-      await page.getByTestId("docs-nav").locator("summary").first().click();
+      await expect(filters(page)).toBeHidden();
+      await page.getByTestId("doc-nav-toggle").click();
+      const panel = page.getByTestId("doc-nav");
+      await expect(panel).toBeVisible();
       await expect(filters(page)).toBeVisible();
+      // a filter chip is a link to the same page: the panel stays open, the tree narrows, the
+      // address carries the choice
+      await chip(page, "type", "Decision").click();
+      await expect(page).toHaveURL(/type=Runbook.*type=Decision|type=Decision.*type=Runbook/);
+      await expect(panel).toBeVisible();
+      await expect(filters(page)).toBeVisible();
+      await expect(page.getByTestId("doc-nav-toggle")).toHaveAttribute("aria-expanded", "true");
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
       );
       expect(overflow).toBe(false);
       await page.screenshot({ path: `test-results/okf-filters-mobile-${theme}.png` });
+      // choosing a document closes the panel and keeps the filters in the address
+      await tree(page).getByRole("link").first().click();
+      await expect(panel).toBeHidden();
+      await expect(page).toHaveURL(/type=/);
     });
   }
 });

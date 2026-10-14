@@ -145,7 +145,7 @@ export function CodeOwnersPanel({ rules, awaitingSync = false }: CodeOwnersPanel
     <section
       aria-labelledby="code-owners-heading"
       data-testid="code-owners"
-      className="min-w-0 rounded-lg border border-border bg-card p-4 text-card-foreground"
+      className="min-w-0 border-t border-foreground pt-4 text-card-foreground"
     >
       <h2 id="code-owners-heading" className="text-lg font-semibold">
         Code owners{" "}

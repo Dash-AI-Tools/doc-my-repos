@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { DocsTreeFolder } from "@/lib/docs-tree";
+import { buildOutline, type OutlineItem } from "@/lib/outline";
 import { isReservedOwner } from "@/lib/routes";
 import { parseTocFilters, type TocData, type TocFilterState } from "@/lib/toc-filters";
 
@@ -8,6 +9,7 @@ import type { Db } from "./db/client";
 import { isValidOwner, isValidRepoName } from "./github/client";
 import { expectedFailureKind } from "./home";
 import { rehypeHighlight } from "./markdown/highlight";
+import { anchorId } from "./markdown/sanitize";
 import {
   RENDER_FAILED_WARNING,
   RENDER_TRUNCATED_WARNING,
@@ -62,6 +64,12 @@ export type RepoPageData =
       readonly repo: RepoDetail;
       readonly readme: ReadmeView;
       /**
+       * The README's h2 to h4 headings for the "On this page" list, from the render result so each
+       * id exists in the HTML (the same `buildOutline` as the document page). Empty when there is
+       * no README, it is shown as plain text, or it has no such headings.
+       */
+      readonly readmeOutline: readonly OutlineItem[];
+      /**
        * The docs table of contents (empty when the repository has no docs folder), narrowed by the
        * type, tag and status filters when the repository is OKF.
        */
@@ -104,14 +112,13 @@ async function readmeView(
   docPaths: ReadonlySet<string>,
   render: NonNullable<RepoPageDeps["render"]>,
   log: LogFn,
-): Promise<ReadmeView> {
+): Promise<{ readonly view: ReadmeView; readonly outline: readonly OutlineItem[] }> {
   const readme = repo.readme;
-  if (readme === null) return { status: "missing" };
-  const plain: ReadmeView = {
-    status: "plain",
-    text: readme.markdown,
-    notice: RENDER_FAILED_NOTICE,
-  };
+  if (readme === null) return { view: { status: "missing" }, outline: [] };
+  const plain = {
+    view: { status: "plain", text: readme.markdown, notice: RENDER_FAILED_NOTICE },
+    outline: [],
+  } satisfies { view: ReadmeView; outline: readonly OutlineItem[] };
   try {
     const result = await render(readme.markdown, {
       links: {
@@ -128,9 +135,13 @@ async function readmeView(
       log("repo_page.readme_plain_text", { reason: "renderer_fallback" });
       return plain;
     }
-    return result.warnings.includes(RENDER_TRUNCATED_WARNING)
-      ? { status: "rendered", html: result.html, notice: RENDER_TRUNCATED_NOTICE }
-      : { status: "rendered", html: result.html };
+    const outline = buildOutline(result.headings, anchorId);
+    return {
+      view: result.warnings.includes(RENDER_TRUNCATED_WARNING)
+        ? { status: "rendered", html: result.html, notice: RENDER_TRUNCATED_NOTICE }
+        : { status: "rendered", html: result.html },
+      outline,
+    };
   } catch {
     log("repo_page.readme_plain_text", { reason: "render_error" });
     return plain;
@@ -154,12 +165,18 @@ export async function loadRepoPage(
     if (repo === null) return { status: "not_found" };
     const rows = await getDocsTree(handle, { id: repo.id });
     const { tree, toc } = await loadToc(handle, repo, rows, filters);
-    const readme = await readmeView(repo, new Set(rows.map((r) => r.path)), render, log);
+    const { view: readme, outline: readmeOutline } = await readmeView(
+      repo,
+      new Set(rows.map((r) => r.path)),
+      render,
+      log,
+    );
     const sync = await getRepoSyncInfo(handle, { id: repo.id });
     return {
       status: "ok",
       repo,
       readme,
+      readmeOutline,
       tree,
       toc,
       lastRun: sync?.lastRun ?? null,

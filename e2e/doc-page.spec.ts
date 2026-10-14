@@ -64,7 +64,7 @@ test.describe("docs table of contents and document pages, seeded database", () =
     test("shows the spec's nested folders: guides > Setup, advanced > Tuning", async ({ page }) => {
       await page.goto(repoPath(SEEDED.full));
       const nav = page.getByRole("navigation", { name: "Documentation" });
-      await expect(nav.getByRole("heading", { level: 2, name: "Documentation" })).toBeVisible();
+      await expect(nav.getByText("Documentation", { exact: true })).toBeVisible();
       await expect(nav.getByTestId("docs-nav-count")).toHaveText("4 documents");
 
       await expect(expanded(page, "guides")).toHaveAttribute("aria-expanded", "true");
@@ -139,6 +139,35 @@ test.describe("docs table of contents and document pages, seeded database", () =
       await page.goto(repoPath(SEEDED.full));
       await expect(tree(page).getByRole("link", { name: "Setup" })).toBeVisible();
       await expect(tree(page).getByRole("link", { name: "Tuning" })).toBeHidden();
+      await context.close();
+    });
+
+    test("without JavaScript on a phone, the document comes first and the lists follow it", async ({
+      browser,
+    }) => {
+      const context = await browser.newContext({
+        javaScriptEnabled: false,
+        baseURL: stackUrl("seeded"),
+        viewport: { width: 375, height: 800 },
+      });
+      const page = await context.newPage();
+      await page.goto(docPath(SEEDED.showcase, "guides/long-outline"));
+      const article = await page.getByTestId("doc-article").boundingBox();
+      const outline = page.getByTestId("outline");
+      const nav = page.getByTestId("doc-nav");
+      await expect(outline).toBeVisible();
+      await expect(nav).toBeVisible();
+      await expect(tree(page).getByRole("link", { name: "Getting started" })).toBeVisible();
+      await expect(outline.getByRole("link", { name: "Section 12", exact: true })).toBeVisible();
+      const outlineBox = await outline.boundingBox();
+      const navBox = await nav.boundingBox();
+      if (!article || !outlineBox || !navBox) throw new Error("missing layout boxes");
+      expect(outlineBox.y).toBeGreaterThan(article.y + article.height - 1);
+      expect(navBox.y).toBeGreaterThan(outlineBox.y);
+      // nothing to press: the controls that need scripts are not offered
+      await expect(page.getByTestId("doc-nav-close")).toBeHidden();
+      await expect(page.getByTestId("outline-menu-list")).toBeHidden();
+      await expect(page.getByTestId("doc-bar")).toBeHidden();
       await context.close();
     });
 
@@ -481,41 +510,183 @@ test.describe("docs table of contents and document pages, seeded database", () =
   });
 
   test.describe("layout and themes", () => {
-    test("puts the sidebar beside the document on wide screens and collapses it on phones", async ({
-      page,
-    }) => {
-      await page.setViewportSize({ width: 1280, height: 900 });
-      await page.goto(docPath(SEEDED.showcase, "guides/long-outline"));
-      const article = await page.getByTestId("doc-article").boundingBox();
-      const sidebar = await page.getByTestId("doc-sidebar").boundingBox();
-      if (!article || !sidebar) throw new Error("missing layout boxes");
-      expect(sidebar.x).toBeGreaterThan(article.x + article.width - 1);
-      await expect(page.getByTestId("docs-nav").locator("details").first()).toHaveJSProperty(
-        "open",
-        true,
-      );
-      await expect(page.getByTestId("outline").locator("details").first()).toHaveJSProperty(
-        "open",
-        true,
+    const LONG = docPath(SEEDED.showcase, "guides/long-outline");
+    const box = async (page: Page, testId: string) => {
+      const b = await page.getByTestId(testId).boundingBox();
+      if (!b) throw new Error(`no box for ${testId}`);
+      return b;
+    };
+    const sideways = (page: Page) =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );
 
+    test("shows three columns at 1440 and keeps both rails in view while scrolling", async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(LONG);
+      await page.screenshot({ path: testInfo.outputPath("reader-1440.png") });
+      const nav = await box(page, "doc-nav");
+      const article = await box(page, "doc-article");
+      const outline = await box(page, "doc-sidebar");
+      expect(nav.x + nav.width).toBeLessThanOrEqual(article.x);
+      expect(outline.x).toBeGreaterThanOrEqual(article.x + article.width - 1);
+      await expect(page.getByTestId("doc-bar")).toBeHidden();
+      await expect(page.getByTestId("doc-nav-toggle")).toBeHidden();
+      await expect(page.getByTestId("outline-menu")).toBeHidden();
+      await expect(page.getByTestId("doc-nav-close")).toBeHidden();
+      await page.evaluate(() => window.scrollTo(0, 1500));
+      await expect(page.getByTestId("doc-nav")).toBeInViewport();
+      await expect(page.getByTestId("outline")).toBeInViewport();
+    });
+
+    test("uses the full viewport width at 2560, with the content column centred, and only there", async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width: 2560, height: 1200 });
+      await page.goto(LONG);
+      await page.screenshot({ path: testInfo.outputPath("reader-2560.png") });
+      const pad = 64; // lg:px-16, the side padding of the header, the page and the footer
+      const nav = await box(page, "doc-nav");
+      const outline = await box(page, "doc-sidebar");
+      const article = await box(page, "doc-article");
+      expect(Math.abs(nav.x - pad)).toBeLessThanOrEqual(1);
+      expect(Math.abs(outline.x + outline.width - (2560 - pad))).toBeLessThanOrEqual(1);
+      // the content keeps its line length and sits in the middle of the space between the rails
+      expect(article.width).toBeLessThanOrEqual(60 * 16 + 1);
+      const gap = (outline.x - (nav.x + nav.width) - article.width) / 2;
+      expect(Math.abs(article.x - (nav.x + nav.width + gap))).toBeLessThanOrEqual(24);
+      // the header spans the same width: its search/theme cluster ends at the same right edge
+      const cluster = await page.getByTestId("palette-trigger").boundingBox();
+      const header = await page.locator("header").first().boundingBox();
+      if (!cluster || !header) throw new Error("missing header boxes");
+      expect(header.width).toBe(2560);
+      expect(cluster.x).toBeGreaterThan(1280);
+      // other pages keep the limited width
+      await page.goto("/");
+      const main = await page.locator("main").boundingBox();
+      if (!main) throw new Error("no main");
+      expect(main.width).toBeLessThanOrEqual(88 * 16 + 1);
+      expect(await sideways(page)).toBeLessThanOrEqual(0);
+    });
+
+    test("shows two columns at 1100: structure on the left, headings as a dropdown", async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width: 1100, height: 900 });
+      await page.goto(LONG);
+      await page.screenshot({ path: testInfo.outputPath("reader-1100.png") });
+      const nav = await box(page, "doc-nav");
+      const article = await box(page, "doc-article");
+      expect(nav.x + nav.width).toBeLessThanOrEqual(article.x);
+      await expect(page.getByTestId("doc-sidebar")).toBeHidden();
+      await expect(page.getByTestId("doc-nav-toggle")).toBeHidden();
+      const menu = page.getByTestId("outline-menu");
+      await expect(menu).toBeVisible();
+      const bar = await box(page, "doc-bar");
+      expect(bar.y).toBeLessThan(article.y);
+      await menu.getByRole("button", { name: "On this page" }).click();
+      await page.screenshot({ path: testInfo.outputPath("reader-1100-menu.png") });
+      await menu.getByRole("link", { name: "Section 12", exact: true }).click();
+      await expect(menu.getByTestId("outline-menu-list")).toBeHidden();
+      await expect(page.locator("#section-12")).toBeInViewport();
+      expect(await sideways(page)).toBeLessThanOrEqual(0);
+    });
+
+    test("is one column at 375: hamburger panel, headings dropdown, bar stays reachable", async ({
+      page,
+    }, testInfo) => {
+      // no slide animation: the panel is in place as soon as it is open
+      await page.emulateMedia({ reducedMotion: "reduce" });
       await page.setViewportSize({ width: 375, height: 800 });
-      const navDetails = page.getByTestId("docs-nav").locator("> details");
-      const outlineDetails = page.getByTestId("outline").locator("> details");
-      await expect(navDetails).toHaveJSProperty("open", false);
-      await expect(outlineDetails).toHaveJSProperty("open", false);
-      await expect(page.getByTestId("docs-tree")).toBeHidden();
-      await page.getByTestId("docs-nav").locator("summary").first().click();
+      await page.goto(LONG);
+      const toggle = page.getByTestId("doc-nav-toggle");
+      const panel = page.getByTestId("doc-nav");
+      await expect(page.getByTestId("doc-bar")).toBeVisible();
+      await expect(toggle).toBeVisible();
+      await expect(panel).toBeHidden();
+      await expect(page.getByTestId("doc-sidebar")).toBeHidden();
+      const article = await box(page, "doc-article");
+      expect(article.x).toBeGreaterThanOrEqual(0);
+      expect(article.x + article.width).toBeLessThanOrEqual(375);
+      expect(await sideways(page)).toBeLessThanOrEqual(0);
+
+      // the hamburger opens the panel with focus inside; Esc closes it and focus comes back
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      await expect(panel).toBeVisible();
+      await expect(panel).toHaveAttribute("role", "dialog");
+      await expect(page.getByTestId("doc-nav-close")).toBeFocused();
       await expect(page.getByTestId("docs-tree")).toBeVisible();
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        ),
-      ).toBeLessThanOrEqual(0);
-      const phoneArticle = await page.getByTestId("doc-article").boundingBox();
-      const phoneSidebar = await page.getByTestId("doc-sidebar").boundingBox();
-      if (!phoneArticle || !phoneSidebar) throw new Error("missing layout boxes");
-      expect(phoneSidebar.y).toBeGreaterThan(phoneArticle.y + phoneArticle.height - 1);
+      await page.screenshot({ path: testInfo.outputPath("reader-375-panel.png") });
+      await page.keyboard.press("Escape");
+      await expect(panel).toBeHidden();
+      await expect(toggle).toBeFocused();
+
+      // Tab stays inside the open panel
+      await toggle.click();
+      for (let i = 0; i < 40; i++) {
+        await page.keyboard.press("Tab");
+        const inside = await page.evaluate(() =>
+          document.querySelector('[data-testid="doc-nav"]')?.contains(document.activeElement),
+        );
+        expect(inside).toBe(true);
+      }
+      // the backdrop closes it, and the page behind did not scroll meanwhile
+      await page.mouse.click(360, 400);
+      await expect(panel).toBeHidden();
+
+      // choosing a document closes the panel and opens that document
+      await toggle.click();
+      const overview = panel.getByRole("link", { name: "Overview" }).first();
+      const href = await overview.getAttribute("href");
+      expect(href).not.toBeNull();
+      expect(href).not.toBe(new URL(LONG, page.url()).pathname);
+      await overview.click();
+      await expect(page).toHaveURL((url) => url.pathname === href);
+      await expect(page.getByTestId("doc-nav")).toBeHidden();
+
+      // the bar stays under the site header while the document scrolls, and the headings
+      // dropdown lands on a heading that is fully visible
+      await page.goto(LONG);
+      await page.evaluate(() => window.scrollTo(0, 1200));
+      const header = await page.locator("header").first().boundingBox();
+      const bar = await box(page, "doc-bar");
+      if (!header) throw new Error("no header");
+      expect(Math.abs(bar.y - (header.y + header.height))).toBeLessThanOrEqual(1);
+      const menu = page.getByTestId("outline-menu");
+      await menu.getByRole("button", { name: "On this page" }).click();
+      await page.screenshot({ path: testInfo.outputPath("reader-375-menu.png") });
+      await menu.getByRole("link", { name: "Section 12", exact: true }).click();
+      await expect(menu.getByTestId("outline-menu-list")).toBeHidden();
+      await page.screenshot({ path: testInfo.outputPath("reader-375-jumped.png") });
+      const target = page.locator("#section-12");
+      await expect(target).toBeInViewport();
+      const top = (await target.boundingBox())?.y ?? 0;
+      const bar2 = await box(page, "doc-bar");
+      expect(top).toBeGreaterThanOrEqual(bar2.y + bar2.height - 1);
+      expect(await sideways(page)).toBeLessThanOrEqual(0);
+    });
+
+    test("closes the headings dropdown with Esc and a press outside, scrolling when long", async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 375, height: 600 });
+      await page.goto(LONG);
+      const menu = page.getByTestId("outline-menu");
+      const button = menu.getByRole("button", { name: "On this page" });
+      const list = menu.getByTestId("outline-menu-list");
+      await button.click();
+      await expect(list).toBeVisible();
+      const scrolls = await list.evaluate((el) => el.scrollHeight > el.clientHeight);
+      expect(scrolls).toBe(true);
+      await page.keyboard.press("Escape");
+      await expect(list).toBeHidden();
+      await expect(button).toBeFocused();
+      await button.click();
+      await page.mouse.click(40, 560);
+      await expect(list).toBeHidden();
     });
 
     for (const theme of ["light", "dark"] as const) {

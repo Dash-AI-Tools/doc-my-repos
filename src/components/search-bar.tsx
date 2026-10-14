@@ -53,7 +53,7 @@ export function SearchBar({
         placeholder="Search all documentation"
         autoComplete="off"
         maxLength={500}
-        className="h-11 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-base text-foreground"
+        className="h-12 min-w-0 flex-1 rounded-none border-0 border-b border-input bg-transparent px-1 text-lg text-foreground focus-visible:border-foreground"
       />
       {hiddenFields.map((field) => (
         <input
@@ -65,7 +65,7 @@ export function SearchBar({
       ))}
       <button
         type="submit"
-        className="h-11 shrink-0 rounded-md bg-primary px-5 text-base font-medium text-primary-foreground hover:opacity-90"
+        className="h-12 shrink-0 bg-foreground px-6 text-base font-medium text-background hover:bg-primary hover:text-primary-foreground"
       >
         Search
       </button>

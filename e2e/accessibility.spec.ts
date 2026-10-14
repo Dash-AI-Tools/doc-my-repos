@@ -618,6 +618,80 @@ for (const theme of ["light", "dark"] as const) {
       });
     });
 
+    const READERS: readonly { label: string; page: PageCase }[] = [
+      {
+        label: "document page",
+        page: {
+          name: "document page, long outline (seeded)",
+          path: "/acme/doc-showcase/docs/guides/long-outline",
+          stack: "seeded",
+          ready: async (page) => {
+            await expect(page.getByTestId("doc-article")).toBeVisible();
+            // hydrated: the bar is shown on a small screen, the column on a large one
+            await expect(page.locator(".doc-reader")).toHaveAttribute("data-enhanced", "true");
+          },
+        },
+      },
+      {
+        label: "repository page",
+        page: {
+          name: "repository page, README with headings (seeded)",
+          path: "/acme/api-service",
+          stack: "seeded",
+          ready: async (page) => {
+            await expect(page.getByTestId("readme-section")).toBeVisible();
+            await expect(page.locator(".doc-reader")).toHaveAttribute("data-enhanced", "true");
+          },
+        },
+      },
+    ];
+
+    for (const { label, page: READER } of READERS) {
+      test.describe(`${label} reader layout`, () => {
+        test("three columns at 1440: no violations", async ({ page }) => {
+          test.skip(SKIP_DB, SKIP_DB_REASON);
+          await page.setViewportSize({ width: 1440, height: 900 });
+          await open(page, theme, READER);
+          await expect(page.getByTestId("outline")).toBeVisible();
+          expect(await violations(page)).toEqual([]);
+        });
+
+        test("two columns at 1100 with the headings dropdown open: no violations", async ({
+          page,
+        }) => {
+          test.skip(SKIP_DB, SKIP_DB_REASON);
+          await page.setViewportSize({ width: 1100, height: 900 });
+          await open(page, theme, READER);
+          expect(await violations(page)).toEqual([]);
+          await page.getByTestId("outline-menu").getByRole("button").click();
+          await expect(page.getByTestId("outline-menu-list")).toBeVisible();
+          expect(await violations(page)).toEqual([]);
+        });
+
+        test("one column at 375: no violations, then with the panel open", async ({ page }) => {
+          test.skip(SKIP_DB, SKIP_DB_REASON);
+          await page.emulateMedia({ reducedMotion: "reduce" });
+          await page.setViewportSize({ width: 375, height: 800 });
+          await open(page, theme, READER);
+          expect(await violations(page)).toEqual([]);
+          await page.getByTestId("doc-nav-toggle").click();
+          await expect(page.getByRole("dialog", { name: "Documentation menu" })).toBeVisible();
+          expect(await violations(page)).toEqual([]);
+        });
+
+        test("one column at 375 with the headings dropdown open: no violations", async ({
+          page,
+        }) => {
+          test.skip(SKIP_DB, SKIP_DB_REASON);
+          await page.setViewportSize({ width: 375, height: 800 });
+          await open(page, theme, READER);
+          await page.getByTestId("outline-menu").getByRole("button").click();
+          await expect(page.getByTestId("outline-menu-list")).toBeVisible();
+          expect(await violations(page)).toEqual([]);
+        });
+      });
+    }
+
     test("Shiki token colors meet AA on the code background", async ({ page }) => {
       await open(page, theme, pageByName("theme showcase"));
       const background = THEME_TOKENS[theme]["code-background"];

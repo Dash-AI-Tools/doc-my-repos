@@ -18,13 +18,16 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const home = await loadHome();
   return (
-    <div className="flex flex-col gap-10">
-      <section aria-labelledby="home-heading" className="flex flex-col gap-4">
+    <div className="flex flex-col gap-16">
+      <section aria-labelledby="home-heading" className="flex max-w-3xl flex-col gap-8">
         <div>
-          <h1 id="home-heading" className="text-3xl font-bold tracking-tight">
+          <h1
+            id="home-heading"
+            className="text-5xl leading-[1.02] font-bold tracking-[-0.035em] sm:text-6xl"
+          >
             Documentation portal
           </h1>
-          <p className="mt-2 text-muted-foreground">
+          <p className="mt-5 text-xl leading-relaxed text-muted-foreground">
             Search and browse the Markdown documentation of all your repositories in one place.
           </p>
         </div>

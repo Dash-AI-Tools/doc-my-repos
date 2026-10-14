@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;600&family=JetBrains+Mono:wght@400&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      html,
+      body {
+        width: 1440px;
+        height: 900px;
+        overflow: hidden;
+      }
+      body {
+        background: #fbfbf9;
+        color: #15171c;
+        font:
+          16px/1.65 "Public Sans",
+          sans-serif;
+      }
+      .head {
+        height: 48px;
+        border-bottom: 1px solid #e3e3df;
+        display: flex;
+        align-items: center;
+        padding: 0 48px;
+        gap: 14px;
+        font-size: 13px;
+        color: #5b5f68;
+      }
+      .head b {
+        color: #15171c;
+        font-weight: 600;
+        margin-right: 10px;
+      }
+      .head .sep {
+        color: #c4c4be;
+      }
+      .head .cur {
+        color: #15171c;
+      }
+      .search {
+        margin-left: auto;
+        border: 1px solid #e3e3df;
+        border-radius: 6px;
+        padding: 4px 12px;
+        width: 260px;
+        color: #656a73;
+      }
+      .wrap {
+        display: grid;
+        grid-template-columns: 300px 1fr 240px;
+        gap: 56px;
+        padding: 40px 48px;
+        height: 852px;
+      }
+      .toc {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .toc h6 {
+        font: 600 11px/1 "Public Sans";
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #656a73;
+        margin: 0 0 14px;
+      }
+      .toc div {
+        padding: 5px 0 5px 14px;
+        color: #4a4e57;
+        position: relative;
+      }
+      .toc .n {
+        font-family: "JetBrains Mono";
+        font-size: 12px;
+        color: #656a73;
+        margin-right: 10px;
+      }
+      .toc .part {
+        font-weight: 600;
+        color: #15171c;
+        padding-left: 0;
+        margin-top: 14px;
+      }
+      .toc .on {
+        color: #15171c;
+        font-weight: 600;
+      }
+      .toc .on::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 13px;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #0b7a75;
+      }
+      .toc .seen {
+        color: #656a73;
+      }
+      .art {
+        max-width: 620px;
+      }
+      .art .no {
+        font: 400 13px "JetBrains Mono";
+        color: #0b7a75;
+        margin-bottom: 10px;
+      }
+      .art h1 {
+        font-size: 40px;
+        line-height: 1.15;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        margin-bottom: 12px;
+      }
+      .meta {
+        font-size: 13px;
+        color: #656a73;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e3e3df;
+        margin-bottom: 24px;
+      }
+      .art h2 {
+        font-size: 22px;
+        font-weight: 600;
+        margin: 28px 0 8px;
+      }
+      .art h2 span {
+        font: 400 13px "JetBrains Mono";
+        color: #656a73;
+        margin-right: 10px;
+      }
+      pre {
+        background: #f3f3ef;
+        border: 1px solid #e3e3df;
+        border-radius: 6px;
+        padding: 14px 16px;
+        font: 14px/1.6 "JetBrains Mono";
+        margin: 14px 0;
+      }
+      .fol {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 28px;
+        padding-top: 16px;
+        border-top: 1px solid #e3e3df;
+        font-size: 14px;
+      }
+      .fol small {
+        display: block;
+        color: #656a73;
+        font: 400 12px "JetBrains Mono";
+      }
+      .out {
+        font-size: 13px;
+        line-height: 1.5;
+        border-left: 1px solid #e3e3df;
+        padding-left: 18px;
+        height: fit-content;
+      }
+      .out h6 {
+        font: 600 11px/1 "Public Sans";
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #656a73;
+        margin-bottom: 12px;
+      }
+      .out div {
+        padding: 4px 0;
+        color: #4a4e57;
+      }
+      .out .on {
+        color: #15171c;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <b>DocMyRepos</b><span>acme/doc-showcase</span><span class="sep">/</span><span>2 Guides</span
+      ><span class="sep">/</span><span class="cur">2.1 Getting started</span>
+      <div class="search">Search all documentation &nbsp;⌘K</div>
+    </div>
+    <div class="wrap">
+      <nav class="toc">
+        <h6>doc-showcase · 8 documents</h6>
+        <div><span class="n">1</span>Overview</div>
+        <div class="part"><span class="n">2</span>Guides</div>
+        <div class="on"><span class="n">2.1</span>Getting started</div>
+        <div class="seen"><span class="n">2.2</span>Long outline</div>
+        <div class="part"><span class="n">3</span>Notes</div>
+        <div><span class="n">3.1</span>A custom title</div>
+        <div class="part"><span class="n">4</span>Reference</div>
+        <div><span class="n">4.1</span>API reference</div>
+      </nav>
+      <article class="art">
+        <div class="no">§ 2.1</div>
+        <h1>Getting started</h1>
+        <div class="meta">
+          docs/guides/getting-started.md · synced 3 hours ago · View source on GitHub ↗
+        </div>
+        <p>
+          Install the tool, then follow the checklist. See the long outline and the API reference
+          for what comes next.
+        </p>
+        <h2><span>2.1.1</span>Install</h2>
+        <p>Run the installer once per machine.</p>
+        <pre>npm install docmyrepos</pre>
+        <h2><span>2.1.2</span>Options</h2>
+        <p>Set <code>DATABASE_URL</code> before the first start.</p>
+        <div class="fol">
+          <div><small>← 1</small>Overview</div>
+          <div style="text-align: right"><small>2.2 →</small>Long outline</div>
+        </div>
+      </article>
+      <aside class="out">
+        <h6>On this page</h6>
+        <div class="on">2.1.1 Install</div>
+        <div>2.1.2 Options</div>
+        <div>2.1.3 Environment</div>
+        <div>2.1.4 Architecture</div>
+      </aside>
+    </div>
+  </body>
+</html>

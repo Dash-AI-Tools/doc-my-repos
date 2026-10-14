@@ -107,9 +107,16 @@ test.describe("command palette, seeded database", () => {
       await expect(input(page)).toBeFocused();
     });
 
-    test("the header's tab order is logo, search trigger, theme toggle", async ({ page }) => {
+    test("the header's tab order is logo, main navigation, search trigger, theme toggle", async ({
+      page,
+    }) => {
       await visit(page, "/");
       await page.locator("header a").first().focus();
+      const mainLinks = await page
+        .getByRole("navigation", { name: "Main" })
+        .getByRole("link")
+        .count();
+      for (let i = 0; i < mainLinks; i += 1) await page.keyboard.press("Tab");
       await page.keyboard.press("Tab");
       await expect(trigger(page)).toBeFocused();
       await page.keyboard.press("Tab");

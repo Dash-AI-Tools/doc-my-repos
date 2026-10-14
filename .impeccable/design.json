@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T00:00:00Z",
+  "title": "Design System: DocMyRepos",
+  "extensions": {
+    "colorMeta": {
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#ffffff", "tonalRamp": ["#111111", "#3a3a3a", "#5c5c5c", "#858585", "#b5b5b5", "#e4e4e4", "#f5f5f5", "#ffffff"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#111111", "tonalRamp": ["#111111", "#2a2a2a", "#3a3a3a", "#5c5c5c", "#858585", "#b5b5b5", "#e4e4e4", "#f5f5f5"] },
+      "signal-blue": { "role": "primary", "displayName": "Signal Blue", "canonical": "#2b59ff", "tonalRamp": ["#0a1030", "#1a3bc4", "#2b59ff", "#5578ff", "#7c9bff", "#a9bdff", "#cddaff", "#eaf0ff"] },
+      "signal-blue-deep": { "role": "primary", "displayName": "Signal Blue Deep", "canonical": "#1a3bc4", "tonalRamp": ["#0a1030", "#12296e", "#1a3bc4", "#2b59ff", "#5578ff", "#8aa6ff", "#cddaff", "#eaf0ff"] },
+      "blue-wash": { "role": "secondary", "displayName": "Blue Wash", "canonical": "#eaf0ff", "tonalRamp": ["#1a3bc4", "#2b59ff", "#5578ff", "#8aa6ff", "#b5c7ff", "#cddaff", "#eaf0ff", "#f5f8ff"] },
+      "quiet-ink": { "role": "neutral", "displayName": "Quiet Ink", "canonical": "#5c5c5c", "tonalRamp": ["#111111", "#2a2a2a", "#3a3a3a", "#5c5c5c", "#858585", "#a1a1a6", "#d0d0d0", "#ececec"] },
+      "hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "#e4e4e4", "tonalRamp": ["#5c5c5c", "#858585", "#a8a8a8", "#c4c4c4", "#d6d6d6", "#e4e4e4", "#efefef", "#f5f5f5"] },
+      "night": { "role": "neutral", "displayName": "Night", "canonical": "#0c0c0d", "tonalRamp": ["#0c0c0d", "#151516", "#161617", "#1d1d1f", "#262628", "#3a3a3d", "#7d7d83", "#ececec"] },
+      "night-blue": { "role": "primary", "displayName": "Night Blue", "canonical": "#7c9bff", "tonalRamp": ["#172250", "#2b59ff", "#5578ff", "#7c9bff", "#8aa6ff", "#a9bdff", "#c2d0ff", "#dbe4ff"] },
+      "alarm-red": { "role": "tertiary", "displayName": "Alarm Red", "canonical": "#b91c1c", "tonalRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#b91c1c", "#f87171", "#fca5a5", "#fecaca", "#fef2f2"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Document, repository and home titles. 36/48/60px at base/sm/xl, bold, tracking -0.035em." },
+      "headline": { "displayName": "Headline", "purpose": "Markdown h2 under a hairline top rule." },
+      "title": { "displayName": "Title", "purpose": "Markdown h3, repo-row names, pager targets." },
+      "body": { "displayName": "Body", "purpose": "Rendered Markdown, 18px at 1.7, column near 60rem." },
+      "label": { "displayName": "Label", "purpose": "Navigation, metadata, breadcrumbs, chips. Active state is bold, not larger." },
+      "code": { "displayName": "Code", "purpose": "Code, inline code and source paths only." }
+    },
+    "shadows": [
+      { "name": "none", "value": "none", "purpose": "No shadow at rest, hover or in Mermaid (dropShadow: none). Overlays use a border instead." },
+      { "name": "selected-underline", "value": "inset 0 -2px 0 0 currentColor", "purpose": "Selected-state underline on the theme toggle option; not a depth device." }
+    ],
+    "motion": [
+      { "name": "chevron-rotate", "value": "transform, Tailwind default transition, rotate 90deg when open", "purpose": "Tree folder open/closed." },
+      { "name": "color-shift", "value": "instant color change on hover", "purpose": "Hover moves links to Ink or Signal Blue; nothing animates on load or scroll." },
+      { "name": "focus-ring", "value": "2px solid var(--ring), offset 2px", "purpose": "Every :focus-visible element." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Site Header",
+      "kind": "nav",
+      "refersTo": "site-header",
+      "description": "Sticky 64px header with a bottom hairline: wordmark, text links, underline search, theme toggle.",
+      "html": "<header class=\"ds-header\"><a class=\"ds-wordmark\" href=\"#\">DocMyRepos</a><nav class=\"ds-nav\"><a href=\"#\">Repositories</a><a href=\"#\">Search</a><a href=\"#\">Status</a></nav></header>",
+      "css": ".ds-header { display: flex; align-items: center; gap: 32px; min-height: 64px; padding: 0 32px; background: var(--background, #ffffff); border-bottom: 1px solid var(--border, #e4e4e4); font-family: 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; } .ds-wordmark { font-size: 18px; font-weight: 700; letter-spacing: -0.025em; color: var(--foreground, #111111); text-decoration: none; } .ds-nav { display: flex; gap: 24px; font-size: 14px; } .ds-nav a { color: var(--muted-foreground, #5c5c5c); text-decoration: none; } .ds-nav a:hover { color: var(--foreground, #111111); } .ds-nav a:focus-visible, .ds-wordmark:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Search Trigger",
+      "kind": "input",
+      "refersTo": "palette-trigger",
+      "description": "Underline-style search field that opens the command palette; keycap shows the shortcut.",
+      "html": "<button class=\"ds-search\" type=\"button\"><span>Search</span><kbd class=\"ds-key\">⌘K</kbd></button>",
+      "css": ".ds-search { display: flex; align-items: center; gap: 8px; width: 256px; height: 36px; padding: 0 4px; background: transparent; border: 0; border-bottom: 1px solid var(--input, #858585); font: 400 14px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; color: var(--muted-foreground, #5c5c5c); cursor: pointer; text-align: left; } .ds-search:hover { border-bottom-color: var(--foreground, #111111); color: var(--foreground, #111111); } .ds-search:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; } .ds-key { margin-left: auto; padding: 2px 6px; font: 400 12px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; border: 1px solid var(--border, #e4e4e4); border-radius: 2px; }"
+    },
+    {
+      "name": "Search Submit Button",
+      "kind": "button",
+      "refersTo": "search-submit",
+      "description": "Solid ink button on the search page; hover turns Signal Blue.",
+      "html": "<button class=\"ds-btn\" type=\"submit\">Search</button>",
+      "css": ".ds-btn { height: 48px; padding: 0 24px; background: var(--foreground, #111111); color: var(--background, #ffffff); border: 0; border-radius: 0; font: 500 16px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-btn:hover { background: var(--primary, #2b59ff); color: var(--primary-foreground, #ffffff); } .ds-btn:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Theme Toggle",
+      "kind": "custom",
+      "refersTo": "theme-toggle-option",
+      "description": "Three-option radio group; the selected option is marked by a 2px underline, not a fill.",
+      "html": "<div class=\"ds-toggle\" role=\"radiogroup\" aria-label=\"Theme\"><button class=\"ds-opt ds-opt-on\" role=\"radio\" aria-checked=\"true\">L</button><button class=\"ds-opt\" role=\"radio\" aria-checked=\"false\">D</button><button class=\"ds-opt\" role=\"radio\" aria-checked=\"false\">S</button></div>",
+      "css": ".ds-toggle { display: flex; align-items: center; justify-content: space-around; width: 96px; height: 36px; } .ds-opt { width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: var(--muted-foreground, #5c5c5c); font: 700 12px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; cursor: pointer; } .ds-opt:hover { background: var(--muted, #f5f5f5); color: var(--foreground, #111111); } .ds-opt-on { color: var(--foreground, #111111); box-shadow: inset 0 -2px 0 0 currentColor; } .ds-opt:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Contents Tree",
+      "kind": "nav",
+      "refersTo": "docs-tree-link-current",
+      "description": "Left docs navigation: bold folder names, quiet leaf links, current page in blue and bold.",
+      "html": "<nav class=\"ds-tree\" aria-label=\"Contents\"><div class=\"ds-folder\">Guides</div><ul><li><a href=\"#\">Overview</a></li><li><a href=\"#\" class=\"ds-current\" aria-current=\"page\">Getting started</a></li><li><a href=\"#\">Configuration</a></li></ul></nav>",
+      "css": ".ds-tree { width: 240px; font: 400 14px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; } .ds-folder { padding: 4px 0; font-weight: 700; color: var(--foreground, #111111); } .ds-tree ul { margin: 0 0 0 8px; padding: 0 0 0 12px; list-style: none; border-left: 1px solid var(--border, #e4e4e4); } .ds-tree a { display: block; padding: 4px 4px; color: var(--muted-foreground, #5c5c5c); text-decoration: none; } .ds-tree a:hover { color: var(--foreground, #111111); } .ds-tree a.ds-current, .ds-tree a.ds-current:hover { color: var(--primary, #2b59ff); font-weight: 700; } .ds-tree a:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "On-this-page Outline",
+      "kind": "nav",
+      "refersTo": "outline-link-current",
+      "description": "Right outline on a hairline spine; the active heading gets a 1px blue bar.",
+      "html": "<nav class=\"ds-outline\" aria-label=\"On this page\"><ul><li><a href=\"#\">Install</a></li><li><a href=\"#\" class=\"ds-on\" aria-current=\"location\">Configure</a></li><li><a href=\"#\">Deploy</a></li></ul></nav>",
+      "css": ".ds-outline { width: 224px; font: 400 14px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; } .ds-outline ul { margin: 0; padding: 0; list-style: none; border-left: 1px solid var(--border, #e4e4e4); } .ds-outline a { display: block; margin-left: -1px; padding: 4px 8px 4px 12px; border-left: 1px solid transparent; color: var(--muted-foreground, #5c5c5c); text-decoration: none; } .ds-outline a:hover { color: var(--foreground, #111111); } .ds-outline a.ds-on { border-left-color: var(--primary, #2b59ff); color: var(--foreground, #111111); font-weight: 600; } .ds-outline a:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Document Bar",
+      "kind": "nav",
+      "refersTo": "doc-bar",
+      "description": "Below xl: a sticky 44px bar with a hamburger for the docs panel on the left and an 'On this page' dropdown on the right.",
+      "html": "<div class=\"ds-bar\"><button class=\"ds-bar-btn\" type=\"button\" aria-expanded=\"false\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M4 6h16M4 12h16M4 18h16\"/></svg>Documentation</button><button class=\"ds-bar-btn\" type=\"button\" aria-expanded=\"false\">On this page</button></div>",
+      "css": ".ds-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 44px; padding: 0 20px; background: var(--background, #ffffff); border-bottom: 1px solid var(--border, #e4e4e4); font: 400 14px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; } .ds-bar-btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0; background: none; border: 0; color: var(--foreground, #111111); font: inherit; font-weight: 500; cursor: pointer; } .ds-bar-btn:hover { color: var(--primary, #2b59ff); } .ds-bar-btn:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Docs Panel",
+      "kind": "nav",
+      "refersTo": "docs-panel",
+      "description": "Below lg: the contents tree and filters as a 320px panel from the left over a dimmed backdrop, with a Close text button first.",
+      "html": "<div class=\"ds-panel\"><button class=\"ds-close\" type=\"button\">Close</button><p class=\"ds-label\">Documentation</p><ul><li>Overview</li><li class=\"ds-current\">Getting started</li><li>Configuration</li></ul></div>",
+      "css": ".ds-panel { width: 320px; max-width: 85vw; padding: 20px; background: var(--background, #ffffff); color: var(--foreground, #111111); border-right: 1px solid var(--border, #e4e4e4); font: 400 14px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; } .ds-close { margin-bottom: 16px; padding: 0; background: none; border: 0; color: var(--foreground, #111111); font: inherit; font-weight: 500; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; } .ds-close:hover { color: var(--primary, #2b59ff); } .ds-label { margin: 0 0 8px; font-weight: 700; font-size: 16px; } .ds-panel ul { margin: 0; padding: 0; list-style: none; color: var(--muted-foreground, #5c5c5c); } .ds-panel li { padding: 4px 0; } .ds-panel li.ds-current { color: var(--primary, #2b59ff); font-weight: 700; }"
+    },
+    {
+      "name": "Repository Row",
+      "kind": "card",
+      "refersTo": "repo-row",
+      "description": "Ruled list row replacing a card: bold name, metadata line, hairline bottom rule.",
+      "html": "<div class=\"ds-rows\"><article class=\"ds-row\"><h3><a href=\"#\">acme/billing-service</a></h3><p>Payments and invoicing. 24 documents, synced 2 hours ago.</p></article></div>",
+      "css": ".ds-rows { border-top: 1px solid var(--foreground, #111111); font-family: 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; } .ds-row { display: flex; flex-direction: column; gap: 10px; padding: 24px 0; border-bottom: 1px solid var(--border, #e4e4e4); color: var(--card-foreground, #111111); } .ds-row h3 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.025em; } .ds-row h3 a { color: var(--card-foreground, #111111); text-decoration: none; } .ds-row h3 a:hover { color: var(--primary, #2b59ff); } .ds-row h3 a:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; } .ds-row p { margin: 0; font-size: 14px; color: var(--muted-foreground, #5c5c5c); }"
+    },
+    {
+      "name": "Type Badge",
+      "kind": "chip",
+      "refersTo": "type-badge",
+      "description": "Small pill for the free-form OKF type; Blue Wash with deep-blue text.",
+      "html": "<span class=\"ds-badge\">Runbook</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 9999px; background: var(--okf-badge, #eaf0ff); color: var(--okf-badge-foreground, #1a3bc4); font: 500 12px 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; }"
+    },
+    {
+      "name": "Pager Link",
+      "kind": "custom",
+      "refersTo": "pager-link",
+      "description": "Previous/next link with a top rule that darkens on hover.",
+      "html": "<a class=\"ds-pager\" href=\"#\"><span>Next</span><strong>Configuration</strong></a>",
+      "css": ".ds-pager { display: flex; flex-direction: column; gap: 4px; width: 280px; padding-top: 16px; border-top: 1px solid var(--border, #e4e4e4); font-family: 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; color: var(--card-foreground, #111111); text-decoration: none; } .ds-pager span { font-size: 14px; color: var(--muted-foreground, #5c5c5c); } .ds-pager strong { font-size: 18px; font-weight: 700; letter-spacing: -0.025em; } .ds-pager:hover { border-top-color: var(--foreground, #111111); } .ds-pager:hover strong { color: var(--link, #2b59ff); } .ds-pager:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Swiss Reference Grid",
+    "overview": "DocMyRepos is a reference manual set in the International Typographic Style. Hierarchy does all the work: weight, scale and rules replace boxes, tinted fills and shadows, so nothing performs behind the text. It is built for newcomers and cross-team readers who must find the right document and always know where they stand. The familiar documentation arrangement is kept on purpose (header search, contents tree on the left, article in the middle, on-this-page outline on the right) and expressed in the Swiss grid.\n\nOne grotesque carries every word. Ink on white (near-black on near-black in dark) carries every surface. One blue appears only where it means something: the current location, links, focus and the primary hover. Everything is flush left. The system refuses the card-grid-with-soft-borders docs portal, and the build backs that up: repositories and results are ruled rows, not tiles.\n\nLight and dark are both first-class. Dark is a near-black surface with lighter accents rather than an inversion, and every pairing is gated by contrast tests.",
+    "keyCharacteristics": [
+      "One typeface (Hanken Grotesk, 400 and 700) with tight negative tracking on large titles; monospace only for code and paths.",
+      "Ink, paper and one blue. Grey carries secondary text and nothing else.",
+      "Hairline rules and bold ink rules draw structure; no shadows at rest.",
+      "Near-square corners (2px on code and keys).",
+      "Document-first reading column near 60rem, with navigation as flanking columns."
+    ],
+    "rules": [
+      { "name": "The One Voice Rule", "body": "Signal Blue means \"you are here, or you can act here.\" It is never decoration, never a fill behind body copy, and never a second accent.", "section": "colors" },
+      { "name": "The Contrast Gate Rule", "body": "Raw colors live only in the :root and .dark blocks of globals.css, mirrored in src/lib/theme-tokens.ts. Every pairing used is listed in CONTRAST_PAIRS and fails the unit test below 4.5:1 (text) or 3:1 (UI). A new color enters both files and the pair list, or it does not ship.", "section": "colors" },
+      { "name": "The One Grotesque Rule", "body": "One family, two weights in the system's own chrome (400 and 700). Hierarchy is made with size, weight, tracking and rules, never a second face.", "section": "typography" },
+      { "name": "The Mono Is Code Rule", "body": "Monospace appears only for code, inline code, source paths and result paths. Keyboard hints such as the palette shortcut use the sans.", "section": "typography" },
+      { "name": "The Flat Rule", "body": "A surface is never lifted by shadow. If something must read as above, it is an overlay and it earns a border, not a blur.", "section": "elevation" },
+      { "name": "The Rule-Not-Box Rule", "body": "Group content with a rule above or below it. Do not wrap it in a bordered, filled or shadowed container.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do mark the current location with Signal Blue plus bold (tree) or the 1px blue bar (outline), and use blue for nothing else decorative.",
+      "Do separate content with a 1px rule: Ink above panels and lists, Hairline below rows.",
+      "Do build hierarchy from size, weight (400 or 700) and tracking (-0.035em on display titles).",
+      "Do keep the document column near 60rem and put the article before the navigation in the DOM.",
+      "Do add any new color to both token blocks and to CONTRAST_PAIRS, and check light and dark.",
+      "Do keep monospace for code and paths only."
+    ],
+    "donts": [
+      "Don't wrap repositories, results or panels in bordered, tinted or shadowed cards.",
+      "Don't add shadows outside overlays; depth comes from position and rules.",
+      "Don't introduce a second accent hue or use blue as a fill behind body text.",
+      "Don't round surfaces beyond 4px; only chips and badges are pill-shaped.",
+      "Don't add a second typeface or a display face for headings.",
+      "Don't color-only signal a link inside running text; text links are underlined."
+    ]
+  }
+}

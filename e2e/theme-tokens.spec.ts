@@ -97,7 +97,10 @@ for (const theme of ["light", "dark"] as const) {
       expect(await style(page, ".markdown-body :not(pre) > code", "color")).toBe(
         rgb(tokens["code-foreground"]),
       );
-      expect(await style(page, ".markdown-body th", "background-color")).toBe(rgb(tokens.muted));
+      // Tables are ruled, not filled: the header row sits on a foreground-coloured rule.
+      expect(await style(page, ".markdown-body th", "border-bottom-color")).toBe(
+        rgb(tokens.foreground),
+      );
       expect(await style(page, ".markdown-body blockquote", "color")).toBe(
         rgb(tokens["muted-foreground"]),
       );

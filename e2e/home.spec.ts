@@ -223,7 +223,7 @@ test.describe("home page, seeded database", () => {
   });
 
   for (const [label, width, columns] of [
-    ["desktop", 1280, 3],
+    ["desktop", 1280, 2],
     ["tablet", 800, 2],
     ["phone", 375, 1],
   ] as const) {
@@ -278,8 +278,9 @@ test.describe("home page, seeded database", () => {
       const bg = (l: Locator) => l.evaluate((el) => getComputedStyle(el).backgroundColor);
       const fg = (l: Locator) => l.evaluate((el) => getComputedStyle(el).color);
 
+      // Repositories are a ruled list, not boxes: the row carries the card text colour.
       const full = card(page, SEEDED.full);
-      expect(await bg(full)).toBe(rgb(tokens.card));
+      expect(await fg(full)).toBe(rgb(tokens["card-foreground"]));
       const badge = card(page, SEEDED.private).getByTestId("private-badge");
       expect(await bg(badge)).toBe(rgb(tokens["private-badge"]));
       expect(await fg(badge)).toBe(rgb(tokens["private-badge-foreground"]));
@@ -291,7 +292,7 @@ test.describe("home page, seeded database", () => {
       const pending = card(page, SEEDED.pending).getByTestId("repo-pending");
       expect(await bg(pending)).toBe(rgb(tokens.warning));
       expect(await fg(pending)).toBe(rgb(tokens["warning-foreground"]));
-      expect(await bg(page.getByRole("button", { name: "Search" }))).toBe(rgb(tokens.primary));
+      expect(await bg(page.getByRole("button", { name: "Search" }))).toBe(rgb(tokens.foreground));
 
       await page.screenshot({
         path: testInfo.outputPath(`home-seeded-${theme}.png`),

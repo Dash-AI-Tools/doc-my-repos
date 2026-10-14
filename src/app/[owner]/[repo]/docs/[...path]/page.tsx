@@ -5,11 +5,14 @@ import { cache } from "react";
 import { ChangeLog } from "@/components/change-log";
 import { DocBody } from "@/components/doc-body";
 import { DocBreadcrumb } from "@/components/doc-breadcrumb";
+import { DocNavBar } from "@/components/doc-nav-bar";
 import { DocPager } from "@/components/doc-pager";
+import { DocReader } from "@/components/doc-reader";
 import { DocsNavSlot } from "@/components/docs-nav-slot";
 import { OkfMetadataCard } from "@/components/okf-metadata-card";
 import { OkfNotices } from "@/components/okf-notices";
 import { OutlineNav } from "@/components/outline-nav";
+import { ReaderGrid } from "@/components/reader-grid";
 import { RepoLoadError } from "@/components/repo-load-error";
 import { buildOkfMeta } from "@/lib/okf-meta";
 import { docUrl, repoUrl } from "@/lib/routes";
@@ -39,9 +42,12 @@ import { loadDocPage, type DocPageOk } from "@/server/doc-page";
  * documents: the reserved `index.md` and `log.md` get no card. Time-dependent output (the stale
  * warning) uses `loadedAt`, the time the page was loaded.
  *
- * Layout: the content column, then the sidebar (outline, then table of contents) after it in the
- * DOM, so keyboard users reach the document first. The sidebar sticks to the viewport on large
- * screens and is collapsed on small ones.
+ * Layout (spec "docs-reader-layout"): the breadcrumb sits in the content column, above the title,
+ * so it lines up with the document and the side columns start level with it. The document first in the DOM, then the headings, then the
+ * docs structure, so keyboard users reach the document first. From `xl` three columns (structure,
+ * document, headings), both rails sticky; from `lg` two (the headings become a dropdown in the
+ * document bar); below that one column, with the structure in a slide-in panel opened from the
+ * bar. Without JavaScript the headings and the structure stay as lists after the document.
  */
 export const dynamic = "force-dynamic";
 
@@ -121,8 +127,8 @@ function pagerLink(
   return href === null ? null : { title: doc.title, href };
 }
 
-const BUTTON =
-  "inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-input bg-secondary px-3 text-sm font-medium text-secondary-foreground no-underline hover:bg-accent";
+const SOURCE_LINK =
+  "inline-flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground";
 
 export default async function DocPage({
   params,
@@ -176,34 +182,66 @@ export default async function DocPage({
     showCard && okfMeta.description !== null ? "" : (doc.description?.trim() ?? "");
 
   return (
-    <div className="flex flex-col gap-6">
-      <DocBreadcrumb owner={repo.owner} repo={repo.name} crumbs={crumbs} title={doc.title} />
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="flex min-w-0 flex-col gap-6">
+    <DocReader>
+      <DocNavBar hasOutline={outline.length > 0}>
+        <OutlineNav items={outline} variant="menu" />
+      </DocNavBar>
+      <ReaderGrid
+        outline={outline}
+        nav={
+          <DocsNavSlot
+            docCount={repo.docCount}
+            tree={navTree}
+            owner={repo.owner}
+            repo={repo.name}
+            currentPath={doc.path}
+            awaitingSync={awaitingSync}
+            filters={filters}
+            okf={repo.isOkf}
+          />
+        }
+      >
+        <div className="flex flex-col gap-8">
+          <DocBreadcrumb owner={repo.owner} repo={repo.name} crumbs={crumbs} title={doc.title} />
           <article
             aria-labelledby="doc-title"
             data-testid="doc-article"
-            className="min-w-0 rounded-lg border border-border bg-card p-6 text-card-foreground"
+            className="min-w-0 text-card-foreground"
           >
-            <header data-testid="doc-header" className="flex flex-col gap-3">
-              <h1 id="doc-title" className="text-3xl font-bold tracking-tight break-words">
+            <header data-testid="doc-header" className="flex flex-col gap-4">
+              <h1
+                id="doc-title"
+                className="text-4xl leading-[1.05] font-bold tracking-[-0.035em] break-words sm:text-5xl xl:text-6xl"
+              >
                 {doc.title}
               </h1>
               {description !== "" ? (
                 <p
                   data-testid="doc-description"
-                  className="text-lg break-words text-muted-foreground"
+                  className="text-xl leading-relaxed break-words text-muted-foreground"
                 >
                   {description}
                 </p>
               ) : null}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-b border-border pb-6 text-sm text-muted-foreground">
+                <code data-testid="doc-source-path" className="font-mono break-all">
+                  {doc.path}
+                </code>
+                {syncedAt !== null ? (
+                  <span>
+                    Last synced{" "}
+                    <time dateTime={syncedAt.toISOString()} title={formatAbsoluteTime(syncedAt)}>
+                      {formatRelativeTime(syncedAt, loadedAt)}
+                      <span className="sr-only"> ({formatAbsoluteTime(syncedAt)})</span>
+                    </time>
+                  </span>
+                ) : null}
                 {sourceUrl !== null ? (
                   <a
                     data-testid="source-link"
                     href={sourceUrl}
                     rel="noopener noreferrer"
-                    className={BUTTON}
+                    className={SOURCE_LINK}
                   >
                     View source on GitHub
                     <svg
@@ -223,18 +261,6 @@ export default async function DocPage({
                       <path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" />
                     </svg>
                   </a>
-                ) : null}
-                <code data-testid="doc-source-path" className="font-mono break-all">
-                  {doc.path}
-                </code>
-                {syncedAt !== null ? (
-                  <span>
-                    Last synced{" "}
-                    <time dateTime={syncedAt.toISOString()} title={formatAbsoluteTime(syncedAt)}>
-                      {formatRelativeTime(syncedAt, loadedAt)}
-                      <span className="sr-only"> ({formatAbsoluteTime(syncedAt)})</span>
-                    </time>
-                  </span>
                 ) : null}
               </div>
             </header>
@@ -256,7 +282,7 @@ export default async function DocPage({
               </p>
             ) : null}
 
-            <div className="mt-6">
+            <div className="mt-8">
               {noticeMeta !== null ? <OkfNotices meta={noticeMeta} now={loadedAt} /> : null}
               {isChangeLog ? (
                 <ChangeLog>
@@ -267,28 +293,10 @@ export default async function DocPage({
               )}
             </div>
           </article>
-
-          <DocPager previous={pagerLink(data.previous, data)} next={pagerLink(data.next, data)} />
         </div>
 
-        <div
-          data-testid="doc-sidebar"
-          className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:p-1"
-        >
-          <OutlineNav items={outline} />
-          <DocsNavSlot
-            variant="sidebar"
-            docCount={repo.docCount}
-            tree={navTree}
-            owner={repo.owner}
-            repo={repo.name}
-            currentPath={doc.path}
-            awaitingSync={awaitingSync}
-            filters={filters}
-            okf={repo.isOkf}
-          />
-        </div>
-      </div>
-    </div>
+        <DocPager previous={pagerLink(data.previous, data)} next={pagerLink(data.next, data)} />
+      </ReaderGrid>
+    </DocReader>
   );
 }

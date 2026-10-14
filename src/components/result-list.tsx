@@ -53,7 +53,7 @@ export function ResultItem({ item }: { readonly item: ResultItemData }) {
   return (
     <li
       data-testid="result"
-      className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-card p-4 text-card-foreground"
+      className="flex min-w-0 flex-col gap-1.5 border-b border-border py-5 text-card-foreground"
     >
       <h3 className="text-lg font-semibold break-words">
         <Link

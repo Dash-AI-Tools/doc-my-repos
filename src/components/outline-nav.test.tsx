@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildOutline } from "@/lib/outline";
 
@@ -156,5 +156,119 @@ describe("OutlineNav", () => {
     });
     expect(screen.getAllByRole("link")).toHaveLength(3);
     expect(current()).toBe("Install");
+  });
+});
+
+describe("OutlineNav menu variant", () => {
+  const button = () => screen.getByRole("button", { name: "On this page" });
+  const list = () => screen.getByTestId("outline-menu-list");
+
+  it("is a closed button that states and toggles whether the list is open", () => {
+    render(<OutlineNav items={items} variant="menu" />);
+    expect(button().getAttribute("aria-expanded")).toBe("false");
+    expect(button().getAttribute("aria-controls")).toBe(list().id);
+    expect(list().hidden).toBe(true);
+    fireEvent.click(button());
+    expect(button().getAttribute("aria-expanded")).toBe("true");
+    expect(list().hidden).toBe(false);
+    fireEvent.click(button());
+    expect(list().hidden).toBe(true);
+  });
+
+  it("lists the headings as nested links to their ids", () => {
+    render(<OutlineNav items={items} variant="menu" />);
+    fireEvent.click(button());
+    expect(
+      within(list())
+        .getAllByRole("link")
+        .map((a) => [a.textContent, a.getAttribute("href")]),
+    ).toEqual([
+      ["Install", "#install"],
+      ["Linux", "#linux"],
+      ["Use", "#use"],
+    ]);
+  });
+
+  it("marks the current section", async () => {
+    headings({ install: -400, linux: 100, use: 700 });
+    await act(async () => {
+      render(<OutlineNav items={items} variant="menu" />);
+    });
+    fireEvent.click(button());
+    expect(current()).toBe("Linux");
+  });
+
+  it("closes when a heading is chosen and marks it at once", () => {
+    render(<OutlineNav items={items} variant="menu" />);
+    fireEvent.click(button());
+    fireEvent.click(within(list()).getByRole("link", { name: "Use" }));
+    expect(list().hidden).toBe(true);
+    fireEvent.click(button());
+    expect(current()).toBe("Use");
+  });
+
+  it("leaves the jump to the browser, so the page's scroll padding clears the header and bar", () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<OutlineNav items={items} variant="menu" />);
+    fireEvent.click(button());
+    const link = within(list()).getByRole("link", { name: "Use" });
+    expect(link.getAttribute("href")).toBe("#use");
+    fireEvent.click(link);
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it("closes on Esc and puts focus back on the button", () => {
+    render(<OutlineNav items={items} variant="menu" />);
+    fireEvent.click(button());
+    within(list()).getByRole("link", { name: "Linux" }).focus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(list().hidden).toBe(true);
+    expect(document.activeElement).toBe(button());
+  });
+
+  it("closes on a press outside, not on a press inside", () => {
+    render(<OutlineNav items={items} variant="menu" />);
+    fireEvent.click(button());
+    fireEvent.pointerDown(list());
+    expect(list().hidden).toBe(false);
+    fireEvent.pointerDown(document.body);
+    expect(list().hidden).toBe(true);
+  });
+
+  it("closes when focus moves out of it", () => {
+    render(
+      <>
+        <OutlineNav items={items} variant="menu" />
+        <a href="#elsewhere">elsewhere</a>
+      </>,
+    );
+    fireEvent.click(button());
+    const link = within(list()).getByRole("link", { name: "Use" });
+    link.focus();
+    fireEvent.blur(link, { relatedTarget: screen.getByText("elsewhere") });
+    expect(list().hidden).toBe(true);
+  });
+
+  it("scrolls inside itself when long", () => {
+    render(<OutlineNav items={items} variant="menu" />);
+    expect(list().className).toContain("max-h-[60vh]");
+    expect(list().className).toContain("overflow-y-auto");
+  });
+
+  it("renders nothing for an empty outline, in either variant", () => {
+    expect(render(<OutlineNav items={[]} variant="menu" />).container.innerHTML).toBe("");
+    cleanup();
+    expect(render(<OutlineNav items={[]} variant="column" />).container.innerHTML).toBe("");
+  });
+
+  it("leaves the column variant as the plain list with its own landmark", () => {
+    render(<OutlineNav items={items} />);
+    expect(screen.getByTestId("outline")).toBeTruthy();
+    expect(screen.queryByTestId("outline-menu")).toBeNull();
   });
 });
