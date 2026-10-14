@@ -69,6 +69,7 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
     GITHUB_APP_PRIVATE_KEY: PEM,
     GITHUB_WEBHOOK_SECRET: "SENTINELwebhookSecret",
     SYNC_SECRET: SECRET,
+    SESSION_SECRET: "SENTINELsessionSecret",
     CONFIG_PATH: CONFIG_FILE,
   };
 

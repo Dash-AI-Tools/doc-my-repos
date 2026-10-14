@@ -12,6 +12,8 @@ import RootLayout, { viewport } from "./layout";
 /** The request headers `headers()` returns; each test sets what the proxy would have sent. */
 const requestHeaders = vi.hoisted(() => ({ current: new Headers() }));
 vi.mock("next/headers", () => ({ headers: async () => requestHeaders.current }));
+// The header's user section comes from the session; layout tests render logged-out.
+vi.mock("@/server/auth/current-user", () => ({ getCurrentUser: async () => null }));
 
 const NONCE = "AAECAwQFBgcICQoLDA0ODw==";
 

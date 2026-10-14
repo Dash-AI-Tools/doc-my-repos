@@ -7,6 +7,7 @@ import { SiteHeader } from "@/components/site-header";
 import { ThemeProvider } from "@/components/theme-provider";
 import { E2E_CRASH_HEADER, shouldCrashRootLayout } from "@/lib/e2e-fixtures";
 import { NONCE_HEADER, isValidNonce } from "@/lib/security-headers";
+import { getCurrentUser } from "@/server/auth/current-user";
 import { THEME_TOKENS } from "@/lib/theme-tokens";
 import "./globals.css";
 
@@ -47,6 +48,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     throw new Error("e2e: forced root layout crash");
   }
   const nonce = requestNonce(requestHeaders);
+  // Logged-out on failure: the proxy already keeps unauthenticated visitors off every page
+  // except /login, so null here only means the login page or a forged cookie mid-redirect.
+  const user = await getCurrentUser().catch(() => null);
   return (
     // suppressHydrationWarning: next-themes sets the `dark` class and color-scheme on <html>
     // before React hydrates, so the attributes differ from the server markup by design.
@@ -55,7 +59,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         {/* The provider's inline script is the first child of <body>: it runs before any visible
             content is parsed. It carries the request nonce, so the CSP lets it run. */}
         <ThemeProvider nonce={nonce}>
-          <SiteHeader />
+          <SiteHeader user={user} />
           <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">{children}</main>
           <SiteFooter />
           <CommandPalette />

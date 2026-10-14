@@ -23,6 +23,7 @@ function env(over: Record<string, string | undefined> = {}) {
     GITHUB_APP_PRIVATE_KEY: PEM,
     GITHUB_WEBHOOK_SECRET: "SENTINELwebhookSecret",
     SYNC_SECRET: "SENTINELsyncSecret",
+    SESSION_SECRET: "SENTINELsessionSecret",
     CONFIG_PATH: "/etc/docmyrepos.yml",
     ...over,
   };

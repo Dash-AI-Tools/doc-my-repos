@@ -35,6 +35,7 @@ import { createWebhookDispatch, readConfiguredWebhookSecret } from "./webhooks/s
 const INSTALLATION_TOKEN = "qz7x.k2vw.q9fm.l4dr.t8pa";
 const WEBHOOK_SECRET = "hy3n.c6ub.j1ze.w5ko.g0ra";
 const SYNC_SECRET = "vb8m.x2qp.n7ld.f3zs.y6ck";
+const SESSION_SECRET = "n4qr.t7wb.e9xk.p2md.h6sa";
 const DB_PASSWORD = "kp2w.z9xq.m4tv";
 const CONFIG_FILE = "/etc/docmyrepos.yml";
 const INSTALLATION_ID = 4242;
@@ -58,6 +59,7 @@ const ENV = {
   GITHUB_APP_PRIVATE_KEY: PEM,
   GITHUB_WEBHOOK_SECRET: WEBHOOK_SECRET,
   SYNC_SECRET,
+  SESSION_SECRET,
   CONFIG_PATH: CONFIG_FILE,
   LOG_LEVEL: "debug",
 };
@@ -200,6 +202,7 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
       ["installation token", INSTALLATION_TOKEN],
       ["webhook secret", WEBHOOK_SECRET],
       ["sync secret", SYNC_SECRET],
+      ["session secret", SESSION_SECRET],
       ["database password", DB_PASSWORD],
       ["private key body", KEY_BODY],
       ...jwts.map((jwt, i): [string, string] => [`app JWT ${i}`, jwt]),

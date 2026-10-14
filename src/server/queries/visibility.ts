@@ -15,7 +15,9 @@ import { repos } from "../db/schema";
  *
  * In the MVP every synced repository is visible to every visitor: the active filter is
  * `allowAllRepos`. Queries take the filter as an option only so tests can swap it (for example
- * `publicReposOnly`) and prove that every read honours it (task 9.1).
+ * `publicReposOnly`) and prove that every read honours it (task 9.1). With access-control the
+ * active filter is `allowedReposOnly`; admins read the full list by passing `allowAllRepos`
+ * explicitly from trusted server code (after `requireAdmin`).
  *
  * Every query of the layer is registered in `QUERY_FUNCTIONS` (`index.ts`); `queries.test.ts`
  * runs each one with this filter flipped, and `enforcement.test.ts` statically forbids reading
@@ -25,18 +27,28 @@ import { repos } from "../db/schema";
 /** A condition on the `repos` table that is true for the rows the current reader may see. */
 export type RepoVisibilityFilter = (table: typeof repos) => SQL;
 
-/** MVP: everything synced is visible. */
+/** MVP: everything synced is visible. Kept for tests and trusted admin reads. */
 export const allowAllRepos: RepoVisibilityFilter = () => sql`true`;
 
-/** Hides private repositories. Not used in the MVP; tests use it to flip the filter. */
+/** Hides private repositories. Not used in production; tests use it to flip the filter. */
 export const publicReposOnly: RepoVisibilityFilter = (table) => eq(table.visibility, "public");
 
+/**
+ * Access-control: only admin-allowed repositories are visible. This is the filter every read
+ * uses. Blocked repos keep their stored content (re-allowing needs no re-sync) but disappear
+ * from every query: grid, docs, search, facets, assets.
+ */
+export const allowedReposOnly: RepoVisibilityFilter = (table) => eq(table.isAllowed, true);
+
 /** The filter every read uses unless a test passes another. */
-export const activeRepoVisibility: RepoVisibilityFilter = allowAllRepos;
+export const activeRepoVisibility: RepoVisibilityFilter = allowedReposOnly;
 
 /** Options every shared read accepts. */
 export interface QueryOptions {
-  /** Replaces the active filter. Tests only. */
+  /**
+   * Replaces the active filter. Tests and trusted admin callers (server-side, after
+   * `requireAdmin`) only; pages and public APIs never pass it.
+   */
   readonly visibility?: RepoVisibilityFilter;
 }
 

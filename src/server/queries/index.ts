@@ -54,6 +54,7 @@ export const NOT_QUERIES: ReadonlySet<string> = new Set([
   // visibility.ts: the filter itself.
   "activeRepoVisibility",
   "allowAllRepos",
+  "allowedReposOnly",
   "publicReposOnly",
   "visibleRepos",
   // repo-ref.ts: input checks and the shared repository condition (resolved through the filter).

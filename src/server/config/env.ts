@@ -20,6 +20,10 @@ export interface EnvConfig {
   readonly githubAppPrivateKey: Secret<string>;
   readonly githubWebhookSecret: Secret<string>;
   readonly syncSecret: Secret<string>;
+  readonly sessionSecret: Secret<string>;
+  /** Bootstrap admin (first-login creation when `users` is empty). Null when unset. */
+  readonly adminEmail: string | null;
+  readonly adminPassword: Secret<string> | null;
 }
 
 export const PRIVATE_KEY_VAR = "GITHUB_APP_PRIVATE_KEY";
@@ -116,6 +120,13 @@ const envSchema = z.object({
   GITHUB_APP_INSTALLATION_ID: numericId(),
   GITHUB_WEBHOOK_SECRET: sharedSecret(),
   SYNC_SECRET: sharedSecret(),
+  SESSION_SECRET: sharedSecret(),
+  ADMIN_EMAIL: z
+    .preprocess(blankToUndefined, z.string().email("must be a valid email").optional())
+    .optional(),
+  ADMIN_PASSWORD: z
+    .preprocess(blankToUndefined, z.string().min(12, "must be at least 12 characters").optional())
+    .optional(),
 });
 
 /**
@@ -260,6 +271,12 @@ export function parseEnv(env: EnvSource, readFile: FileReader): EnvResult {
     : parsed.error.issues.map((issue) => `${issue.path.map(String).join(".")}: ${issue.message}`);
   const key = resolvePrivateKey(env, readFile);
   problems.push(...key.problems);
+  // Bootstrap admin must be all-or-nothing; check on raw input so it surfaces alongside others.
+  const adminEmail = typeof env.ADMIN_EMAIL === "string" && env.ADMIN_EMAIL.trim() !== "";
+  const adminPassword = typeof env.ADMIN_PASSWORD === "string" && env.ADMIN_PASSWORD.trim() !== "";
+  if (adminEmail !== adminPassword) {
+    problems.push("ADMIN_EMAIL, ADMIN_PASSWORD: set both or neither (bootstrap admin)");
+  }
 
   if (!parsed.success || key.key === null || problems.length > 0) {
     return { env: null, problems };
@@ -273,6 +290,9 @@ export function parseEnv(env: EnvSource, readFile: FileReader): EnvResult {
       githubAppPrivateKey: key.key,
       githubWebhookSecret: new Secret(v.GITHUB_WEBHOOK_SECRET),
       syncSecret: new Secret(v.SYNC_SECRET),
+      sessionSecret: new Secret(v.SESSION_SECRET),
+      adminEmail: v.ADMIN_EMAIL?.toLowerCase() ?? null,
+      adminPassword: v.ADMIN_PASSWORD ? new Secret(v.ADMIN_PASSWORD) : null,
     }),
     problems: [],
   };

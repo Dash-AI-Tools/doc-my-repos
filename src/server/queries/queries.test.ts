@@ -33,6 +33,7 @@ import {
 import {
   activeRepoVisibility,
   allowAllRepos,
+  allowedReposOnly,
   publicReposOnly,
   type QueryOptions,
   type RepoVisibilityFilter,
@@ -60,7 +61,7 @@ describe("query registry", () => {
   });
 
   it("uses the allow-all filter by default", () => {
-    expect(activeRepoVisibility).toBe(allowAllRepos);
+    expect(activeRepoVisibility).toBe(allowedReposOnly);
   });
 });
 
@@ -514,6 +515,7 @@ describeDb("query layer on a real database", () => {
         description: "The handbook",
         htmlUrl: "https://github.com/Acme/Handbook",
         visibility: "public",
+        isAllowed: true,
         isOkf: true,
         okfVersion: "0.2",
         syncStatus: "ok",

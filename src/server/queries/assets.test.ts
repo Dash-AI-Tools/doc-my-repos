@@ -6,15 +6,15 @@ import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db
 import { findAssetRepo } from "./assets";
 import {
   activeRepoVisibility,
-  allowAllRepos,
+  allowedReposOnly,
   publicReposOnly,
   type RepoVisibilityFilter,
   visibleRepos,
 } from "./visibility";
 
 describe("visibility filter", () => {
-  it("allows every repository in the MVP", () => {
-    expect(activeRepoVisibility).toBe(allowAllRepos);
+  it("hides admin-blocked repositories by default", () => {
+    expect(activeRepoVisibility).toBe(allowedReposOnly);
   });
 
   it("builds the condition from the filter it is given", () => {

@@ -33,6 +33,8 @@ export interface RepoSummary {
   readonly description: string | null;
   readonly htmlUrl: string;
   readonly visibility: RepoVisibility;
+  /** False when an admin blocked the repo (hidden everywhere, content kept). */
+  readonly isAllowed: boolean;
   readonly isOkf: boolean;
   readonly okfVersion: string | null;
   /** `error` when the last sync failed; previously stored content is still served. */
@@ -106,6 +108,7 @@ const summaryColumns = {
   description: repos.description,
   htmlUrl: repos.htmlUrl,
   visibility: repos.visibility,
+  isAllowed: repos.isAllowed,
   isOkf: repos.isOkf,
   okfVersion: repos.okfVersion,
   syncStatus: repos.syncStatus,
@@ -121,6 +124,7 @@ type SummaryRow = {
   description: string | null;
   htmlUrl: string;
   visibility: RepoVisibility;
+  isAllowed: boolean;
   isOkf: boolean;
   okfVersion: string | null;
   syncStatus: RepoSyncStatus;
@@ -141,6 +145,7 @@ function toSummary(row: SummaryRow): RepoSummary {
     description: row.description,
     htmlUrl: row.htmlUrl,
     visibility: row.visibility,
+    isAllowed: row.isAllowed,
     isOkf: row.isOkf,
     okfVersion: row.okfVersion,
     syncStatus: row.syncStatus,

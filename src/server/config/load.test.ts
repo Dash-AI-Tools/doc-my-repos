@@ -103,6 +103,7 @@ const REQUIRED_VARS = [
   "GITHUB_APP_INSTALLATION_ID",
   "GITHUB_WEBHOOK_SECRET",
   "SYNC_SECRET",
+  "SESSION_SECRET",
 ] as const;
 
 function validEnv(overrides: Record<string, string | undefined> = {}): EnvSource {
@@ -114,6 +115,7 @@ function validEnv(overrides: Record<string, string | undefined> = {}): EnvSource
     GITHUB_APP_INSTALLATION_ID: "67890",
     GITHUB_WEBHOOK_SECRET: "webhook-secret-0123",
     SYNC_SECRET: "sync-secret-0123456",
+    SESSION_SECRET: "session-secret-01234567890",
     ...overrides,
   };
 }
@@ -855,17 +857,19 @@ describe("no secret leakage", () => {
   const DB_PASSWORD = "SENTINEL-DB-PASSWORD-7731";
   const WEBHOOK = "SENTINEL-WEBHOOK-SECRET-5521";
   const SYNC = "SENTINEL-SYNC-SECRET-9902";
+  const SESSION = "SENTINEL-SESSION-SECRET-4419";
   const KEY_TEXT = "SENTINEL-KEY-TEXT-4410";
   const FILE_TEXT = "SENTINEL-FILE-TEXT-3307";
   const APP_ID = "SENTINEL-APP-ID-1188";
 
-  const sentinels = [DB_PASSWORD, WEBHOOK, SYNC, KEY_TEXT, FILE_TEXT, APP_ID];
+  const sentinels = [DB_PASSWORD, WEBHOOK, SYNC, SESSION, KEY_TEXT, FILE_TEXT, APP_ID];
 
   const secretEnv = (overrides: Record<string, string | undefined> = {}) =>
     validEnv({
       DATABASE_URL: `postgres://docmyrepos:${DB_PASSWORD}@db.internal:5432/docmyrepos`,
       GITHUB_WEBHOOK_SECRET: WEBHOOK,
       SYNC_SECRET: SYNC,
+      SESSION_SECRET: SESSION,
       ...overrides,
     });
 
@@ -967,6 +971,9 @@ describe("no secret leakage", () => {
       githubAppPrivateKey: "[redacted]",
       githubWebhookSecret: "[redacted]",
       syncSecret: "[redacted]",
+      sessionSecret: "[redacted]",
+      adminEmail: null,
+      adminPassword: null,
     });
   });
 

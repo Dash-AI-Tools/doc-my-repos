@@ -2,11 +2,12 @@ import {
   unstable_doesMiddlewareMatch,
   unstable_getResponseFromNextConfig,
 } from "next/experimental/testing/server";
-import { NextRequest } from "next/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { NextRequest, NextResponse } from "next/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import nextConfig from "../next.config";
 import { BASELINE_HEADERS, HSTS_VALUE, buildContentSecurityPolicy } from "./lib/security-headers";
+import { SESSION_COOKIE } from "./server/auth/session";
 import { config, proxy } from "./proxy";
 
 /**
@@ -26,13 +27,17 @@ function cspNonce(response: Response): string {
   return nonce as string;
 }
 
+beforeEach(() => {
+  vi.stubEnv("E2E_AUTH_BYPASS", "1");
+});
+
 afterEach(() => {
   vi.unstubAllEnvs();
 });
 
 describe("proxy: nonce and CSP", () => {
-  it("passes a fresh nonce to the app and puts the same one in the CSP", () => {
-    const response = proxy(request("/acme/api-service"));
+  it("passes a fresh nonce to the app and puts the same one in the CSP", async () => {
+    const response = await proxy(request("/acme/api-service"));
     const nonce = cspNonce(response);
     expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(response.headers.get("x-middleware-request-x-nonce")).toBe(nonce);
@@ -45,14 +50,15 @@ describe("proxy: nonce and CSP", () => {
     );
   });
 
-  it("never reuses a nonce across requests", () => {
-    const nonces = new Set(Array.from({ length: 200 }, () => cspNonce(proxy(request("/")))));
+  it("never reuses a nonce across requests", async () => {
+    const nonces = new Set<string>();
+    for (let i = 0; i < 200; i++) nonces.add(cspNonce(await proxy(request("/"))));
     expect(nonces.size).toBe(200);
   });
 
-  it("overwrites a nonce or CSP the client sent", () => {
+  it("overwrites a nonce or CSP the client sent", async () => {
     const forged = "AAAAAAAAAAAAAAAAAAAAAA==";
-    const response = proxy(
+    const response = await proxy(
       request("/", { "x-nonce": forged, "content-security-policy": "script-src *" }),
     );
     const nonce = cspNonce(response);
@@ -63,52 +69,56 @@ describe("proxy: nonce and CSP", () => {
     );
   });
 
-  it("keeps the other request headers", () => {
-    const response = proxy(request("/", { "accept-language": "en" }));
+  it("keeps the other request headers", async () => {
+    const response = await proxy(request("/", { "accept-language": "en" }));
     expect(response.headers.get("x-middleware-request-accept-language")).toBe("en");
   });
 
-  it("production build: no 'unsafe-eval'; next dev: 'unsafe-eval'", () => {
+  it("production build: no 'unsafe-eval'; next dev: 'unsafe-eval'", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    expect(proxy(request("/")).headers.get("content-security-policy")).not.toContain("unsafe-eval");
+    expect((await proxy(request("/"))).headers.get("content-security-policy")).not.toContain(
+      "unsafe-eval",
+    );
     vi.stubEnv("NODE_ENV", "development");
-    expect(proxy(request("/")).headers.get("content-security-policy")).toContain("'unsafe-eval'");
+    expect((await proxy(request("/"))).headers.get("content-security-policy")).toContain(
+      "'unsafe-eval'",
+    );
   });
 });
 
 describe("proxy: response headers", () => {
-  it("sets the baseline headers on pages and route handlers", () => {
+  it("sets the baseline headers on pages and route handlers", async () => {
     for (const path of ["/", "/search?q=x", "/api/search?q=x", "/api/sync", "/no/such/page"]) {
-      const response = proxy(request(path));
+      const response = await proxy(request(path));
       for (const [key, value] of BASELINE_HEADERS) {
         expect(response.headers.get(key), `${path} ${key}`).toBe(value);
       }
     }
   });
 
-  it("HSTS and upgrade-insecure-requests only in production over https", () => {
+  it("HSTS and upgrade-insecure-requests only in production over https", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    const plain = proxy(request("/"));
+    const plain = await proxy(request("/"));
     expect(plain.headers.get("strict-transport-security")).toBeNull();
     expect(plain.headers.get("content-security-policy")).not.toContain("upgrade-insecure-requests");
 
-    const forwarded = proxy(request("/", { "x-forwarded-proto": "https" }));
+    const forwarded = await proxy(request("/", { "x-forwarded-proto": "https" }));
     expect(forwarded.headers.get("strict-transport-security")).toBe(HSTS_VALUE);
     expect(forwarded.headers.get("content-security-policy")).toMatch(/upgrade-insecure-requests$/);
 
-    const direct = proxy(new NextRequest(new URL("https://docs.example.com/")));
+    const direct = await proxy(new NextRequest(new URL("https://docs.example.com/")));
     expect(direct.headers.get("strict-transport-security")).toBe(HSTS_VALUE);
 
     vi.stubEnv("NODE_ENV", "development");
     expect(
-      proxy(request("/", { "x-forwarded-proto": "https" })).headers.get(
+      (await proxy(request("/", { "x-forwarded-proto": "https" }))).headers.get(
         "strict-transport-security",
       ),
     ).toBeNull();
   });
 
-  it("does not pre-set the headers the image proxy sets for itself", () => {
-    const response = proxy(request("/api/asset/acme/repo/docs/diagram.svg"));
+  it("does not pre-set the headers the image proxy sets for itself", async () => {
+    const response = await proxy(request("/api/asset/acme/repo/docs/diagram.svg"));
     for (const owned of [
       "content-security-policy",
       "referrer-policy",
@@ -133,7 +143,7 @@ describe("proxy: malformed percent escapes", () => {
     "/api/asset/acme/repo/%E0%A4%A.png",
     "/acme/%ED%A0%80",
   ])("answers %s with 400 and every header, before any route runs", async (path) => {
-    const response = proxy(request(path));
+    const response = await proxy(request(path));
     expect(response.status).toBe(400);
     expect(response.headers.get("x-middleware-next")).toBeNull();
     expect(response.headers.get("content-type")).toBe("text/plain; charset=utf-8");
@@ -144,14 +154,14 @@ describe("proxy: malformed percent escapes", () => {
   });
 
   it("does not echo the path back", async () => {
-    const response = proxy(request("/<script>%E0"));
+    const response = await proxy(request("/<script>%E0"));
     expect(await response.text()).not.toContain("script");
   });
 
   it.each(["/acme/caf%C3%A9", "/acme/a%20b%25c/docs/x%2Fy", "/search?q=%E0%A4%A"])(
     "lets %s through (a malformed query is the page's business)",
-    (path) => {
-      const response = proxy(request(path));
+    async (path) => {
+      const response = await proxy(request(path));
       expect(response.status).toBe(200);
       expect(response.headers.get("x-middleware-next")).toBe("1");
     },
@@ -179,13 +189,13 @@ describe("proxy matcher", () => {
     "/_next/static/chunks/app.js",
     "/_next/static/css/app.css",
     "/_next/static/media/x.woff2",
-  ])("skips the build output %s", (url) => {
+  ])("skips the build output %s", async (url) => {
     expect(unstable_doesMiddlewareMatch({ config, url })).toBe(false);
   });
 });
 
 describe("next.config.ts", () => {
-  it("removes X-Powered-By", () => {
+  it("removes X-Powered-By", async () => {
     expect(nextConfig.poweredByHeader).toBe(false);
   });
 
@@ -205,5 +215,61 @@ describe("next.config.ts", () => {
       });
       for (const [key] of BASELINE_HEADERS) expect(response.headers.get(key), url).toBeNull();
     }
+  });
+});
+
+describe("proxy: auth gate (access-control)", () => {
+  const SECRET = "proxy-gate-test-secret-0123456789";
+
+  // The file's top-level beforeEach stubs E2E_AUTH_BYPASS=1; these tests need the real gate.
+  beforeEach(() => {
+    vi.stubEnv("E2E_AUTH_BYPASS", "");
+    vi.stubEnv("SESSION_SECRET", SECRET);
+  });
+
+  async function gated(path: string, cookie?: string): Promise<NextResponse> {
+    const headers: Record<string, string> = {};
+    if (cookie !== undefined) headers.cookie = `${SESSION_COOKIE}=${cookie}`;
+    return proxy(request(path, headers));
+  }
+
+  it("redirects pages without a session to /login", async () => {
+    for (const path of ["/", "/search", "/acme/repo"]) {
+      const response = await gated(path);
+      expect(response.status, path).toBe(307);
+      expect(response.headers.get("location"), path).toMatch(/\/login$/);
+    }
+  });
+
+  it("answers non-auth APIs with 401 JSON instead of a redirect", async () => {
+    const response = await gated("/api/search?q=x");
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("lets /login and /api/auth/* through without a session", async () => {
+    for (const path of ["/login", "/api/auth/login", "/api/auth/logout"]) {
+      const response = await gated(path);
+      expect(response.headers.get("x-middleware-next"), path).toBe("1");
+    }
+  });
+
+  it("lets the machine endpoints through without a session", async () => {
+    for (const path of ["/api/sync", "/api/webhooks/github"]) {
+      const response = await gated(path);
+      expect(response.headers.get("x-middleware-next"), path).toBe("1");
+    }
+  });
+
+  it("lets a valid session through and rejects tampered or expired ones", async () => {
+    const { signSession, newSessionPayload } = await import("./server/auth/session");
+    const valid = signSession(SECRET, newSessionPayload(1, "admin", 0));
+    expect((await gated("/", valid)).headers.get("x-middleware-next")).toBe("1");
+
+    const [data] = valid.split(".");
+    expect((await gated("/", `${data}.bogus`)).status).toBe(307);
+    const expired = signSession(SECRET, { uid: 1, role: "user", exp: Date.now() - 1, pwv: 0 });
+    expect((await gated("/", expired)).status).toBe(307);
+    expect((await gated("/api/search", `${data}.bogus`)).status).toBe(401);
   });
 });

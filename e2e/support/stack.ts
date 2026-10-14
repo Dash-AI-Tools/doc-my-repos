@@ -139,6 +139,10 @@ export function serverEnv(name: "seeded" | "empty" | "unreachable"): Record<stri
     GITHUB_APP_PRIVATE_KEY_PATH: keyPath,
     GITHUB_WEBHOOK_SECRET: "e2e-webhook-secret-not-a-real-secret",
     SYNC_SECRET: "e2e-sync-secret-not-a-real-secret",
+    SESSION_SECRET: "e2e-session-secret-not-a-real-secret",
+    // Access-control bypass: e2e servers exercise content without a login dance (see proxy.ts).
+    // Unit and route tests cover the real gate; never set this outside the e2e stack.
+    E2E_AUTH_BYPASS: "1",
     // The production build would otherwise start the background sync (src/instrumentation.ts) and
     // mark every seeded repository as failed: the GitHub App credentials here are not real.
     SYNC_SCHEDULER: "0",

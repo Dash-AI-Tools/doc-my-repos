@@ -19,6 +19,7 @@ export const documentReserved = pgEnum("document_reserved", ["index", "log"]);
 export const codeOwnerKinds = ["user", "team", "email"] as const;
 export const syncTrigger = pgEnum("sync_trigger", ["webhook", "manual", "schedule", "startup"]);
 export const syncRunStatus = pgEnum("sync_run_status", ["running", "success", "partial", "failed"]);
+export const userRole = pgEnum("user_role", ["admin", "user"]);
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 
@@ -153,6 +154,9 @@ export const repos = pgTable(
     // requested and not yet covered by a finished pass. Survives across processes and crashes.
     // Never a portal field and never a `sync_runs` status.
     syncRequestedAt: timestamptz("sync_requested_at"),
+    // Admin allow/block toggle (access-control): blocked repos keep content but are hidden
+    // everywhere via the visibility chokepoint. Default true so existing rows stay visible.
+    isAllowed: boolean("is_allowed").notNull().default(true),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },
@@ -246,4 +250,20 @@ export const syncRuns = pgTable(
     error: text("error"),
   },
   (t) => [index("sync_runs_started_at_idx").on(t.startedAt)],
+);
+
+export const users = pgTable(
+  "users",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    email: text("email").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    role: userRole("role").notNull().default("user"),
+    disabled: boolean("disabled").notNull().default(false),
+    // Bumped on password reset/disable so outstanding cookies stop working.
+    pwVersion: integer("pw_version").notNull().default(0),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [unique("users_email_unique").on(t.email)],
 );

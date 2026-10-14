@@ -46,6 +46,10 @@ const ALLOWED_TABLE_ACCESS: readonly { prefix: string; why: string }[] = [
     prefix: "server/webhooks/store.ts",
     why: "webhook write side: marks repositories errored or private, never served to visitors",
   },
+  {
+    prefix: "server/admin/",
+    why: "admin write side: user management (users table only) and the repo allow/block toggle; admin repo reads go through the query layer with an explicit filter",
+  },
 ];
 
 /** UI and shared-pure code that must not touch the database layer at all. */

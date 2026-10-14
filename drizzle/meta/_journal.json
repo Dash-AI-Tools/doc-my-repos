@@ -43,6 +43,13 @@
       "when": 1791641137912,
       "tag": "0005_strange_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791727868818,
+      "tag": "0006_crazy_iron_monger",
+      "breakpoints": true
     }
   ]
 }

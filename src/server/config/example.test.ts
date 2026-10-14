@@ -33,6 +33,7 @@ const ENV: EnvSource = {
   GITHUB_APP_INSTALLATION_ID: "67890",
   GITHUB_WEBHOOK_SECRET: "fake-webhook-secret",
   SYNC_SECRET: "fake-sync-secret",
+  SESSION_SECRET: "fake-session-secret-0123456789",
 };
 
 /** Loads `text` as the config file, with every other input valid. */
