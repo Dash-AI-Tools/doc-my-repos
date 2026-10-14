@@ -101,7 +101,7 @@ export function RepoHeader({ repo, now, lastRun = null }: RepoHeaderProps) {
 
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-3xl font-bold tracking-tight break-words">
+          <h1 className="text-4xl leading-[1.05] font-bold tracking-[-0.035em] break-words sm:text-5xl">
             <span className="font-normal text-muted-foreground">{repo.owner}/</span>
             {repo.name}
           </h1>
@@ -141,7 +141,7 @@ export function RepoHeader({ repo, now, lastRun = null }: RepoHeaderProps) {
           data-testid="github-link"
           href={githubRepoUrl(repo.htmlUrl, repo.owner, repo.name)}
           rel="noopener noreferrer"
-          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-input bg-secondary px-4 text-sm font-medium text-secondary-foreground no-underline hover:bg-accent"
+          className="inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
         >
           <svg
             width="16"

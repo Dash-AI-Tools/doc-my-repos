@@ -48,12 +48,11 @@ describe("RepoGrid", () => {
     expect(within(items[1] as HTMLElement).getByTestId("private-badge")).toBeTruthy();
   });
 
-  it("is responsive: one column, two from sm, three from lg", () => {
+  it("is a ruled list: one column, two from md", () => {
     render(<RepoGrid now={NOW} repos={[repo("a")]} />);
     const cls = screen.getByRole("list").className;
     expect(cls).toContain("grid");
-    expect(cls).toContain("sm:grid-cols-2");
-    expect(cls).toContain("lg:grid-cols-3");
+    expect(cls).toContain("md:grid-cols-2");
   });
 
   it("keeps heading order: h2 for the section, h3 for each card", () => {

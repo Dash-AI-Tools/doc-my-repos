@@ -118,9 +118,15 @@ describe("mermaidThemeVariables", () => {
       expect(vars.darkMode).toBe(theme === "dark");
       expect(vars.textColor).toBe(THEME_TOKENS[theme].foreground);
       for (const [key, value] of Object.entries(vars)) {
-        if (typeof value === "string") expect(value, key).toMatch(/^#[0-9a-f]{6}$/);
+        if (typeof value === "string" && key !== "dropShadow") {
+          expect(value, key).toMatch(/^#[0-9a-f]{6}$/);
+        }
       }
     }
+  });
+
+  it("draws diagrams flat: no drop shadow on nodes", () => {
+    for (const theme of THEMES) expect(mermaidThemeVariables(theme).dropShadow).toBe("none");
   });
 
   it("keeps node text readable on node fill and on the page", () => {

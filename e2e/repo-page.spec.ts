@@ -539,10 +539,11 @@ test.describe("repository page, seeded database", () => {
           theme === "dark" ? /\bdark\b/ : /^(?!.*\bdark\b)/,
         );
         const tokens = THEME_TOKENS[theme];
-        const bg = (l: Locator) => l.evaluate((el) => getComputedStyle(el).backgroundColor);
-        expect(await bg(page.getByTestId("readme-section"))).toBe(rgb(tokens.card));
-        expect(await bg(page.getByTestId("code-owners"))).toBe(rgb(tokens.card));
-        expect(await bg(page.getByTestId("docs-nav"))).toBe(rgb(tokens.card));
+        // Panels are ruled, not boxed: they carry the card text colour on the page background.
+        const fg = (l: Locator) => l.evaluate((el) => getComputedStyle(el).color);
+        expect(await fg(page.getByTestId("readme-section"))).toBe(rgb(tokens["card-foreground"]));
+        expect(await fg(page.getByTestId("code-owners"))).toBe(rgb(tokens["card-foreground"]));
+        expect(await fg(page.getByTestId("docs-nav"))).toBe(rgb(tokens["card-foreground"]));
         await page.screenshot({
           path: testInfo.outputPath(`repo-full-${theme}.png`),
           fullPage: true,

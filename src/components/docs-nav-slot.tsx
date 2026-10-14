@@ -159,16 +159,12 @@ export function DocsNavSlot({
     />
   );
   return (
-    <nav
-      aria-label="Documentation"
-      data-testid="docs-nav"
-      className="min-w-0 rounded-lg border border-border bg-card p-4 text-card-foreground"
-    >
+    <nav aria-label="Documentation" data-testid="docs-nav" className="min-w-0 text-card-foreground">
       {variant === "sidebar" ? (
         <ResponsiveDetails summary={<span>Documentation</span>}>{body}</ResponsiveDetails>
       ) : (
         <>
-          <h2 id="docs-nav-heading" className="text-lg font-semibold">
+          <h2 id="docs-nav-heading" className="text-base font-bold tracking-tight">
             Documentation
           </h2>
           {body}

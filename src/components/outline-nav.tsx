@@ -25,8 +25,17 @@ export interface OutlineNavProps {
 
 const LINE = 0.15;
 
+/**
+ * The reading line, in px from the viewport top: 15% down, but never above the page's scroll
+ * padding (the sticky header), so a heading a deep link scrolled to counts as the current one.
+ */
+function readingLine(): number {
+  const pad = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+  return Math.max(window.innerHeight * LINE, pad + 4);
+}
+
 function currentHeading(ids: readonly string[]): string | null {
-  const line = window.innerHeight * LINE;
+  const line = readingLine();
   let current: string | null = null;
   for (const id of ids) {
     const el = document.getElementById(id);
@@ -49,10 +58,7 @@ function OutlineList({
   onPick: (id: string) => void;
 }) {
   return (
-    <ul
-      role="list"
-      className={top ? "space-y-0.5" : "mt-0.5 ml-3 space-y-0.5 border-l border-border pl-2"}
-    >
+    <ul role="list" className={top ? "border-l border-border" : "ml-3 space-y-0"}>
       {items.map((item) => {
         const current = item.id === active;
         return (
@@ -61,10 +67,10 @@ function OutlineList({
               href={`#${item.id}`}
               aria-current={current ? "location" : undefined}
               onClick={() => onPick(item.id)}
-              className={`block rounded-md px-2 py-1 text-sm no-underline [overflow-wrap:anywhere] hover:bg-muted hover:text-foreground ${
+              className={`-ml-px block border-l py-1 pr-2 pl-3 text-sm no-underline [overflow-wrap:anywhere] hover:text-foreground ${
                 current
-                  ? "bg-accent font-medium text-accent-foreground hover:bg-accent"
-                  : "text-foreground"
+                  ? "border-primary font-semibold text-foreground"
+                  : "border-transparent text-muted-foreground"
               }`}
             >
               {item.text}
@@ -89,7 +95,7 @@ export function OutlineNav({ items }: OutlineNavProps) {
     update();
     if (typeof IntersectionObserver !== "function") return;
     const observer = new IntersectionObserver(update, {
-      rootMargin: `0px 0px -${(1 - LINE) * 100}% 0px`,
+      rootMargin: `0px 0px -${Math.max(0, window.innerHeight - readingLine())}px 0px`,
     });
     for (const id of ids) {
       const el = document.getElementById(id);
@@ -114,7 +120,7 @@ export function OutlineNav({ items }: OutlineNavProps) {
       ref={nav}
       aria-label="On this page"
       data-testid="outline"
-      className="min-w-0 rounded-lg border border-border bg-card p-4 text-card-foreground"
+      className="min-w-0 text-card-foreground"
     >
       <ResponsiveDetails summary={<span>On this page</span>}>
         <div className="mt-2">

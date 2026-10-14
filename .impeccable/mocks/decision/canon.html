@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      html,
+      body {
+        width: 1440px;
+        height: 900px;
+        overflow: hidden;
+      }
+      body {
+        background: #fff;
+        color: #111827;
+        font:
+          16px/1.6 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      .head {
+        height: 60px;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        padding: 0 32px;
+        gap: 24px;
+      }
+      .head b {
+        font-weight: 600;
+        font-size: 18px;
+      }
+      .s {
+        margin: 0 auto;
+        width: 420px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 7px 14px;
+        color: #6b7280;
+        font-size: 14px;
+      }
+      .g {
+        display: grid;
+        grid-template-columns: 280px 1fr 260px;
+        height: 840px;
+      }
+      .side {
+        border-right: 1px solid #e5e7eb;
+        padding: 24px;
+        font-size: 14px;
+      }
+      .side div {
+        padding: 6px 10px;
+        color: #374151;
+        border-radius: 6px;
+      }
+      .side .k {
+        font-weight: 600;
+        margin-top: 10px;
+      }
+      .side .on {
+        background: #eff6ff;
+        color: #2563eb;
+        font-weight: 500;
+      }
+      .art {
+        padding: 40px 56px;
+      }
+      .crumb {
+        font-size: 13px;
+        color: #6b7280;
+        margin-bottom: 14px;
+      }
+      h1 {
+        font-size: 34px;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+      h2 {
+        font-size: 24px;
+        font-weight: 600;
+        margin: 26px 0 8px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      pre {
+        background: #f3f4f6;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 14px;
+        font:
+          14px ui-monospace,
+          Menlo,
+          monospace;
+        margin: 12px 0;
+      }
+      .out {
+        padding: 40px 24px;
+        font-size: 13px;
+        color: #4b5563;
+        border-left: 1px solid #e5e7eb;
+      }
+      .out h6 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 10px;
+      }
+      .out div {
+        padding: 4px 0;
+      }
+      .out .on {
+        color: #2563eb;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <b>DocMyRepos</b>
+      <div class="s">Search documentation… ⌘K</div>
+      <span>☀</span>
+    </div>
+    <div class="g">
+      <nav class="side">
+        <div class="k">acme/doc-showcase</div>
+        <div>Overview</div>
+        <div class="k">Guides</div>
+        <div class="on">Getting started</div>
+        <div>Long outline</div>
+        <div class="k">Notes</div>
+        <div>A custom title</div>
+        <div class="k">Reference</div>
+        <div>API reference</div>
+      </nav>
+      <article class="art">
+        <div class="crumb">Home / acme/doc-showcase / guides</div>
+        <h1>Getting started</h1>
+        <p>Install the tool, then follow the checklist.</p>
+        <h2>Install</h2>
+        <p>Run the installer once per machine.</p>
+        <pre>npm install docmyrepos</pre>
+        <h2>Options</h2>
+        <p>Set DATABASE_URL before the first start.</p>
+      </article>
+      <aside class="out">
+        <h6>On this page</h6>
+        <div class="on">Install</div>
+        <div>Options</div>
+        <div>Environment</div>
+        <div>Architecture</div>
+      </aside>
+    </div>
+  </body>
+</html>

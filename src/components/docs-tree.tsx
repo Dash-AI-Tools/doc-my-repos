@@ -96,14 +96,13 @@ export function initialOpen(
   return open;
 }
 
-const ROW =
-  "block min-w-0 rounded-md px-2 py-1 text-sm no-underline break-words [overflow-wrap:anywhere]";
-const LINK = `${ROW} text-foreground hover:bg-muted hover:text-foreground`;
-const CURRENT = "bg-accent font-medium text-accent-foreground hover:bg-accent";
+const ROW = "block min-w-0 py-1 pr-1 text-sm no-underline break-words [overflow-wrap:anywhere]";
+const LINK = `${ROW} text-muted-foreground hover:text-foreground`;
+const CURRENT = "font-bold !text-primary hover:!text-primary";
 const TOGGLE =
-  "flex min-w-0 items-start gap-1 rounded-md px-1 py-1 text-left text-sm text-foreground hover:bg-muted";
+  "flex min-w-0 items-start gap-1 py-1 text-left text-sm font-bold text-foreground hover:text-primary";
 const BUTTON =
-  "rounded-md border border-border bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground hover:bg-accent";
+  "text-xs font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground";
 
 function Chevron({ open }: { open: boolean }) {
   return (
@@ -184,7 +183,7 @@ function FolderRow({ folder, shared }: { folder: NavFolder; shared: Shared }) {
             aria-expanded={open}
             aria-controls={listId}
             onClick={toggle}
-            className="rounded-md px-1 py-1 hover:bg-muted"
+            className="rounded-md px-1 py-1 hover:text-primary"
           >
             <Chevron open={open} />
             <span className="sr-only">{folder.name}</span>
@@ -241,7 +240,7 @@ function NodeList({
       id={id}
       role="list"
       hidden={hidden}
-      className={nested ? "ml-3 border-l border-border pl-1.5" : undefined}
+      className={nested ? "ml-2 border-l border-border pl-3" : undefined}
     >
       {nodes.map((node) =>
         node.kind === "folder" ? (

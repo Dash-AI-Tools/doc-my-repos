@@ -14,10 +14,10 @@ export interface RepoGridProps {
 export function RepoGrid({ repos, now }: RepoGridProps) {
   return (
     <section aria-labelledby="repositories-heading">
-      <h2 id="repositories-heading" className="text-xl font-semibold">
+      <h2 id="repositories-heading" className="text-2xl font-bold tracking-tight">
         Repositories <span className="font-normal text-muted-foreground">({repos.length})</span>
       </h2>
-      <ul role="list" className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <ul role="list" className="mt-6 grid border-t border-foreground md:grid-cols-2 md:gap-x-12">
         {repos.map((repo) => (
           <RepoCard key={`${repo.owner}/${repo.name}`} repo={repo} now={now} />
         ))}

@@ -60,13 +60,13 @@ export function RepoCard({ repo, now }: RepoCardProps) {
     <li
       data-testid="repo-card"
       data-sync-status={repo.syncStatus}
-      className="relative flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground hover:border-input"
+      className="group relative flex min-w-0 flex-col gap-2.5 border-b border-border py-6 text-card-foreground"
     >
-      <h3 className="text-base font-semibold break-words">
+      <h3 className="text-xl font-bold tracking-tight break-words">
         <Link
           href={repoUrl(repo.owner, repo.name)}
           prefetch={false}
-          className="text-card-foreground no-underline after:absolute after:inset-0 after:rounded-lg hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring"
+          className="text-card-foreground no-underline after:absolute after:inset-0 hover:text-primary focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-ring"
         >
           <span className="font-normal text-muted-foreground">{repo.owner}/</span>
           {repo.name}
@@ -98,7 +98,7 @@ export function RepoCard({ repo, now }: RepoCardProps) {
         className={
           repo.description === null || repo.description.trim() === ""
             ? "text-sm text-muted-foreground italic"
-            : "line-clamp-3 text-sm break-words text-card-foreground"
+            : "line-clamp-3 text-base break-words text-muted-foreground"
         }
       >
         {repo.description === null || repo.description.trim() === ""

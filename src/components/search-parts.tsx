@@ -131,7 +131,7 @@ export function SearchPagination({
   );
 }
 
-const CARD = "rounded-lg border border-border bg-card p-6 text-card-foreground";
+const CARD = "border-t border-foreground pt-6 text-card-foreground";
 
 /** Before any query: how to search. */
 export function NoQueryState() {

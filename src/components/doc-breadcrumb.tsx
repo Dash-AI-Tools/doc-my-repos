@@ -45,7 +45,7 @@ export function DocBreadcrumb({ owner, repo, crumbs, title }: DocBreadcrumbProps
           </Fragment>
         ))}
         <li aria-hidden="true">/</li>
-        <li aria-current="page" className="break-words">
+        <li aria-current="page" className="font-medium break-words text-foreground">
           {title}
         </li>
       </ol>

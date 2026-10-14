@@ -31,8 +31,7 @@ const OPTIONS: readonly { readonly value: ThemeChoice; readonly label: string; i
  * level (`flex`, not `inline-flex`): an inline box would sit on a text baseline, and an empty
  * placeholder and a control with buttons have different baselines.
  */
-const GROUP =
-  "flex h-9 w-24 shrink-0 items-center justify-around rounded-md border border-input bg-background";
+const GROUP = "flex h-9 w-24 shrink-0 items-center justify-around";
 
 const subscribeNothing = () => () => undefined;
 const mountedOnClient = () => true;
@@ -101,7 +100,7 @@ export function ThemeToggle() {
             onKeyDown={(event) => onKeyDown(event, index)}
             className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded ${
               checked
-                ? "bg-primary text-primary-foreground"
+                ? "text-foreground shadow-[inset_0_-2px_0_0_currentColor]"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >

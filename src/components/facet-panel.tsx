@@ -131,7 +131,7 @@ export function FacetPanel({ groups, active, clearHref }: FacetPanelProps) {
             ) : null}
           </>
         }
-        className="rounded-lg border border-border bg-card p-3"
+        className="border-t border-foreground pt-3"
       >
         <div className="mt-3 flex flex-col gap-4">
           {active.length > 0 ? (

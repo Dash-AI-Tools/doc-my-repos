@@ -539,7 +539,7 @@ function PaletteRow({
       // Keep keyboard focus in the input when the mouse presses a row.
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
-      className={`flex min-w-0 flex-col gap-0.5 rounded-md border-l-2 px-3 py-2 text-foreground no-underline hover:text-foreground ${
+      className={`flex min-w-0 flex-col gap-0.5 rounded-md border-l px-3 py-2 text-foreground no-underline hover:text-foreground ${
         active ? "border-ring bg-muted" : "border-transparent"
       }`}
     >
