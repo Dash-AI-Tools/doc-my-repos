@@ -1,18 +1,24 @@
 ---
 type: Guide
 title: GitHub App setup
-description: Register a read-only GitHub App, subscribe it to the right events, configure the webhook and find the App id, private key and installation id. Not yet tested against a real App.
+description: Register a read-only GitHub App, subscribe it to the right events, configure the webhook and find the App id, private key and installation id. Registration (5a) was tested by hand on an organization; install, webhook and manifest flow are not yet tested.
 tags: [guides, setup, github-app]
 status: draft
 sources:
   - src/server/webhooks/router.ts
   - src/server/config/env.ts
-generated: 2026-10-10
+generated: 2026-10-14
 ---
 
 # GitHub App setup
 
-> **Not yet tested end to end.** The steps below were written from the code and from GitHub's documentation. Nobody has registered and installed a test App by following them yet. See [Verification still required by a human](#verification-still-required-by-a-human) at the end.
+> **Partly tested.** The manual registration in section 5a was followed in the GitHub web UI on a real organization (2026-10-14) and the steps below reflect what GitHub showed. The manifest flow (5b), the install, the webhook and the tunnel were not tested yet. See [Verification still required by a human](#verification-still-required-by-a-human) at the end.
+
+## Before you start
+
+- You need to be an **owner** of the organization (or the account owner, for a personal account). Only owners can create an App under _Settings > Developer settings_.
+- GitHub asks you to confirm access (_sudo mode_) with your passkey, GitHub Mobile or password the first time you open the new-App form. Do this yourself; nobody else can do it for you.
+- Decide how GitHub will reach the portal. You can register the App before you have a public URL: leave the webhook inactive and turn it on later (section 5a, step 4).
 
 ## 1. What the App is for
 
@@ -75,13 +81,16 @@ There are two ways. Both end with the same App.
 
 ### 5a. Manual registration
 
-1. Open GitHub, then your organization's **Settings > Developer settings > GitHub Apps > New GitHub App**. (For a personal account use _Settings > Developer settings_ of that account.)
-2. Fill in the name (must be unique on GitHub) and a homepage URL (any URL, for example your portal's).
-3. Leave _Callback URL_ empty and clear _Expire user authorization tokens_ and _Request user authorization during installation_. DocMyRepos does not use user login.
-4. Under **Webhook**, tick _Active_, enter the webhook URL, and paste the webhook secret from section 4. Keep SSL verification enabled.
-5. Set the permissions from section 2 and subscribe to `push` and `repository`.
-6. Under _Where can this GitHub App be installed?_ choose **Only on this account**.
-7. Create the App.
+1. Open `https://github.com/organizations/<ORG>/settings/apps/new` (or _Settings > Developer settings > GitHub Apps > New GitHub App_). For a personal account use _Settings > Developer settings_ of that account. Confirm access if GitHub asks (see _Before you start_).
+2. Fill in the name (must be unique on GitHub; the App's URL slug is the lowercased name with spaces turned into dashes, for example `DocMyRepos My-Org` becomes `docmyrepos-my-org`) and a homepage URL (any URL, for example your portal's or the repository's). The description is optional.
+3. Leave the _Redirect URI_ row empty. Leave _Request user authorization (OAuth) during installation_ and _Enable Device Flow_ unticked. _Expire user authorization tokens_ is ticked by default; it does nothing here because DocMyRepos does not use user login, so leaving it ticked is fine. Leave _Setup URL_ and _Redirect on update_ empty.
+4. Under **Webhook**:
+   - **You have a public URL or tunnel:** keep _Active_ ticked, enter the webhook URL and paste the webhook secret from section 4. Keep SSL verification enabled.
+   - **You do not have one yet:** untick _Active_. The _Webhook URL_ field then stops being required, and you can create the App with it empty. Come back to _App settings > General > Webhook_ later, tick _Active_ and fill in the URL and secret. Until then there are no push-triggered syncs; use the manual sync in section 8.
+5. Open **Repository permissions**, set **Contents** to _Read-only_, and leave everything else at _No access_. **Metadata** is already _Read-only_ and cannot be changed (it is marked _Mandatory_). Leave _Organization permissions_ and _Account permissions_ alone.
+6. Under **Subscribe to events**, tick `push` and `repository`. The checkboxes show up only after the matching permission is set (section 3).
+7. Under _Where can this GitHub App be installed?_ choose **Only on this account**.
+8. Press **Create GitHub App**. GitHub opens the App's settings page with the banner _"You must generate a private key in order to install your GitHub App."_ Continue with section 6, and generate the private key **before** you install.
 
 ### 5b. Manifest flow
 
@@ -120,9 +129,9 @@ What the manifest leaves to you or to GitHub, stated honestly:
 
 ## 6. App id, private key and installation id
 
-1. **App id.** On the App's settings page (_Settings > Developer settings > GitHub Apps > your App_), copy **App ID**, a number. This is `GITHUB_APP_ID`. (It is not the Client ID.)
-2. **Private key.** On the same page under **Private keys**, press _Generate a private key_. GitHub downloads a `.pem` file once. Store it somewhere private. GitHub issues an unencrypted RSA key in PKCS#1 form (`-----BEGIN RSA PRIVATE KEY-----`). DocMyRepos also accepts an unencrypted PKCS#8 RSA key (`-----BEGIN PRIVATE KEY-----`). Encrypted keys and non-RSA keys are rejected.
-3. **Install.** Open the App's **Install App** tab, choose your organization, and select **All repositories** or **Only select repositories**.
+1. **App id.** On the App's settings page (_Settings > Developer settings > GitHub Apps > your App_), under **About**, copy **App ID**, a number. This is `GITHUB_APP_ID`. The page also shows a **Client ID** (starts with `Iv`); it is not the App ID, do not use it for `GITHUB_APP_ID`.
+2. **Private key.** GitHub will not let you install the App until it has a private key, so do this first. On the same page, open **Private keys** (the _Credentials_ tab in the current UI, or the bottom of _General_) and press _Generate a private key_. GitHub downloads a `.pem` file once. Store it somewhere private. GitHub issues an unencrypted RSA key in PKCS#1 form (`-----BEGIN RSA PRIVATE KEY-----`). DocMyRepos also accepts an unencrypted PKCS#8 RSA key (`-----BEGIN PRIVATE KEY-----`). Encrypted keys and non-RSA keys are rejected.
+3. **Install.** Open the App's **Install App** tab, choose your organization, and select **All repositories** or **Only select repositories**. To import every repository of the organization now and in the future, choose **All repositories**. GitHub shows the permissions the App will get ("Read access to code and metadata") before you press **Install**. You can open the page directly at `https://github.com/apps/<app-slug>/installations/new`.
 4. **Installation id.** After installing, you land on a URL like `https://github.com/organizations/<ORG>/settings/installations/<id>` (for a personal account, `https://github.com/settings/installations/<id>`). The number at the end is `GITHUB_APP_INSTALLATION_ID`. You can also find it later under the organization's _Settings > GitHub Apps > Configure_, in the same URL. Through the API, authenticate as the App with a JWT and call `GET /app/installations`; the `id` field of the entry for your organization is the installation id.
 
 ### Which repositories are synced
@@ -131,7 +140,7 @@ The App's installation selection is the upper bound. DocMyRepos discovers reposi
 
 `docmyrepos.config.yml` only narrows that set:
 
-- no `repos` and no `exclude`: every repository the installation can access;
+- no `repos` and no `exclude`: every repository the installation can access (the repository's sample `docmyrepos.config.yml` used to list three demo repositories; check yours does not narrow the set by accident);
 - `repos`: only those names (they must be accessible to the App);
 - `exclude`: every accessible repository except those.
 
@@ -176,6 +185,8 @@ GitHub must be able to reach your machine to deliver webhooks. Use a tunnel to t
 - **ngrok.** `ngrok http 3000`, then use `https://<id>.ngrok-free.app/api/webhooks/github`.
 - **cloudflared.** `cloudflared tunnel --url http://localhost:3000`, then use the printed `https://<name>.trycloudflare.com/api/webhooks/github`.
 
+Next.js reads `.env` only when `pnpm dev` starts. After you change `GITHUB_WEBHOOK_SECRET`, `SYNC_SECRET` or any App variable, stop the dev server and start it again; a server started earlier keeps the old values and answers 401. `pnpm dev` also picks port 3001 when 3000 is taken, which breaks a tunnel pointed at 3000, so make sure only one dev server is running.
+
 Set the App's webhook URL (_App settings > General > Webhook URL_) to the tunnel URL. Free tunnel URLs change on restart, so update it each time. Switch it back to the real host afterwards.
 
 Use _App settings > Advanced > Recent Deliveries_ to see each delivery's request, response and status code, and press _Redeliver_ to send it again. Redelivery is safe: processing is idempotent.
@@ -210,6 +221,7 @@ Answers: 200 finished, 202 another sync is running and will rerun to cover this 
 | Webhook delivery gets 401                                 | `GITHUB_WEBHOOK_SECRET` differs from the App's secret, or a proxy changed the body (re-encoding, compression). Forward the raw body untouched.                                                     |
 | Delivery gets 415                                         | The App's content type is `application/x-www-form-urlencoded`. Change it to `application/json`.                                                                                                    |
 | Delivery gets 500                                         | `GITHUB_WEBHOOK_SECRET` is unset or shorter than 16 characters, or dispatching failed. Check the server log.                                                                                       |
+| Delivery or `/api/sync` gets 401 with body `{"error":"Unauthorized"}` (capital U) | That body comes from the login gate in `src/proxy.ts`, not from the route (the route's own 401 is lowercase `{"error":"unauthorized"}`). `/api/sync` and `/api/webhooks/github` must be exempt from the session gate. If you see this, check that `isPublicPath` in `src/proxy.ts` lists both. |
 | Delivery gets 202 but nothing syncs                       | The event is ignored by design: another branch, a repository outside `repos`/`exclude`, another installation id, or an unhandled event. Check the log line.                                        |
 | `/api/sync` returns 401                                   | Wrong secret, or the header is not `Authorization: Bearer <secret>`.                                                                                                                               |
 | `/api/sync` returns 500 `misconfigured`                   | `SYNC_SECRET` is unset or shorter than 16 characters, or the config file is invalid.                                                                                                               |
@@ -224,13 +236,16 @@ Answers: 200 finished, 202 another sync is running and will rerun to cover this 
 
 This guide has not been tested end to end. To finish task 6.5, a person with permission to create GitHub Apps on a test organization must:
 
-- [ ] Register a test App by following section 5a, and separately by the manifest flow in section 5b. Note any field GitHub rejects and fix the manifest.
-- [ ] Confirm the permissions and event checkboxes match sections 2 and 3, in particular whether `installation` and `installation_repositories` need subscribing or arrive anyway, and whether they are valid in `default_events`.
+- [x] Register a test App by following section 5a (done 2026-10-14 on an organization, with the webhook inactive). The steps were corrected from what GitHub showed.
+- [ ] Register a test App by the manifest flow in section 5b. Note any field GitHub rejects and fix the manifest.
+- [x] Confirm Contents (Read-only), Metadata (mandatory, Read-only), and the `push` and `repository` checkboxes match sections 2 and 3.
+- [x] `installation` arrives without a checkbox: an `installation.created` delivery appeared in _Advanced > Recent Deliveries_ right after the install, with only `push` and `repository` ticked. Not checked yet: `installation_repositories`, and whether either is valid in `default_events`.
 - [ ] Confirm the manifest conversion returns a webhook secret of at least 16 characters.
 - [ ] Generate a private key and confirm DocMyRepos accepts it via `GITHUB_APP_PRIVATE_KEY_PATH` and via the inline variable.
-- [ ] Install the App on a test organization, and confirm the installation id from the URL matches `GET /app/installations`.
-- [ ] Run DocMyRepos through a tunnel, and confirm the `ping` delivery returns 200.
+- [x] Install the App on a test organization (done 2026-10-14 with _All repositories_; GitHub landed on `.../settings/installations/<id>` as described in section 6).
+- [ ] Confirm the installation id from the URL matches `GET /app/installations`.
+- [x] Run DocMyRepos through a tunnel (ngrok), and confirm the `ping` delivery succeeds. Done 2026-10-14: the first deliveries failed with 401 (secret not set yet and, at the time, the login gate in `src/proxy.ts` blocked the route); after fixing both, _Redeliver_ on the ping showed a green check.
 - [ ] Push to a default branch, and confirm a `sync_runs` row with `trigger = 'webhook'` and updated content in the portal.
 - [ ] Add and remove a repository in the installation selection, and confirm the portal follows.
-- [ ] Run the `curl` examples in section 8 against the running app.
+- [x] Run the first `curl` example in section 8 against the running app (2026-10-14: 200, all repositories of the organization synced). The single-repository examples are not run yet.
 - [ ] Rotate the private key and the webhook secret following section 7.
