@@ -173,6 +173,14 @@
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+  /* Text fields show focus on their own edge (ink border, thickened underline), not with the ring. */
+  input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"]):focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: none;
+    border-color: var(--foreground);
+    box-shadow: 0 1px 0 0 var(--foreground);
+  }
   a {
     color: var(--link);
     text-underline-offset: 0.2em;

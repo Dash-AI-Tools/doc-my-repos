@@ -413,7 +413,7 @@ function PaletteDialog() {
               commit(event.currentTarget.value);
             }}
             onKeyDown={onInputKeyDown}
-            className="h-12 min-w-0 flex-1 bg-transparent text-base text-popover-foreground -outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
+            className="h-12 min-w-0 flex-1 bg-transparent text-base text-popover-foreground focus-visible:outline-none"
           />
         </div>
 
