@@ -23,7 +23,7 @@ export default async function HomePage() {
         <div>
           <h1
             id="home-heading"
-            className="text-5xl leading-[1.02] font-bold tracking-[-0.035em] sm:text-6xl"
+            className="text-5xl leading-[1.02] font-bold tracking-[-0.035em] break-words sm:text-6xl"
           >
             Documentation portal
           </h1>

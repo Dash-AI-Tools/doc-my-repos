@@ -1,6 +1,8 @@
+import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
+import { ReadModeProvider } from "./read-mode-provider";
 import { SiteHeader, type HeaderBranding } from "./site-header";
 
 const nav = vi.hoisted(() => ({ pathname: "/" }));
@@ -18,9 +20,16 @@ const PLAIN: HeaderBranding = {
   coloredBar: false,
 };
 
+/** The root layout mounts the read mode provider around the header, so every render does too. */
+const inLayout = (node: ReactElement) => (
+  <ReadModeProvider initialShortcutEnabled>{node}</ReadModeProvider>
+);
+
 function markup(branding: HeaderBranding = PLAIN): string {
   return renderToStaticMarkup(
-    <SiteHeader user={{ email: "admin@example.com", role: "admin" }} branding={branding} />,
+    inLayout(
+      <SiteHeader user={{ email: "admin@example.com", role: "admin" }} branding={branding} />,
+    ),
   );
 }
 
@@ -95,10 +104,12 @@ describe("site header account menu", () => {
   const header = (role: "admin" | "user" | null, pathname = "/"): string => {
     nav.pathname = pathname;
     return renderToStaticMarkup(
-      <SiteHeader
-        user={role === null ? null : { email: `${role}@example.com`, role }}
-        branding={PLAIN}
-      />,
+      inLayout(
+        <SiteHeader
+          user={role === null ? null : { email: `${role}@example.com`, role }}
+          branding={PLAIN}
+        />,
+      ),
     );
   };
 
@@ -136,5 +147,40 @@ describe("site header account menu", () => {
 
   it("shows no account menu when signed out", () => {
     expect(header(null)).not.toContain("account-menu-trigger");
+  });
+});
+
+describe("site header text size control", () => {
+  const cluster = (user: { email: string; role: "admin" | "user" } | null): string =>
+    renderToStaticMarkup(inLayout(<SiteHeader user={user} branding={PLAIN} />));
+
+  it("is in the top bar with a user", () => {
+    expect(cluster({ email: "viewer@example.com", role: "user" })).toContain(
+      'data-testid="text-size-placeholder"',
+    );
+  });
+
+  it("is in the top bar signed out, as on the sign-in page", () => {
+    expect(cluster(null)).toContain('data-testid="text-size-placeholder"');
+  });
+
+  it("sits before the palette trigger and the account menu", () => {
+    const html = cluster({ email: "admin@example.com", role: "admin" });
+    const at = (needle: string) => html.indexOf(needle);
+    expect(at('data-testid="text-size-placeholder"')).toBeGreaterThan(-1);
+    expect(at('data-testid="text-size-placeholder"')).toBeLessThan(
+      at('data-testid="palette-trigger"'),
+    );
+    expect(at('data-testid="palette-trigger"')).toBeLessThan(
+      at('data-testid="account-menu-trigger"'),
+    );
+    // Theme moved into the reading panel.
+    expect(html).not.toContain('data-testid="theme-toggle-placeholder"');
+  });
+});
+
+describe("site header read mode", () => {
+  it("is marked for read mode to hide", () => {
+    expect(markup()).toMatch(/<header[^>]*data-read-hide/);
   });
 });

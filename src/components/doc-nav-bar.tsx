@@ -24,6 +24,7 @@ export function DocNavBar({ hasOutline, children }: { hasOutline: boolean; child
     <div
       ref={bar}
       data-testid="doc-bar"
+      data-read-hide
       className={`sticky top-[var(--site-header-h)] z-20 flex min-h-11 items-center justify-between gap-4 border-b border-border bg-background ${
         hasOutline ? "xl:hidden" : "lg:hidden"
       } ${enhanced ? "" : "invisible"}`}

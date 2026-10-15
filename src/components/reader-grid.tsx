@@ -18,6 +18,9 @@ import { OutlineNav } from "./outline-nav";
  * - DOM order is content, headings, structure: keyboard and screen-reader users reach the content
  *   first, and a visitor without JavaScript finds the two lists after it. Once enhanced, CSS hides
  *   the headings column below `xl`.
+ * - The side tracks are divided by `--text-scale` (set per text size in globals.css), so they keep
+ *   their pixel width at every text size; the breakpoints are media queries, which do not follow
+ *   the root font size, and the content track takes the rest.
  */
 export function ReaderGrid({
   outline,
@@ -29,13 +32,14 @@ export function ReaderGrid({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="grid items-start gap-x-12 gap-y-8 lg:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_14rem] 2xl:grid-cols-[18rem_minmax(0,1fr)_16rem]">
-      <div className="flex w-full max-w-[60rem] min-w-0 flex-col gap-12 justify-self-center lg:col-start-2 lg:row-start-1">
+    <div className="reader-grid grid items-start gap-x-[calc(3rem/var(--text-scale,1))] gap-y-8 lg:grid-cols-[calc(15rem/var(--text-scale,1))_minmax(0,1fr)] xl:grid-cols-[calc(16rem/var(--text-scale,1))_minmax(0,1fr)_calc(14rem/var(--text-scale,1))] 2xl:grid-cols-[calc(18rem/var(--text-scale,1))_minmax(0,1fr)_calc(16rem/var(--text-scale,1))]">
+      <div className="reader-content flex w-full max-w-[60rem] min-w-0 flex-col gap-12 justify-self-center lg:col-start-2 lg:row-start-1">
         {children}
       </div>
 
       <div
         data-testid="doc-sidebar"
+        data-read-hide
         className="min-w-0 group-data-[enhanced=true]/reader:max-xl:hidden lg:col-start-2 lg:row-start-2 lg:w-full lg:max-w-[60rem] lg:justify-self-center xl:sticky xl:top-24 xl:col-start-3 xl:row-start-1 xl:max-h-[calc(100vh-7rem)] xl:max-w-none xl:justify-self-stretch xl:overflow-y-auto"
       >
         <OutlineNav items={outline} />

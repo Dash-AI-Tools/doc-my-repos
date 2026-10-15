@@ -38,7 +38,17 @@ vi.mock("@/server/branding", () => ({
 
 /** The request headers `headers()` returns; each test sets what the proxy would have sent. */
 const requestHeaders = vi.hoisted(() => ({ current: new Headers() }));
-vi.mock("next/headers", () => ({ headers: async () => requestHeaders.current }));
+/** The request cookies `cookies()` returns; the text size test sets the stored choice here. */
+const requestCookies = vi.hoisted(() => ({ current: new Map<string, string>() }));
+vi.mock("next/headers", () => ({
+  headers: async () => requestHeaders.current,
+  cookies: async () => ({
+    get: (name: string) => {
+      const value = requestCookies.current.get(name);
+      return value === undefined ? undefined : { name, value };
+    },
+  }),
+}));
 // The header's user section comes from the session; layout tests render logged-out.
 vi.mock("@/server/auth/current-user", () => ({ getCurrentUser: async () => null }));
 
@@ -74,9 +84,9 @@ describe("root layout", () => {
     expect(root.props.suppressHydrationWarning).toBe(true);
   });
 
-  it("renders the theme toggle in the header and the page content", () => {
+  it("renders the reading menu in the header and the page content", () => {
     expect(html).toMatch(
-      /<header[^>]*>[\s\S]*data-testid="theme-toggle-placeholder"[\s\S]*<\/header>/,
+      /<header[^>]*>[\s\S]*data-testid="text-size-placeholder"[\s\S]*<\/header>/,
     );
     expect(html).toContain("Page content");
   });
@@ -261,5 +271,35 @@ describe("root layout, forced crash for the e2e suite", () => {
     process.env.E2E_FIXTURES = "1";
     requestHeaders.current = new Headers();
     await expect(RootLayout({ children: page })).resolves.toBeDefined();
+  });
+});
+
+describe("root layout, text size on <html>", () => {
+  afterEach(() => {
+    requestCookies.current = new Map();
+  });
+
+  async function htmlTagFor(cookies: Record<string, string>): Promise<string> {
+    requestCookies.current = new Map(Object.entries(cookies));
+    const tree = await renderLayout(NONCE);
+    return renderToStaticMarkup(tree).match(/<html[^>]*>/)?.[0] ?? "";
+  }
+
+  it("sets no attribute when there is no cookie", async () => {
+    expect(await htmlTagFor({})).not.toContain("data-text-size");
+  });
+
+  it.each(["small", "large", "larger", "largest"])("sets data-text-size=%s", async (size) => {
+    expect(await htmlTagFor({ "docmyrepos-text-size": size })).toContain(
+      `data-text-size="${size}"`,
+    );
+  });
+
+  it("sets no attribute for the stored Default", async () => {
+    expect(await htmlTagFor({ "docmyrepos-text-size": "default" })).not.toContain("data-text-size");
+  });
+
+  it.each(["huge", "", "LARGE"])("ignores the invalid cookie %j", async (value) => {
+    expect(await htmlTagFor({ "docmyrepos-text-size": value })).not.toContain("data-text-size");
   });
 });

@@ -1,9 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import type { ReactNode } from "react";
 import { CommandPalette } from "@/components/command-palette";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { ReadModeProvider } from "@/components/read-mode-provider";
+import { ReadingControls } from "@/components/reading-controls";
 import { ThemeProvider } from "@/components/theme-provider";
 import { E2E_CRASH_HEADER, shouldCrashRootLayout } from "@/lib/e2e-fixtures";
 import { NONCE_HEADER, isValidNonce } from "@/lib/security-headers";
@@ -11,6 +13,13 @@ import { getCurrentUser } from "@/server/auth/current-user";
 import { deriveBrandTokens } from "@/lib/branding/colors";
 import { brandStyleBlock } from "@/lib/branding/style";
 import { DEFAULT_BRANDING, getBranding } from "@/server/branding";
+import {
+  DEFAULT_TEXT_SIZE,
+  READ_KEY_COOKIE,
+  TEXT_SIZE_COOKIE,
+  parseReadKey,
+  parseTextSize,
+} from "@/lib/reading-prefs";
 import { THEME_TOKENS } from "@/lib/theme-tokens";
 import "@fontsource-variable/hanken-grotesk";
 import "./globals.css";
@@ -78,10 +87,20 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     hasLogo: branding.hasLogo,
   });
   const coloredBar = primaryColor !== null && accentColor !== null && branding.coloredHeader;
+  // Read on the server so the first HTML already has the reader's size (no flash). Default has no
+  // attribute, so the page then has no text size rules at all.
+  const preferences = await cookies();
+  const textSize = parseTextSize(preferences.get(TEXT_SIZE_COOKIE)?.value);
+  const shortcutEnabled = parseReadKey(preferences.get(READ_KEY_COOKIE)?.value) === "on";
   return (
     // suppressHydrationWarning: next-themes sets the `dark` class and color-scheme on <html>
     // before React hydrates, so the attributes differ from the server markup by design.
-    <html lang="en" suppressHydrationWarning data-colored-header={coloredBar ? "true" : "false"}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      data-colored-header={coloredBar ? "true" : "false"}
+      data-text-size={textSize === DEFAULT_TEXT_SIZE ? undefined : textSize}
+    >
       <body className="flex min-h-screen flex-col">
         {/* Branding overrides (org-branding 3.1): server-rendered, so there is no flash.
             Nothing is emitted when the defaults apply. */}
@@ -89,21 +108,24 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         {/* The provider's inline script is the first script child of <body>: it runs before any
             visible content is parsed. It carries the request nonce, so the CSP lets it run. */}
         <ThemeProvider nonce={nonce}>
-          <SiteHeader
-            user={user}
-            branding={{
-              orgName: branding.orgName,
-              pageTitle: branding.pageTitle,
-              logoVersion: branding.logoVersion,
-              hasLogo: branding.hasLogo,
-              coloredBar: coloredBar,
-            }}
-          />
-          <main className="site-shell mx-auto w-full max-w-[88rem] flex-1 px-5 py-10 sm:px-8 lg:px-16 lg:py-14">
-            {children}
-          </main>
-          <SiteFooter />
-          <CommandPalette />
+          <ReadModeProvider initialShortcutEnabled={shortcutEnabled}>
+            <SiteHeader
+              user={user}
+              branding={{
+                orgName: branding.orgName,
+                pageTitle: branding.pageTitle,
+                logoVersion: branding.logoVersion,
+                hasLogo: branding.hasLogo,
+                coloredBar: coloredBar,
+              }}
+            />
+            <main className="site-shell mx-auto w-full max-w-[88rem] flex-1 px-5 py-10 sm:px-8 lg:px-16 lg:py-14">
+              {children}
+            </main>
+            <SiteFooter />
+            <CommandPalette />
+            <ReadingControls />
+          </ReadModeProvider>
         </ThemeProvider>
       </body>
     </html>

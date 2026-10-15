@@ -374,7 +374,7 @@ test.describe("home page, database unreachable", () => {
       panel.getByRole("heading", { name: "Repositories could not be loaded" }),
     ).toBeVisible();
     await expect(page.getByRole("banner")).toBeVisible();
-    await expect(page.getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Text size and reading options" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Documentation portal");
     await expect(page.getByRole("searchbox")).toBeVisible();
     await expect(page.getByTestId("repo-card")).toHaveCount(0);

@@ -2,6 +2,7 @@ import type { Browser, Locator, Page } from "@playwright/test";
 
 import { THEME_TOKENS, type ThemeName } from "../src/lib/theme-tokens";
 import { expect, test } from "./support/csp";
+import { openReadingPanel, readingButton } from "./support/reading-panel";
 
 /**
  * Task 8.2: theme switching in a real browser (Chromium).
@@ -56,6 +57,7 @@ test.describe("system preference on a first visit", () => {
 
       test(`renders the ${scheme} theme with nothing stored`, async ({ page }, testInfo) => {
         await page.goto(HOME);
+        await openReadingPanel(page);
         expect(await stored(page)).toBeNull();
         await expectTheme(page, scheme);
         await expect(option(page, "System")).toHaveAttribute("aria-checked", "true");
@@ -72,12 +74,14 @@ test.describe("manual choice persists", () => {
     page,
   }) => {
     await page.goto(HOME);
+    await openReadingPanel(page);
     await expectTheme(page, "dark");
 
     await option(page, "Light").click();
     await expectTheme(page, "light");
     expect(await stored(page)).toBe("light");
     await page.reload();
+    await openReadingPanel(page);
     await expectTheme(page, "light");
     await expect(option(page, "Light")).toHaveAttribute("aria-checked", "true");
     await expect(option(page, "System")).toHaveAttribute("aria-checked", "false");
@@ -87,12 +91,14 @@ test.describe("manual choice persists", () => {
     await expectTheme(page, "dark");
     expect(await stored(page)).toBe("dark");
     await page.reload();
+    await openReadingPanel(page);
     await expectTheme(page, "dark");
     await expect(option(page, "Dark")).toHaveAttribute("aria-checked", "true");
   });
 
   test("system follows the OS across a reload and reacts live to OS changes", async ({ page }) => {
     await page.goto(HOME);
+    await openReadingPanel(page);
     await option(page, "Light").click();
     await expectTheme(page, "light");
 
@@ -100,6 +106,7 @@ test.describe("manual choice persists", () => {
     expect(await stored(page)).toBe("system");
     await expectTheme(page, "dark");
     await page.reload();
+    await openReadingPanel(page);
     await expectTheme(page, "dark");
     await expect(option(page, "System")).toHaveAttribute("aria-checked", "true");
 
@@ -110,11 +117,13 @@ test.describe("manual choice persists", () => {
     await page.emulateMedia({ colorScheme: "dark" });
     await expectTheme(page, "dark");
     await page.reload();
+    await openReadingPanel(page);
     await expectTheme(page, "dark");
   });
 
   test("a manual choice ignores later OS changes", async ({ page }) => {
     await page.goto(HOME);
+    await openReadingPanel(page);
     await option(page, "Light").click();
     await page.emulateMedia({ colorScheme: "dark" });
     await page.emulateMedia({ colorScheme: "light" });
@@ -125,6 +134,7 @@ test.describe("manual choice persists", () => {
   test("a stale stored value falls back to the system theme", async ({ page }) => {
     await page.addInitScript((key) => localStorage.setItem(key, "sepia"), KEY);
     await page.goto(HOME);
+    await openReadingPanel(page);
     await expect(option(page, "System")).toHaveAttribute("aria-checked", "true");
   });
 });
@@ -204,9 +214,9 @@ test.describe("no flash of the wrong theme", () => {
       await page.goto(HOME, { waitUntil: "commit" });
       await expect(page.locator("header")).toBeVisible();
       // Hydration has not happened: the toggle is still the inert placeholder.
-      await expect(page.getByTestId("theme-toggle-placeholder")).toBeVisible();
-      await expect(toggle(page)).toHaveCount(0);
-      const placeholderBox = await page.getByTestId("theme-toggle-placeholder").boundingBox();
+      await expect(page.getByTestId("text-size-placeholder")).toBeVisible();
+      await expect(readingButton(page)).toHaveCount(0);
+      const placeholderBox = await page.getByTestId("text-size-placeholder").boundingBox();
 
       const shot = await page.screenshot({ path: testInfo.outputPath("pre-hydration-dark.png") });
       expect(brightness(await pixelOf(browser, shot, SAMPLE_AT.x, SAMPLE_AT.y))).toBeLessThan(40);
@@ -218,11 +228,12 @@ test.describe("no flash of the wrong theme", () => {
         ),
       ).toContain("dark");
 
-      // After hydration it is still dark, and the real toggle took the placeholder's place.
+      // After hydration it is still dark, and the real button took the placeholder's place.
+      await expect(readingButton(page)).toBeVisible();
+      expect(await readingButton(page).boundingBox()).toEqual(placeholderBox);
+      await openReadingPanel(page);
       await expect(option(page, "Dark")).toHaveAttribute("aria-checked", "true");
       await expectTheme(page, "dark");
-      const toggleBox = await toggle(page).boundingBox();
-      expect(toggleBox).toEqual(placeholderBox);
     } finally {
       await context.close();
     }
@@ -247,7 +258,7 @@ test.describe("no flash of the wrong theme", () => {
       const page = await context.newPage();
       await stallScripts(page, 2000);
       await page.goto(HOME, { waitUntil: "commit" });
-      await expect(page.getByTestId("theme-toggle-placeholder")).toBeVisible();
+      await expect(page.getByTestId("text-size-placeholder")).toBeVisible();
       const shot = await page.screenshot();
       expect(brightness(await pixelOf(browser, shot, SAMPLE_AT.x, SAMPLE_AT.y))).toBeGreaterThan(
         240,
@@ -277,7 +288,7 @@ test.describe("no flash of the wrong theme", () => {
         },
       );
       await page.goto(HOME, { waitUntil: "commit" });
-      await expect(page.getByTestId("theme-toggle-placeholder")).toBeVisible();
+      await expect(page.getByTestId("text-size-placeholder")).toBeVisible();
       expect(await isDark(page)).toBe(false);
       const shot = await page.screenshot();
       // This is what the spec forbids: the sampling sees a light page without the script.
@@ -312,18 +323,19 @@ test.describe("no flash of the wrong theme", () => {
   });
 });
 
-test.describe("header toggle", () => {
+test.describe("reading panel theme toggle", () => {
   for (const path of [HOME, MERMAID, "/e2e/theme"]) {
     test(`is present and keyboard operable on ${path}`, async ({ page }, testInfo) => {
       await page.emulateMedia({ colorScheme: "light" });
       await page.goto(path);
-      await expect(page.locator("header").getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+      await openReadingPanel(page);
+      await expect(toggle(page)).toBeVisible();
       await expect(toggle(page).getByRole("radio")).toHaveCount(3);
 
-      // Tab reaches the toggle on the selected option (System), after the logo link and the
-      // search trigger (task 10.4).
-      await page.getByTestId("palette-trigger").focus();
-      await page.keyboard.press("Tab");
+      // The theme group is in the reading panel; its roving tab stop is the selected option.
+      // A key press first, so the browser treats the programmatic focus as keyboard focus (ring).
+      await page.keyboard.press("Shift");
+      await option(page, "System").focus();
       await expect(option(page, "System")).toBeFocused();
       const ring = await option(page, "System").evaluate((el) => {
         const style = getComputedStyle(el);
@@ -361,6 +373,7 @@ test.describe("header toggle", () => {
 
   test("exposes accessible names, a group label and a roving tab stop", async ({ page }) => {
     await page.goto(HOME);
+    await openReadingPanel(page);
     await expect(toggle(page)).toBeVisible();
     for (const name of ["Light", "Dark", "System"] as const) {
       await expect(option(page, name)).toBeVisible();
@@ -382,6 +395,7 @@ test.describe("theme change updates content without a reload", () => {
     page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
 
     await page.goto(MERMAID);
+    await openReadingPanel(page);
     await expectTheme(page, "light");
     const diagram = page.locator(".dmr-mermaid-diagram svg");
     await expect(diagram).toBeVisible({ timeout: 30_000 });

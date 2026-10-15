@@ -497,13 +497,19 @@ describe("cleanSnippet robustness", () => {
 
   it("scales linearly with the input once the input cap is raised", () => {
     const unit = '[a](b) **c** `d` <e f="g"> &h; | i | <a <a [[ ** __ \n';
+    // Best of several runs, so a pause from a busy machine (GC, parallel test workers) does not
+    // inflate one size and fail the ratio.
     const run = (copies: number) => {
       const input = unit.repeat(copies);
       const options = { maxInputChars: input.length + 1 };
       cleanSnippet(input, options);
-      const started = performance.now();
-      cleanSnippet(input, options);
-      return performance.now() - started;
+      let best = Infinity;
+      for (let i = 0; i < 7; i += 1) {
+        const started = performance.now();
+        cleanSnippet(input, options);
+        best = Math.min(best, performance.now() - started);
+      }
+      return best;
     };
     // Warm up, then compare 4x the input: linear is about 4x; quadratic would be about 16x.
     run(500);

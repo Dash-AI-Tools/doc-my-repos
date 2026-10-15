@@ -224,6 +224,8 @@ A Swiss grid expressed as flush-left columns inside a container capped at 88rem 
 
 Document page and repository page (the repository header and the README are its content, the code owners follow it): at xl (1280px), three columns of 16rem tree (18rem from 2xl), fluid content track holding a content column of at most 60rem centred in it, 14rem outline (16rem from 2xl), with a 48px column gap; tree and outline stick at 96px from the top and scroll independently. At lg (1024px) two columns: the 15rem tree on the left and the article beside it, with the outline moved into a dropdown in the document bar. Below lg one column: the document fills the width, the tree is a slide-in panel and the outline is the same dropdown, both opened from the document bar. The DOM is document-first (article before navigation), so without scripts the outline and tree stay as plain lists after the article. Anchored headings keep a scroll offset equal to the sticky header, plus the document bar where there is one, plus 16px; the header and bar publish their measured heights (`--site-header-h`, `--doc-bar-h`) for this.
 
+Text size scales the interface through the root font size (`html[data-text-size]` in `globals.css`, with `--text-scale` set per step). Media queries do not follow the root font size, so the reader's side tracks divide `--text-scale` out (`calc(16rem / var(--text-scale, 1))` and so on): they keep the same pixel width at every size while their text wraps, and the content track keeps its share.
+
 Header is 64px minimum, sticky, with a bottom hairline: wordmark left, Repositories / Search / Status links, then an underline-style search field and the theme toggle pushed right. On narrow screens the links wrap onto their own row.
 
 Lists (repositories on the home page) run in two columns from md with a 48px gutter. Spacing rhythm is 4, 8, 16, 24, 32, 48px; vertical separation prefers rules plus 20-24px padding over gaps and boxes.
@@ -263,6 +265,25 @@ An underline field, not a box: 36px tall, bottom border in Control Edge that tur
 ### Theme Toggle
 
 A three-option radio group (28px icon buttons). The selected option is Ink with a 2px inset underline; unselected options are Quiet Ink with a Tint hover. Rendered as an inert placeholder of the same size until mounted, so nothing shifts.
+
+### Read Mode
+
+On a document page, read mode shows only the document: a single centred column capped at 44rem (about 70 characters), with the body at 1.125rem and a line height of 1.75. Everything else is marked `data-read-hide` and hidden with `display: none`, so it also leaves the tab order and the accessibility tree: the header, footer, the document bar, the docs structure (`DocNavPanel`), the outline column, the breadcrumb, the source and sync row and the OKF metadata card. The mechanism is an attribute, not a re-render: `ReadModeProvider` sets `data-read-mode="true"` on `<html>`, and globals.css keys on it. Nothing is unmounted, so open folders and filters survive the change.
+
+Read mode also changes the paper and the face: the surface tokens are re-pointed on `html[data-read-mode="true"]` to a warm beige (Paper `#f5eedc`, ink `#2b2418`, links `#1a3bc4`), and to a warm dark sepia (`#1d1912` with cream `#e8dfca`) in the dark theme. The document column (`.reader-content`) is set in a system serif stack (Charter, Iowan Old Style, Palatino, Georgia); code stays monospace. Because only tokens change, the floating controls, code blocks and tables follow, and exiting restores everything.
+
+A document page renders `ReadModeTarget` (which makes the page readable) and marks its `<article>` with `data-read-article` (focused on entry, `tabindex="-1"`). The reading options button carries `data-read-toggle` (focused on exit). While on, a fixed landmark labelled "Reading controls" sits top right inside the safe area, holding "Exit read mode" and the reading options panel. It is tokens only and sits above the page and below the search palette. The grid uses the `.reader-grid` and `.reader-content` hooks. When read mode changes the layout, the first visible block is measured before and after and the page is scrolled by the difference, in the same task, so the reader keeps their place.
+
+### Reading Options Control
+
+One sliders icon button (36px, header tokens, named "Text size and reading options") is the only reading control in the top bar; the separate book button, "Aa" button and theme switch are gone. It opens a disclosure panel, not a menu: a 2px-cornered popover in the Paper colour with a Hairline border, 16rem wide (full width below 640px, under the top bar). From top to bottom:
+
+- **Text size**: a native range slider with five stops (Small 87.5%, Default, Large 112.5%, Larger 125%, Largest 150%) and the current step in the label, for example "Larger (125%)"; `aria-valuetext` carries the same. Five small guide dots sit under the track, one per stop, the current one in Signal Blue. A step applies at once.
+- **Read mode**: a bordered button with the open-book icon, `aria-pressed`, inverted (Ink on Paper swapped) while read mode is on. Shown only on document pages. Activating it closes the panel.
+- **Theme**: the Light, Dark and System icon buttons. The panel re-points `--header-foreground` to the popover foreground so they read on Paper whatever the top bar colour.
+- A rule above the "Press R for read mode" checkbox.
+
+The panel closes on Escape (focus returns to the button), on a pointer press outside, and when focus moves to a control outside it. A click that sets no focus (Safari, Firefox on macOS) does not close it. It does not trap focus. The button is a same-size placeholder until mounted, and the same component sits in the floating reading controls in read mode.
 
 ### Contents Tree
 

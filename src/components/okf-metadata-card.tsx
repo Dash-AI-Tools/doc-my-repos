@@ -335,6 +335,7 @@ export function OkfMetadataCard({ meta, now, repoPath }: OkfMetadataCardProps) {
   return (
     <section
       aria-labelledby="okf-meta-heading"
+      data-read-hide
       data-testid="okf-metadata"
       className="mt-4 rounded-md border border-border bg-muted p-4 text-sm text-foreground"
     >

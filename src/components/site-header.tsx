@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import { AccountMenu } from "./account-menu";
 import { HeaderHeight } from "./header-height";
 import { PaletteTrigger } from "./palette-trigger";
-import { ThemeToggle } from "./theme-toggle";
+import { TextSizeMenu } from "./text-size-menu";
 
 export interface HeaderUser {
   readonly email: string;
@@ -38,6 +38,7 @@ export function SiteHeader({
   const logoAlt = branding.hasLogo && branding.pageTitle !== null ? "" : "Home";
   return (
     <header
+      data-read-hide
       className="sticky top-0 z-30 border-b border-header-border bg-header"
       style={
         branding.coloredBar ? ({ "--ring": "var(--header-ring)" } as CSSProperties) : undefined
@@ -72,9 +73,9 @@ export function SiteHeader({
             Repositories
           </Link>
         </nav>
-        <div className="ml-auto flex h-16 items-center gap-3 sm:gap-5">
+        <div className="ml-auto flex min-h-16 max-w-full flex-wrap items-center justify-end gap-x-3 gap-y-2 py-2 sm:gap-x-5">
+          <TextSizeMenu />
           <PaletteTrigger />
-          <ThemeToggle />
           {user ? <AccountMenu user={user} /> : null}
         </div>
       </div>

@@ -685,7 +685,28 @@ test.describe("docs table of contents and document pages, seeded database", () =
       await expect(list).toBeHidden();
       await expect(button).toBeFocused();
       await button.click();
-      await page.mouse.click(40, 560);
+      // A plain content point outside the open list (the list covers much of a phone screen).
+      const outside = await page.evaluate(() => {
+        const box = document
+          .querySelector("[data-testid=outline-menu-list]")!
+          .getBoundingClientRect();
+        for (let y = 120; y < innerHeight; y += 8) {
+          for (let x = 4; x < innerWidth; x += 8) {
+            if (x > box.left - 2 && x < box.right + 2 && y > box.top - 2 && y < box.bottom + 2)
+              continue;
+            const el = document.elementFromPoint(x, y);
+            if (
+              el &&
+              !el.closest("a, button, [data-testid=outline-menu-list]") &&
+              ["P", "H1", "H2", "DIV", "MAIN", "ARTICLE"].includes(el.tagName)
+            )
+              return { x, y };
+          }
+        }
+        return null;
+      });
+      expect(outside).not.toBeNull();
+      await page.mouse.click(outside!.x, outside!.y);
       await expect(list).toBeHidden();
     });
 

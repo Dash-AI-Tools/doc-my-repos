@@ -13,6 +13,7 @@ import { OkfMetadataCard } from "@/components/okf-metadata-card";
 import { OkfNotices } from "@/components/okf-notices";
 import { OutlineNav } from "@/components/outline-nav";
 import { ReaderGrid } from "@/components/reader-grid";
+import { ReadModeTarget } from "@/components/read-mode-target";
 import { RepoLoadError } from "@/components/repo-load-error";
 import { buildOkfMeta } from "@/lib/okf-meta";
 import { docUrl, repoUrl } from "@/lib/routes";
@@ -184,6 +185,7 @@ export default async function DocPage({
 
   return (
     <DocReader>
+      <ReadModeTarget />
       <DocNavBar hasOutline={outline.length > 0}>
         <OutlineNav items={outline} variant="menu" />
       </DocNavBar>
@@ -207,6 +209,8 @@ export default async function DocPage({
           <article
             aria-labelledby="doc-title"
             data-testid="doc-article"
+            data-read-article
+            tabIndex={-1}
             className="min-w-0 text-card-foreground"
           >
             <header data-testid="doc-header" className="flex flex-col gap-4">
@@ -224,7 +228,10 @@ export default async function DocPage({
                   {description}
                 </p>
               ) : null}
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-b border-border pb-6 text-sm text-muted-foreground">
+              <div
+                data-read-hide
+                className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-b border-border pb-6 text-sm text-muted-foreground"
+              >
                 <code data-testid="doc-source-path" className="font-mono break-all">
                   {doc.path}
                 </code>

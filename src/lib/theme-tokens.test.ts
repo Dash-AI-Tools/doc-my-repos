@@ -199,7 +199,12 @@ describe("no raw colors outside the tokens", () => {
 
   it("keeps hex values in globals.css inside the token blocks and Shiki-independent rules", () => {
     const css = readFileSync(join(SRC, "app", "globals.css"), "utf8");
-    const outside = css.replace(/\n(?::root|\.dark) \{[^}]*\}/g, "");
-    expect(outside.match(hex), "hex outside :root/.dark").toBeNull();
+    // The read mode paper blocks are the one other place: they re-point the same tokens, and
+    // text-scale.test.ts checks their contrast.
+    const outside = css.replace(
+      /\n(?::root|\.dark|html(?:\.dark)?\[data-read-mode="true"\]) \{[^}]*\}/g,
+      "",
+    );
+    expect(outside.match(hex), "hex outside the token blocks").toBeNull();
   });
 });
