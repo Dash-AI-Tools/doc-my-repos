@@ -3,6 +3,8 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
+import { fieldClass } from "@/lib/ui";
+
 /** Row shape from the admin users API. Local copy: components take data as props. */
 export interface AdminUserView {
   readonly id: number;
@@ -100,7 +102,7 @@ export function UserManager({ initialUsers }: { initialUsers: AdminUserView[] })
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded-md border border-input bg-background px-3 py-2"
+            className={fieldClass}
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
@@ -111,7 +113,7 @@ export function UserManager({ initialUsers }: { initialUsers: AdminUserView[] })
             minLength={12}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded-md border border-input bg-background px-3 py-2"
+            className={fieldClass}
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
@@ -119,7 +121,7 @@ export function UserManager({ initialUsers }: { initialUsers: AdminUserView[] })
           <select
             value={role}
             onChange={(e) => setRole(e.target.value === "admin" ? "admin" : "user")}
-            className="rounded-md border border-input bg-background px-3 py-2"
+            className={fieldClass}
           >
             <option value="user">User (viewer)</option>
             <option value="admin">Admin</option>
