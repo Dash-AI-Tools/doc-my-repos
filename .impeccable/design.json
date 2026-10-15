@@ -4,33 +4,205 @@
   "title": "Design System: DocMyRepos",
   "extensions": {
     "colorMeta": {
-      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#ffffff", "tonalRamp": ["#111111", "#3a3a3a", "#5c5c5c", "#858585", "#b5b5b5", "#e4e4e4", "#f5f5f5", "#ffffff"] },
-      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#111111", "tonalRamp": ["#111111", "#2a2a2a", "#3a3a3a", "#5c5c5c", "#858585", "#b5b5b5", "#e4e4e4", "#f5f5f5"] },
-      "signal-blue": { "role": "primary", "displayName": "Signal Blue", "canonical": "#2b59ff", "tonalRamp": ["#0a1030", "#1a3bc4", "#2b59ff", "#5578ff", "#7c9bff", "#a9bdff", "#cddaff", "#eaf0ff"] },
-      "signal-blue-deep": { "role": "primary", "displayName": "Signal Blue Deep", "canonical": "#1a3bc4", "tonalRamp": ["#0a1030", "#12296e", "#1a3bc4", "#2b59ff", "#5578ff", "#8aa6ff", "#cddaff", "#eaf0ff"] },
-      "blue-wash": { "role": "secondary", "displayName": "Blue Wash", "canonical": "#eaf0ff", "tonalRamp": ["#1a3bc4", "#2b59ff", "#5578ff", "#8aa6ff", "#b5c7ff", "#cddaff", "#eaf0ff", "#f5f8ff"] },
-      "quiet-ink": { "role": "neutral", "displayName": "Quiet Ink", "canonical": "#5c5c5c", "tonalRamp": ["#111111", "#2a2a2a", "#3a3a3a", "#5c5c5c", "#858585", "#a1a1a6", "#d0d0d0", "#ececec"] },
-      "hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "#e4e4e4", "tonalRamp": ["#5c5c5c", "#858585", "#a8a8a8", "#c4c4c4", "#d6d6d6", "#e4e4e4", "#efefef", "#f5f5f5"] },
-      "night": { "role": "neutral", "displayName": "Night", "canonical": "#0c0c0d", "tonalRamp": ["#0c0c0d", "#151516", "#161617", "#1d1d1f", "#262628", "#3a3a3d", "#7d7d83", "#ececec"] },
-      "night-blue": { "role": "primary", "displayName": "Night Blue", "canonical": "#7c9bff", "tonalRamp": ["#172250", "#2b59ff", "#5578ff", "#7c9bff", "#8aa6ff", "#a9bdff", "#c2d0ff", "#dbe4ff"] },
-      "alarm-red": { "role": "tertiary", "displayName": "Alarm Red", "canonical": "#b91c1c", "tonalRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#b91c1c", "#f87171", "#fca5a5", "#fecaca", "#fef2f2"] }
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#111111",
+          "#3a3a3a",
+          "#5c5c5c",
+          "#858585",
+          "#b5b5b5",
+          "#e4e4e4",
+          "#f5f5f5",
+          "#ffffff"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#111111",
+        "tonalRamp": [
+          "#111111",
+          "#2a2a2a",
+          "#3a3a3a",
+          "#5c5c5c",
+          "#858585",
+          "#b5b5b5",
+          "#e4e4e4",
+          "#f5f5f5"
+        ]
+      },
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "#2b59ff",
+        "tonalRamp": [
+          "#0a1030",
+          "#1a3bc4",
+          "#2b59ff",
+          "#5578ff",
+          "#7c9bff",
+          "#a9bdff",
+          "#cddaff",
+          "#eaf0ff"
+        ]
+      },
+      "signal-blue-deep": {
+        "role": "primary",
+        "displayName": "Signal Blue Deep",
+        "canonical": "#1a3bc4",
+        "tonalRamp": [
+          "#0a1030",
+          "#12296e",
+          "#1a3bc4",
+          "#2b59ff",
+          "#5578ff",
+          "#8aa6ff",
+          "#cddaff",
+          "#eaf0ff"
+        ]
+      },
+      "blue-wash": {
+        "role": "secondary",
+        "displayName": "Blue Wash",
+        "canonical": "#eaf0ff",
+        "tonalRamp": [
+          "#1a3bc4",
+          "#2b59ff",
+          "#5578ff",
+          "#8aa6ff",
+          "#b5c7ff",
+          "#cddaff",
+          "#eaf0ff",
+          "#f5f8ff"
+        ]
+      },
+      "quiet-ink": {
+        "role": "neutral",
+        "displayName": "Quiet Ink",
+        "canonical": "#5c5c5c",
+        "tonalRamp": [
+          "#111111",
+          "#2a2a2a",
+          "#3a3a3a",
+          "#5c5c5c",
+          "#858585",
+          "#a1a1a6",
+          "#d0d0d0",
+          "#ececec"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#e4e4e4",
+        "tonalRamp": [
+          "#5c5c5c",
+          "#858585",
+          "#a8a8a8",
+          "#c4c4c4",
+          "#d6d6d6",
+          "#e4e4e4",
+          "#efefef",
+          "#f5f5f5"
+        ]
+      },
+      "night": {
+        "role": "neutral",
+        "displayName": "Night",
+        "canonical": "#0c0c0d",
+        "tonalRamp": [
+          "#0c0c0d",
+          "#151516",
+          "#161617",
+          "#1d1d1f",
+          "#262628",
+          "#3a3a3d",
+          "#7d7d83",
+          "#ececec"
+        ]
+      },
+      "night-blue": {
+        "role": "primary",
+        "displayName": "Night Blue",
+        "canonical": "#7c9bff",
+        "tonalRamp": [
+          "#172250",
+          "#2b59ff",
+          "#5578ff",
+          "#7c9bff",
+          "#8aa6ff",
+          "#a9bdff",
+          "#c2d0ff",
+          "#dbe4ff"
+        ]
+      },
+      "alarm-red": {
+        "role": "tertiary",
+        "displayName": "Alarm Red",
+        "canonical": "#b91c1c",
+        "tonalRamp": [
+          "#450a0a",
+          "#7f1d1d",
+          "#991b1b",
+          "#b91c1c",
+          "#f87171",
+          "#fca5a5",
+          "#fecaca",
+          "#fef2f2"
+        ]
+      }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Document, repository and home titles. 36/48/60px at base/sm/xl, bold, tracking -0.035em." },
-      "headline": { "displayName": "Headline", "purpose": "Markdown h2 under a hairline top rule." },
+      "display": {
+        "displayName": "Display",
+        "purpose": "Document, repository and home titles. 36/48/60px at base/sm/xl, bold, tracking -0.035em."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Markdown h2 under a hairline top rule."
+      },
       "title": { "displayName": "Title", "purpose": "Markdown h3, repo-row names, pager targets." },
-      "body": { "displayName": "Body", "purpose": "Rendered Markdown, 18px at 1.7, column near 60rem." },
-      "label": { "displayName": "Label", "purpose": "Navigation, metadata, breadcrumbs, chips. Active state is bold, not larger." },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Rendered Markdown, 18px at 1.7, column near 60rem."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Navigation, metadata, breadcrumbs, chips. Active state is bold, not larger."
+      },
       "code": { "displayName": "Code", "purpose": "Code, inline code and source paths only." }
     },
     "shadows": [
-      { "name": "none", "value": "none", "purpose": "No shadow at rest, hover or in Mermaid (dropShadow: none). Overlays use a border instead." },
-      { "name": "selected-underline", "value": "inset 0 -2px 0 0 currentColor", "purpose": "Selected-state underline on the theme toggle option; not a depth device." }
+      {
+        "name": "none",
+        "value": "none",
+        "purpose": "No shadow at rest, hover or in Mermaid (dropShadow: none). Overlays use a border instead."
+      },
+      {
+        "name": "selected-underline",
+        "value": "inset 0 -2px 0 0 currentColor",
+        "purpose": "Selected-state underline on the theme toggle option; not a depth device."
+      }
     ],
     "motion": [
-      { "name": "chevron-rotate", "value": "transform, Tailwind default transition, rotate 90deg when open", "purpose": "Tree folder open/closed." },
-      { "name": "color-shift", "value": "instant color change on hover", "purpose": "Hover moves links to Ink or Signal Blue; nothing animates on load or scroll." },
-      { "name": "focus-ring", "value": "2px solid var(--ring), offset 2px", "purpose": "Every :focus-visible element." }
+      {
+        "name": "chevron-rotate",
+        "value": "transform, Tailwind default transition, rotate 90deg when open",
+        "purpose": "Tree folder open/closed."
+      },
+      {
+        "name": "color-shift",
+        "value": "instant color change on hover",
+        "purpose": "Hover moves links to Ink or Signal Blue; nothing animates on load or scroll."
+      },
+      {
+        "name": "focus-ring",
+        "value": "2px solid var(--ring), offset 2px",
+        "purpose": "Every :focus-visible element."
+      }
     ],
     "breakpoints": [
       { "name": "sm", "value": "640px" },
@@ -140,12 +312,36 @@
       "Document-first reading column near 60rem, with navigation as flanking columns."
     ],
     "rules": [
-      { "name": "The One Voice Rule", "body": "Signal Blue means \"you are here, or you can act here.\" It is never decoration, never a fill behind body copy, and never a second accent.", "section": "colors" },
-      { "name": "The Contrast Gate Rule", "body": "Raw colors live only in the :root and .dark blocks of globals.css, mirrored in src/lib/theme-tokens.ts. Every pairing used is listed in CONTRAST_PAIRS and fails the unit test below 4.5:1 (text) or 3:1 (UI). A new color enters both files and the pair list, or it does not ship.", "section": "colors" },
-      { "name": "The One Grotesque Rule", "body": "One family, two weights in the system's own chrome (400 and 700). Hierarchy is made with size, weight, tracking and rules, never a second face.", "section": "typography" },
-      { "name": "The Mono Is Code Rule", "body": "Monospace appears only for code, inline code, source paths and result paths. Keyboard hints such as the palette shortcut use the sans.", "section": "typography" },
-      { "name": "The Flat Rule", "body": "A surface is never lifted by shadow. If something must read as above, it is an overlay and it earns a border, not a blur.", "section": "elevation" },
-      { "name": "The Rule-Not-Box Rule", "body": "Group content with a rule above or below it. Do not wrap it in a bordered, filled or shadowed container.", "section": "shapes" }
+      {
+        "name": "The One Voice Rule",
+        "body": "Signal Blue means \"you are here, or you can act here.\" It is never decoration, never a fill behind body copy, and never a second accent.",
+        "section": "colors"
+      },
+      {
+        "name": "The Contrast Gate Rule",
+        "body": "Raw colors live only in the :root and .dark blocks of globals.css, mirrored in src/lib/theme-tokens.ts. Every pairing used is listed in CONTRAST_PAIRS and fails the unit test below 4.5:1 (text) or 3:1 (UI). A new color enters both files and the pair list, or it does not ship.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Grotesque Rule",
+        "body": "One family, two weights in the system's own chrome (400 and 700). Hierarchy is made with size, weight, tracking and rules, never a second face.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono Is Code Rule",
+        "body": "Monospace appears only for code, inline code, source paths and result paths. Keyboard hints such as the palette shortcut use the sans.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Rule",
+        "body": "A surface is never lifted by shadow. If something must read as above, it is an overlay and it earns a border, not a blur.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Rule-Not-Box Rule",
+        "body": "Group content with a rule above or below it. Do not wrap it in a bordered, filled or shadowed container.",
+        "section": "shapes"
+      }
     ],
     "dos": [
       "Do mark the current location with Signal Blue plus bold (tree) or the 1px blue bar (outline), and use blue for nothing else decorative.",
