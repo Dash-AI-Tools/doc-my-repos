@@ -83,16 +83,16 @@ describe("AccountMenu", () => {
     );
     fireEvent.click(screen.getByTestId("account-menu-trigger"));
     // Document order is the Tab order (nothing carries a tabindex).
-    expect([...container.querySelectorAll("button, a")].map((el) => el.textContent?.trim())).toEqual(
-      [
-        "admin@example.com",
-        "Users",
-        "Repository access",
-        "GitHub configuration",
-        "Branding",
-        "Sign out",
-      ],
-    );
+    expect(
+      [...container.querySelectorAll("button, a")].map((el) => el.textContent?.trim()),
+    ).toEqual([
+      "admin@example.com",
+      "Users",
+      "Repository access",
+      "GitHub configuration",
+      "Branding",
+      "Sign out",
+    ]);
   });
 
   it("shows the admin links to an admin and none to a viewer", () => {
