@@ -264,6 +264,19 @@ location / {
 - **Several replicas:** point them all at one database. Migrations are serialized by the advisory lock (or set `SKIP_MIGRATIONS=1` on all but one, or migrate once with `docker compose run --rm --no-deps --entrypoint node app dist/db-migrate.mjs`). Repository syncs never overlap across replicas.
 - **Rotating secrets:** see the [setup guide](docs/github-app-setup.md#rotating).
 
+## Branding
+
+Admins can make the portal read as their organization's own from `/admin/branding`:
+
+- **Organization name**: shown in the top bar (1 to 60 characters). With a logo the bar shows the page title instead, so the name is not repeated.
+- **Page title**: shown in the top bar and used as the browser tab title and the suffix of every page title (`Search · Acme Docs`). Falls back to the organization name, then to `DocMyRepos`. Without a logo the bar shows the organization name and the page title.
+- **Primary and accent colors**: `#rrggbb` values typed or picked. The portal derives every readable variant for light and dark themes itself (link, focus, dark shades, accent text), so any valid color keeps text at 4.5:1 and focus indicators at 3:1. In the dark theme the page and its card, muted, popover, secondary and code surfaces become a dark shade of that hue instead of near-black, with the text tones re-derived to stay readable. The admin page previews the result in both themes before saving.
+- **Colored top bar**: fills the bar with the primary color, off by default.
+- **Logo**: PNG, JPEG, WebP or SVG, at most 512 KB. The type is read from the file content, not its name. **Invert logo in dark theme** (on by default) shows it inverted on dark surfaces with CSS; the stored file is never altered.
+- **Reset to defaults** clears everything, including the logo.
+
+The logo is served publicly at `/api/branding/logo?v=<version>` (the sign-in page shows it), as the original bytes under a sandboxed content policy, so a script inside an SVG logo never runs. Nothing set means nothing changes. The footer always credits the project (`Powered by DocMyRepos` with a star link to the repository); it cannot be removed from the admin page.
+
 ## Security
 
 Docs come from third-party repositories and are treated as untrusted. See [SECURITY.md](SECURITY.md) to report a vulnerability.
@@ -309,7 +322,7 @@ openspec validate docmyrepos-mvp
 
 ## Project status and roadmap
 
-The MVP is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) in [`openspec/changes/docmyrepos-mvp/`](openspec/changes/docmyrepos-mvp/) (proposal, nine capability specs, design and the task list), and the application is implemented. What is still open before a first release:
+The MVP is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) in [`openspec/changes/archive/2026-10-14-docmyrepos-mvp/`](openspec/changes/archive/2026-10-14-docmyrepos-mvp/) (proposal, nine capability specs, design and the task list), and the application is implemented. What is still open before a first release:
 
 - The [GitHub App setup guide](docs/github-app-setup.md) has not been walked through end to end on a real organization yet (its last section lists what to confirm).
 - CI has been validated locally but its first run on a pull request is pending, and the Docker image is only verified on arm64 locally (CI builds amd64).

@@ -100,8 +100,8 @@ export function ThemeToggle() {
             onKeyDown={(event) => onKeyDown(event, index)}
             className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded ${
               checked
-                ? "text-foreground shadow-[inset_0_-2px_0_0_currentColor]"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                ? "text-header-foreground shadow-[inset_0_-2px_0_0_currentColor]"
+                : "text-header-foreground opacity-60 hover:text-header-foreground hover:opacity-100"
             }`}
           >
             {option.icon}

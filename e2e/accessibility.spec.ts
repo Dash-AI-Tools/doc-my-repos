@@ -618,6 +618,47 @@ for (const theme of ["light", "dark"] as const) {
       });
     });
 
+    test.describe("account menu open", () => {
+      /** The menu sits in the header of every page; the fixture page needs no database (4.3). */
+      const MENU_PAGE: PageCase = {
+        name: "theme showcase",
+        path: "/e2e/theme",
+        ready: async (page) => {
+          // Hydrated: the trigger is a client component.
+          await expect(page.getByTestId("account-menu-trigger")).toBeVisible();
+        },
+      };
+
+      async function openMenu(page: Page): Promise<void> {
+        await open(page, theme, MENU_PAGE);
+        await page.getByTestId("account-menu-trigger").click();
+        await expect(page.getByTestId("account-menu")).toBeVisible();
+        await expect(page.getByRole("link", { name: "Branding" })).toBeVisible();
+      }
+
+      test("no violations", async ({ page }) => {
+        await openMenu(page);
+        expect(await violations(page)).toEqual([]);
+      });
+
+      test("on a phone, the panel stays inside the viewport without horizontal scroll", async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width: 375, height: 800 });
+        await openMenu(page);
+        expect(await violations(page)).toEqual([]);
+        const box = await page.getByTestId("account-menu").boundingBox();
+        expect(box?.x ?? -1).toBeGreaterThanOrEqual(0);
+        expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(375 + 1);
+        // The header wraps at this width; the open panel must not widen the document either.
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          ),
+        ).toBeLessThanOrEqual(1);
+      });
+    });
+
     const READERS: readonly { label: string; page: PageCase }[] = [
       {
         label: "document page",

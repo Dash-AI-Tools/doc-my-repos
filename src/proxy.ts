@@ -31,6 +31,9 @@ function isPublicPath(pathname: string): boolean {
     // Health check for the Docker HEALTHCHECK and load balancers: verdict only, no repository data
     // (`/api/status` lists repositories and stays behind the login).
     pathname === "/api/health" ||
+    // Portal logo: shown on the sign-in page, so served without a session. Exactly this
+    // path; nothing else under `/api/branding/` is public.
+    pathname === "/api/branding/logo" ||
     // Fixture pages for component tests (gated separately by E2E_FIXTURES, see e2e-fixtures.ts).
     pathname.startsWith("/e2e/")
   );

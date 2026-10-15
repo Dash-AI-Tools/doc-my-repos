@@ -32,7 +32,7 @@ export async function generateMetadata({
   const { q } = parseSearchParams(await searchParams);
   const shown = Array.from(q).slice(0, TITLE_QUERY_CHARS).join("");
   return {
-    title: q === "" ? "Search · DocMyRepos" : `"${shown}${shown === q ? "" : "…"}" · Search`,
+    title: q === "" ? "Search" : { absolute: `"${shown}${shown === q ? "" : "…"}" · Search` },
     robots: { index: false, follow: true },
   };
 }

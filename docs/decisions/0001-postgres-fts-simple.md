@@ -5,7 +5,7 @@ description: Search uses a generated weighted tsvector in Postgres with the lang
 tags: [decisions, search, database]
 status: accepted
 sources:
-  - openspec/changes/docmyrepos-mvp/design.md
+  - openspec/changes/archive/2026-10-14-docmyrepos-mvp/design.md
   - src/server/db/schema.ts
   - src/server/queries/search.ts
 generated: 2026-10-10

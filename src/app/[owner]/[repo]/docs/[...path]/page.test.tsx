@@ -268,7 +268,7 @@ describe("generateMetadata", () => {
   it("titles the page with the stored title and owner/name, and sets the canonical URL", async () => {
     loadDocPage.mockResolvedValue(ok());
     expect(await meta(["guides", "setup"], "ACME", "API")).toEqual({
-      title: "Setup · acme/api",
+      title: { absolute: "Setup · acme/api" },
       description: "How to set up.",
       alternates: { canonical: "/acme/api/docs/guides/setup" },
     });
@@ -295,15 +295,15 @@ describe("generateMetadata", () => {
   it("never echoes an address that names nothing", async () => {
     loadDocPage.mockResolvedValue({ status: "not_found" });
     expect(await meta(["<script>"], "search", "x")).toEqual({
-      title: "Document not found · DocMyRepos",
+      title: "Document not found",
     });
   });
 
   it("uses the plain site title for a redirect and the in-page error state", async () => {
     loadDocPage.mockResolvedValue({ status: "error", loadedAt: NOW });
-    expect(await meta(["a"])).toEqual({ title: "DocMyRepos" });
+    expect(await meta(["a"])).toEqual({});
     loadDocPage.mockResolvedValue({ status: "redirect", to: "/x" });
-    expect(await meta(["a"])).toEqual({ title: "DocMyRepos" });
+    expect(await meta(["a"])).toEqual({});
   });
 });
 

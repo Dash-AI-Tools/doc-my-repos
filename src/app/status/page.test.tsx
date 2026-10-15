@@ -84,7 +84,7 @@ beforeEach(() => loadStatusPage.mockReset());
 describe("/status page", () => {
   it("is rendered per request and not indexed", () => {
     expect(dynamic).toBe("force-dynamic");
-    expect(metadata.title).toBe("Sync status · DocMyRepos");
+    expect(metadata.title).toBe("Sync status");
     expect(metadata.robots).toEqual({ index: false, follow: false });
   });
 

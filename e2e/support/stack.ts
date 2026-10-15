@@ -124,14 +124,20 @@ export function workDir(): WorkDir {
 }
 
 /**
- * Environment of an app server that reads a database. Every variable `getRuntime()` needs is set
- * explicitly, so a developer's own `.env` or shell never leaks in; the inline key is blanked
- * because only one of the two key variables may be set.
+ * Environment of an app server. Every variable `getRuntime()` needs is set explicitly, so a
+ * developer's own `.env` or shell never leaks in; the inline key is blanked because only one of
+ * the two key variables may be set.
+ *
+ * `fixtures` is database-free like `unreachable`: the fixture pages read no data, and the layout
+ * falls back to the default branding when the database is down. Both point at the dead port, so
+ * no spec can see the branding (or anything else) of a developer's database.
  */
-export function serverEnv(name: "seeded" | "empty" | "unreachable"): Record<string, string> {
+export function serverEnv(name: StackName): Record<string, string> {
   const { keyPath, configPath } = workDir();
+  const readsDatabase = name === "seeded" || name === "empty";
   return {
-    DATABASE_URL: name === "unreachable" ? UNREACHABLE_DATABASE_URL : databaseUrl(name),
+    ...(name === "fixtures" ? { E2E_FIXTURES: "1" } : {}),
+    DATABASE_URL: readsDatabase ? databaseUrl(name) : UNREACHABLE_DATABASE_URL,
     CONFIG_PATH: configPath,
     GITHUB_APP_ID: "1",
     GITHUB_APP_INSTALLATION_ID: "1",

@@ -5,7 +5,7 @@ description: The server only marks Mermaid code blocks. The browser loads Mermai
 tags: [decisions, markdown, mermaid]
 status: accepted
 sources:
-  - openspec/changes/docmyrepos-mvp/design.md
+  - openspec/changes/archive/2026-10-14-docmyrepos-mvp/design.md
   - src/server/markdown/mermaid.ts
   - src/components/mermaid-diagram.tsx
   - src/components/mermaid-svg.ts

@@ -8,8 +8,9 @@ import { SKIP_DB, STACKS, serverEnv, stackUrl } from "./e2e/support/stack";
  *
  * - 3100 `fixtures`: no database; the e2e-only fixture pages (`E2E_FIXTURES=1`, see
  *   `src/lib/e2e-fixtures.ts`). Outside CI a server already running on the port is reused, so you
- *   can start it yourself with the same variables for fast reruns:
- *   `E2E_FIXTURES=1 E2E_AUTH_BYPASS=1 pnpm exec next start --port 3100`.
+ *   can start it yourself with the same environment for fast reruns: `E2E_FIXTURES=1
+ *   E2E_AUTH_BYPASS=1 DATABASE_URL=postgres://docmyrepos:docmyrepos@127.0.0.1:1/docmyrepos pnpm
+ *   exec next start --port 3100` (the dead `DATABASE_URL` keeps your own branding out of the run).
  * - 3101 `seeded`: a throwaway database filled from `e2e/support/seed-data.ts`.
  * - 3102 `empty`: a throwaway, migrated, empty database.
  * - 3103 `unreachable`: `DATABASE_URL` points at a port nothing listens on.
@@ -50,7 +51,7 @@ export default defineConfig({
       url: stackUrl("fixtures"),
       reuseExistingServer: !isCI,
       timeout: 300_000,
-      env: { E2E_FIXTURES: "1", E2E_AUTH_BYPASS: "1" },
+      env: serverEnv("fixtures"),
     },
     ...(SKIP_DB
       ? []

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["CLAUDE.md"],
+  "agent": {
+    "loop-implementer": {
+      "mode": "primary",
+      "description": "Implements one OpenSpec task headlessly (used by scripts/opencode-loop.sh)",
+      "prompt": "{file:./.opencode/loop/implementer.md}",
+      "permission": {
+        "read": {
+          "*": "allow",
+          "*.pem": "deny",
+          "*.key": "deny",
+          "*.env": "deny",
+          "*.env.*": "deny",
+          "*.env.example": "allow"
+        },
+        "edit": {
+          "*": "allow",
+          "openspec/*": "deny",
+          ".opencode/*": "deny",
+          ".opencode-loop/*": "deny",
+          ".claude/*": "deny",
+          ".git/*": "deny",
+          "opencode.json": "deny",
+          "scripts/opencode-loop.sh": "deny",
+          "*.pem": "deny",
+          "*.key": "deny",
+          "*.env": "deny",
+          "*.env.*": "deny"
+        },
+        "bash": {
+          "*": "allow",
+          "git push*": "deny",
+          "git commit*": "deny",
+          "git reset*": "deny",
+          "git checkout*": "deny",
+          "git switch*": "deny",
+          "git restore*": "deny",
+          "git clean*": "deny",
+          "git stash*": "deny",
+          "git rebase*": "deny",
+          "git merge*": "deny",
+          "git tag*": "deny",
+          "git branch -D*": "deny",
+          "rm -rf*": "deny",
+          "sudo*": "deny",
+          "curl*": "deny",
+          "wget*": "deny",
+          "ssh*": "deny",
+          "scp*": "deny",
+          "gh *": "deny",
+          "*.env*": "deny",
+          "*.pem*": "deny"
+        },
+        "external_directory": "deny",
+        "question": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "doom_loop": "deny"
+      }
+    },
+    "loop-verifier": {
+      "mode": "primary",
+      "description": "Read-only verifier of a finished epic against the specs (used by scripts/opencode-loop.sh)",
+      "prompt": "{file:./.opencode/loop/verifier.md}",
+      "permission": {
+        "read": {
+          "*": "allow",
+          "*.pem": "deny",
+          "*.key": "deny",
+          "*.env": "deny",
+          "*.env.*": "deny",
+          "*.env.example": "allow"
+        },
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "git status*": "allow",
+          "git rev-parse*": "allow",
+          "ls*": "allow",
+          "grep*": "allow",
+          "rg *": "allow",
+          "wc *": "allow",
+          "head *": "allow",
+          "sed -n*": "allow",
+          "openspec validate*": "allow",
+          "openspec instructions*": "allow",
+          "openspec status*": "allow",
+          "pnpm typecheck": "allow",
+          "pnpm lint": "allow",
+          "pnpm exec vitest run*": "allow",
+          "pnpm test": "allow",
+          "*>*": "deny",
+          "*|*tee*": "deny",
+          "*.env*": "deny",
+          "*.pem*": "deny"
+        },
+        "external_directory": "deny",
+        "question": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "doom_loop": "deny"
+      }
+    }
+  }
+}

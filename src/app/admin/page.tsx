@@ -33,6 +33,14 @@ export default function AdminPage() {
               App installation and sync scope (read-only).
             </p>
           </li>
+          <li>
+            <Link href="/admin/branding" className="font-medium underline underline-offset-4">
+              Branding
+            </Link>
+            <p className="text-sm text-muted-foreground">
+              Logo, organization name, page title and brand colors.
+            </p>
+          </li>
         </ul>
       </nav>
     </div>

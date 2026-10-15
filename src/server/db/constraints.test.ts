@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, expect, it } from "vitest";
 
-import { codeOwners, documents, repos, syncRuns } from "./schema";
+import { codeOwners, documents, repos, siteBranding, syncRuns } from "./schema";
 import { createTestDatabase, describeDb, pgErrorCode, type TestDatabase } from "./test-db";
 
 let counter = 0;
@@ -220,5 +220,15 @@ describeDb("table constraints on a real database", () => {
       [r!.id],
     );
     expect(distinct[0]?.n).toBe(3);
+  });
+
+  it("keeps site_branding to one row", async () => {
+    await t.db.insert(siteBranding).values({ id: 1, orgName: "Acme" });
+    expect(await codeOf(t.db.insert(siteBranding).values({ id: 1, orgName: "Dup" }))).toBe(
+      UNIQUE_VIOLATION,
+    );
+    expect(await codeOf(t.db.insert(siteBranding).values({ id: 2, orgName: "Other" }))).toBe(
+      "23514",
+    );
   });
 });

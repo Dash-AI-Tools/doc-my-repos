@@ -47,6 +47,10 @@
   --private-badge-foreground: #3a3a3a;
   --okf-badge: #eaf0ff;
   --okf-badge-foreground: #1a3bc4;
+  --header: #ffffff;
+  --header-foreground: #111111;
+  --header-border: #e4e4e4;
+  --header-ring: #2b59ff;
 }
 
 .dark {
@@ -87,6 +91,10 @@
   --private-badge-foreground: #d4d4d8;
   --okf-badge: #172250;
   --okf-badge-foreground: #c2d0ff;
+  --header: #0c0c0d;
+  --header-foreground: #ececec;
+  --header-border: #262628;
+  --header-ring: #7c9bff;
 }
 
 /* Tailwind utilities: bg-background, text-foreground, border-border, ring-ring, text-link, ... */
@@ -138,6 +146,10 @@
   --color-private-badge-foreground: var(--private-badge-foreground);
   --color-okf-badge: var(--okf-badge);
   --color-okf-badge-foreground: var(--okf-badge-foreground);
+  --color-header: var(--header);
+  --color-header-foreground: var(--header-foreground);
+  --color-header-border: var(--header-border);
+  --color-header-ring: var(--header-ring);
 }
 
 @layer base {

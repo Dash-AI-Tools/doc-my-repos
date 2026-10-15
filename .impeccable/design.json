@@ -1,42 +1,232 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-14T00:00:00Z",
+  "generatedAt": "2026-10-15T16:21:21Z",
   "title": "Design System: DocMyRepos",
   "extensions": {
     "colorMeta": {
-      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#ffffff", "tonalRamp": ["#111111", "#3a3a3a", "#5c5c5c", "#858585", "#b5b5b5", "#e4e4e4", "#f5f5f5", "#ffffff"] },
-      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#111111", "tonalRamp": ["#111111", "#2a2a2a", "#3a3a3a", "#5c5c5c", "#858585", "#b5b5b5", "#e4e4e4", "#f5f5f5"] },
-      "signal-blue": { "role": "primary", "displayName": "Signal Blue", "canonical": "#2b59ff", "tonalRamp": ["#0a1030", "#1a3bc4", "#2b59ff", "#5578ff", "#7c9bff", "#a9bdff", "#cddaff", "#eaf0ff"] },
-      "signal-blue-deep": { "role": "primary", "displayName": "Signal Blue Deep", "canonical": "#1a3bc4", "tonalRamp": ["#0a1030", "#12296e", "#1a3bc4", "#2b59ff", "#5578ff", "#8aa6ff", "#cddaff", "#eaf0ff"] },
-      "blue-wash": { "role": "secondary", "displayName": "Blue Wash", "canonical": "#eaf0ff", "tonalRamp": ["#1a3bc4", "#2b59ff", "#5578ff", "#8aa6ff", "#b5c7ff", "#cddaff", "#eaf0ff", "#f5f8ff"] },
-      "quiet-ink": { "role": "neutral", "displayName": "Quiet Ink", "canonical": "#5c5c5c", "tonalRamp": ["#111111", "#2a2a2a", "#3a3a3a", "#5c5c5c", "#858585", "#a1a1a6", "#d0d0d0", "#ececec"] },
-      "hairline": { "role": "neutral", "displayName": "Hairline", "canonical": "#e4e4e4", "tonalRamp": ["#5c5c5c", "#858585", "#a8a8a8", "#c4c4c4", "#d6d6d6", "#e4e4e4", "#efefef", "#f5f5f5"] },
-      "night": { "role": "neutral", "displayName": "Night", "canonical": "#0c0c0d", "tonalRamp": ["#0c0c0d", "#151516", "#161617", "#1d1d1f", "#262628", "#3a3a3d", "#7d7d83", "#ececec"] },
-      "night-blue": { "role": "primary", "displayName": "Night Blue", "canonical": "#7c9bff", "tonalRamp": ["#172250", "#2b59ff", "#5578ff", "#7c9bff", "#8aa6ff", "#a9bdff", "#c2d0ff", "#dbe4ff"] },
-      "alarm-red": { "role": "tertiary", "displayName": "Alarm Red", "canonical": "#b91c1c", "tonalRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#b91c1c", "#f87171", "#fca5a5", "#fecaca", "#fef2f2"] }
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#111111",
+          "#3a3a3a",
+          "#5c5c5c",
+          "#858585",
+          "#b5b5b5",
+          "#e4e4e4",
+          "#f5f5f5",
+          "#ffffff"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#111111",
+        "tonalRamp": [
+          "#111111",
+          "#2a2a2a",
+          "#3a3a3a",
+          "#5c5c5c",
+          "#858585",
+          "#b5b5b5",
+          "#e4e4e4",
+          "#f5f5f5"
+        ]
+      },
+      "signal-blue": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "#2b59ff",
+        "tonalRamp": [
+          "#0a1030",
+          "#1a3bc4",
+          "#2b59ff",
+          "#5578ff",
+          "#7c9bff",
+          "#a9bdff",
+          "#cddaff",
+          "#eaf0ff"
+        ]
+      },
+      "signal-blue-deep": {
+        "role": "primary",
+        "displayName": "Signal Blue Deep",
+        "canonical": "#1a3bc4",
+        "tonalRamp": [
+          "#0a1030",
+          "#12296e",
+          "#1a3bc4",
+          "#2b59ff",
+          "#5578ff",
+          "#8aa6ff",
+          "#cddaff",
+          "#eaf0ff"
+        ]
+      },
+      "blue-wash": {
+        "role": "secondary",
+        "displayName": "Blue Wash",
+        "canonical": "#eaf0ff",
+        "tonalRamp": [
+          "#1a3bc4",
+          "#2b59ff",
+          "#5578ff",
+          "#8aa6ff",
+          "#b5c7ff",
+          "#cddaff",
+          "#eaf0ff",
+          "#f5f8ff"
+        ]
+      },
+      "quiet-ink": {
+        "role": "neutral",
+        "displayName": "Quiet Ink",
+        "canonical": "#5c5c5c",
+        "tonalRamp": [
+          "#111111",
+          "#2a2a2a",
+          "#3a3a3a",
+          "#5c5c5c",
+          "#858585",
+          "#a1a1a6",
+          "#d0d0d0",
+          "#ececec"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#e4e4e4",
+        "tonalRamp": [
+          "#5c5c5c",
+          "#858585",
+          "#a8a8a8",
+          "#c4c4c4",
+          "#d6d6d6",
+          "#e4e4e4",
+          "#efefef",
+          "#f5f5f5"
+        ]
+      },
+      "night": {
+        "role": "neutral",
+        "displayName": "Night",
+        "canonical": "#0c0c0d",
+        "tonalRamp": [
+          "#0c0c0d",
+          "#151516",
+          "#161617",
+          "#1d1d1f",
+          "#262628",
+          "#3a3a3d",
+          "#7d7d83",
+          "#ececec"
+        ]
+      },
+      "night-blue": {
+        "role": "primary",
+        "displayName": "Night Blue",
+        "canonical": "#7c9bff",
+        "tonalRamp": [
+          "#172250",
+          "#2b59ff",
+          "#5578ff",
+          "#7c9bff",
+          "#8aa6ff",
+          "#a9bdff",
+          "#c2d0ff",
+          "#dbe4ff"
+        ]
+      },
+      "alarm-red": {
+        "role": "tertiary",
+        "displayName": "Alarm Red",
+        "canonical": "#b91c1c",
+        "tonalRamp": [
+          "#450a0a",
+          "#7f1d1d",
+          "#991b1b",
+          "#b91c1c",
+          "#f87171",
+          "#fca5a5",
+          "#fecaca",
+          "#fef2f2"
+        ]
+      }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Document, repository and home titles. 36/48/60px at base/sm/xl, bold, tracking -0.035em." },
-      "headline": { "displayName": "Headline", "purpose": "Markdown h2 under a hairline top rule." },
-      "title": { "displayName": "Title", "purpose": "Markdown h3, repo-row names, pager targets." },
-      "body": { "displayName": "Body", "purpose": "Rendered Markdown, 18px at 1.7, column near 60rem." },
-      "label": { "displayName": "Label", "purpose": "Navigation, metadata, breadcrumbs, chips. Active state is bold, not larger." },
-      "code": { "displayName": "Code", "purpose": "Code, inline code and source paths only." }
+      "display": {
+        "displayName": "Display",
+        "purpose": "Document, repository and home titles. 36/48/60px at base/sm/xl, bold, tracking -0.035em."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Markdown h2 under a hairline top rule."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Markdown h3, repo-row names, pager targets."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Rendered Markdown, 18px at 1.7, column near 60rem."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Navigation, metadata, breadcrumbs, chips. Active state is bold, not larger."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Code, inline code and source paths only."
+      }
     },
     "shadows": [
-      { "name": "none", "value": "none", "purpose": "No shadow at rest, hover or in Mermaid (dropShadow: none). Overlays use a border instead." },
-      { "name": "selected-underline", "value": "inset 0 -2px 0 0 currentColor", "purpose": "Selected-state underline on the theme toggle option; not a depth device." }
+      {
+        "name": "none",
+        "value": "none",
+        "purpose": "No shadow at rest, hover or in Mermaid (dropShadow: none). Overlays use a border instead."
+      },
+      {
+        "name": "selected-underline",
+        "value": "inset 0 -2px 0 0 currentColor",
+        "purpose": "Selected-state underline on the theme toggle option; not a depth device."
+      }
     ],
     "motion": [
-      { "name": "chevron-rotate", "value": "transform, Tailwind default transition, rotate 90deg when open", "purpose": "Tree folder open/closed." },
-      { "name": "color-shift", "value": "instant color change on hover", "purpose": "Hover moves links to Ink or Signal Blue; nothing animates on load or scroll." },
-      { "name": "focus-ring", "value": "2px solid var(--ring), offset 2px", "purpose": "Every :focus-visible element." }
+      {
+        "name": "chevron-rotate",
+        "value": "transform, Tailwind default transition, rotate 90deg when open",
+        "purpose": "Tree folder open/closed."
+      },
+      {
+        "name": "color-shift",
+        "value": "instant color change on hover",
+        "purpose": "Hover moves links to Ink or Signal Blue; nothing animates on load or scroll."
+      },
+      {
+        "name": "focus-ring",
+        "value": "2px solid var(--ring), offset 2px",
+        "purpose": "Every :focus-visible element."
+      }
     ],
     "breakpoints": [
-      { "name": "sm", "value": "640px" },
-      { "name": "md", "value": "768px" },
-      { "name": "lg", "value": "1024px" },
-      { "name": "xl", "value": "1280px" }
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
     ]
   },
   "components": [
@@ -127,6 +317,38 @@
       "description": "Previous/next link with a top rule that darkens on hover.",
       "html": "<a class=\"ds-pager\" href=\"#\"><span>Next</span><strong>Configuration</strong></a>",
       "css": ".ds-pager { display: flex; flex-direction: column; gap: 4px; width: 280px; padding-top: 16px; border-top: 1px solid var(--border, #e4e4e4); font-family: 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif; color: var(--card-foreground, #111111); text-decoration: none; } .ds-pager span { font-size: 14px; color: var(--muted-foreground, #5c5c5c); } .ds-pager strong { font-size: 18px; font-weight: 700; letter-spacing: -0.025em; } .ds-pager:hover { border-top-color: var(--foreground, #111111); } .ds-pager:hover strong { color: var(--link, #2b59ff); } .ds-pager:focus-visible { outline: 2px solid var(--ring, #2b59ff); outline-offset: 2px; }"
+    },
+    {
+      "name": "Account Menu",
+      "kind": "nav",
+      "refersTo": "site-header",
+      "description": "Signed-in email as a header button opening a 2px-cornered Paper popover with admin links, a rule, then Sign out.",
+      "html": "<div class=\"ds-acct\"><button class=\"ds-acct-btn\">ana@example.org <svg width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M2 4l4 4 4-4\"/></svg></button><div class=\"ds-acct-menu\"><a class=\"ds-cur\" href=\"#\">Repositories</a><a href=\"#\">Users</a><a href=\"#\">Branding</a><hr><a href=\"#\">Sign out</a></div></div>",
+      "css": ".ds-acct{font-family:'Hanken Grotesk Variable',ui-sans-serif,system-ui,sans-serif;font-size:14px;display:inline-block} .ds-acct-btn{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:4px 0;color:var(--muted-foreground,#5c5c5c);cursor:pointer;max-width:16rem} .ds-acct-btn:hover{color:var(--foreground,#111)} .ds-acct-btn:focus-visible{outline:2px solid var(--ring,#2b59ff);outline-offset:2px} .ds-acct-menu{margin-top:8px;min-width:12rem;background:var(--popover,#fff);border:1px solid var(--border,#e4e4e4);border-radius:2px;padding:6px 0} .ds-acct-menu a{display:block;padding:6px 14px;color:var(--foreground,#111);text-decoration:none} .ds-acct-menu a:hover{background:var(--muted,#f5f5f5)} .ds-acct-menu a.ds-cur{font-weight:700} .ds-acct-menu hr{border:0;border-top:1px solid var(--border,#e4e4e4);margin:6px 0}"
+    },
+    {
+      "name": "Underline Field",
+      "kind": "input",
+      "refersTo": "palette-trigger",
+      "description": "The house form control (fieldClass): bottom border only, Control Edge to Ink on hover, 2px Ink underline on focus. Used by login, users, repos and branding.",
+      "html": "<label class=\"ds-lbl\" for=\"e\">Search by email</label><input id=\"e\" class=\"ds-field\" type=\"search\" placeholder=\"Search by email\">",
+      "css": ".ds-lbl{font-family:'Hanken Grotesk Variable',ui-sans-serif,system-ui,sans-serif;display:block;font-size:14px;color:var(--foreground,#111);margin-bottom:6px} .ds-field{font-family:'Hanken Grotesk Variable',ui-sans-serif,system-ui,sans-serif;width:100%;max-width:16rem;border:0;border-bottom:1px solid var(--input,#858585);background:transparent;padding:6px 0;font-size:16px;color:var(--foreground,#111);transition:border-color .15s} .ds-field:hover{border-bottom-color:var(--foreground,#111)} .ds-field:focus{outline:none;border-bottom:2px solid var(--foreground,#111);padding-bottom:5px} .ds-field::placeholder{color:var(--muted-foreground,#5c5c5c)}"
+    },
+    {
+      "name": "Filter Tabs",
+      "kind": "chip",
+      "refersTo": "docs-tree-link-current",
+      "description": "Admin list filters: text buttons with tabular counts; the pressed one is bold with a 2px primary underline. Not pills.",
+      "html": "<div class=\"ds-tabs\" role=\"group\"><button aria-pressed=\"true\" class=\"on\">All <span>12</span></button><button>Visible <span>9</span></button><button>Blocked <span>3</span></button></div>",
+      "css": ".ds-tabs{font-family:'Hanken Grotesk Variable',ui-sans-serif,system-ui,sans-serif;display:flex;gap:16px;font-size:14px} .ds-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:0 0 2px;color:var(--muted-foreground,#5c5c5c);cursor:pointer} .ds-tabs button:hover{color:var(--foreground,#111)} .ds-tabs button.on{border-bottom-color:var(--primary,#2b59ff);color:var(--foreground,#111);font-weight:700} .ds-tabs button:focus-visible{outline:2px solid var(--ring,#2b59ff);outline-offset:2px} .ds-tabs span{color:var(--muted-foreground,#5c5c5c);font-variant-numeric:tabular-nums;font-weight:400}"
+    },
+    {
+      "name": "Admin Ruled Table",
+      "kind": "custom",
+      "refersTo": "repo-row",
+      "description": "Users and repository-access lists: a hidden-on-mobile 12px column header over a Hairline, ruled rows, status as plain words (destructive red only for Blocked/Failed), and underlined text row actions.",
+      "html": "<div class=\"ds-tbl\"><div class=\"ds-th\"><span>Repository</span><span>Access</span><span>Sync</span><span style=\"text-align:right\">Actions</span></div><div class=\"ds-tr\"><span><span class=\"ds-o\">acme/</span><b>api</b></span><span class=\"ds-mu\">Visible</span><span class=\"ds-mu\">Synced</span><span style=\"text-align:right\"><a href=\"#\">Block</a></span></div><div class=\"ds-tr\"><span><span class=\"ds-o\">acme/</span><b class=\"ds-mu\">web</b></span><span class=\"ds-bad\">Blocked</span><span class=\"ds-bad\">Sync failed</span><span style=\"text-align:right\"><a href=\"#\">Allow</a></span></div></div>",
+      "css": ".ds-tbl{font-family:'Hanken Grotesk Variable',ui-sans-serif,system-ui,sans-serif;font-size:14px;color:var(--foreground,#111)} .ds-th,.ds-tr{display:grid;grid-template-columns:minmax(0,1fr) 6rem 11rem 5rem;gap:16px;align-items:center} .ds-th{font-size:12px;color:var(--muted-foreground,#5c5c5c);border-bottom:1px solid var(--border,#e4e4e4);padding-bottom:8px} .ds-tr{border-bottom:1px solid var(--border,#e4e4e4);padding:12px 0} .ds-tr b{font-weight:500;font-size:16px} .ds-o{color:var(--muted-foreground,#5c5c5c);font-size:16px} .ds-mu{color:var(--muted-foreground,#5c5c5c)} .ds-bad{color:var(--destructive,#b91c1c)} .ds-tr a{color:var(--foreground,#111);text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--border,#e4e4e4)} .ds-tr a:hover{text-decoration-color:var(--foreground,#111)} .ds-tr a:focus-visible{outline:2px solid var(--ring,#2b59ff);outline-offset:2px}"
     }
   ],
   "narrative": {
@@ -140,28 +362,53 @@
       "Document-first reading column near 60rem, with navigation as flanking columns."
     ],
     "rules": [
-      { "name": "The One Voice Rule", "body": "Signal Blue means \"you are here, or you can act here.\" It is never decoration, never a fill behind body copy, and never a second accent.", "section": "colors" },
-      { "name": "The Contrast Gate Rule", "body": "Raw colors live only in the :root and .dark blocks of globals.css, mirrored in src/lib/theme-tokens.ts. Every pairing used is listed in CONTRAST_PAIRS and fails the unit test below 4.5:1 (text) or 3:1 (UI). A new color enters both files and the pair list, or it does not ship.", "section": "colors" },
-      { "name": "The One Grotesque Rule", "body": "One family, two weights in the system's own chrome (400 and 700). Hierarchy is made with size, weight, tracking and rules, never a second face.", "section": "typography" },
-      { "name": "The Mono Is Code Rule", "body": "Monospace appears only for code, inline code, source paths and result paths. Keyboard hints such as the palette shortcut use the sans.", "section": "typography" },
-      { "name": "The Flat Rule", "body": "A surface is never lifted by shadow. If something must read as above, it is an overlay and it earns a border, not a blur.", "section": "elevation" },
-      { "name": "The Rule-Not-Box Rule", "body": "Group content with a rule above or below it. Do not wrap it in a bordered, filled or shadowed container.", "section": "shapes" }
+      {
+        "name": "The One Voice Rule",
+        "body": "Signal Blue means \"you are here, or you can act here.\" It is never decoration, never a fill behind body copy, and never a second accent.",
+        "section": "colors"
+      },
+      {
+        "name": "The Contrast Gate Rule",
+        "body": "Raw colors live only in the :root and .dark blocks of globals.css, mirrored in src/lib/theme-tokens.ts. Every pairing used is listed in CONTRAST_PAIRS and fails the unit test below 4.5:1 (text) or 3:1 (UI). A new color enters both files and the pair list, or it does not ship.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Grotesque Rule",
+        "body": "One family, two weights in the system's own chrome (400 and 700). Hierarchy is made with size, weight, tracking and rules, never a second face.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono Is Code Rule",
+        "body": "Monospace appears only for code, inline code, source paths and result paths. Keyboard hints such as the palette shortcut use the sans.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Rule",
+        "body": "A surface is never lifted by shadow. If something must read as above, it is an overlay and it earns a border, not a blur.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Rule-Not-Box Rule",
+        "body": "Group content with a rule above or below it. Do not wrap it in a bordered, filled or shadowed container.",
+        "section": "shapes"
+      }
     ],
     "dos": [
-      "Do mark the current location with Signal Blue plus bold (tree) or the 1px blue bar (outline), and use blue for nothing else decorative.",
-      "Do separate content with a 1px rule: Ink above panels and lists, Hairline below rows.",
-      "Do build hierarchy from size, weight (400 or 700) and tracking (-0.035em on display titles).",
-      "Do keep the document column near 60rem and put the article before the navigation in the DOM.",
-      "Do add any new color to both token blocks and to CONTRAST_PAIRS, and check light and dark.",
-      "Do keep monospace for code and paths only."
+      "**Do** mark the current location with Signal Blue plus bold (tree) or the 1px blue bar (outline), and use blue for nothing else decorative.",
+      "**Do** separate content with a 1px rule: Ink above panels and lists, Hairline below rows.",
+      "**Do** build hierarchy from size, weight (400 or 700) and tracking (-0.035em on display titles).",
+      "**Do** keep the document column near 60rem and put the article before the navigation in the DOM.",
+      "**Do** give every navigation part one control when it cannot be a column: hamburger for the tree, dropdown for the outline.",
+      "**Do** add any new color to both token blocks and to `CONTRAST_PAIRS`, and check light and dark.",
+      "**Do** keep monospace for code and paths only."
     ],
     "donts": [
-      "Don't wrap repositories, results or panels in bordered, tinted or shadowed cards.",
-      "Don't add shadows outside overlays; depth comes from position and rules.",
-      "Don't introduce a second accent hue or use blue as a fill behind body text.",
-      "Don't round surfaces beyond 4px; only chips and badges are pill-shaped.",
-      "Don't add a second typeface or a display face for headings.",
-      "Don't color-only signal a link inside running text; text links are underlined."
+      "**Don't** wrap repositories, results or panels in bordered, tinted or shadowed cards.",
+      "**Don't** add shadows outside overlays; depth comes from position and rules.",
+      "**Don't** introduce a second accent hue or use blue as a fill behind body text.",
+      "**Don't** round surfaces beyond 4px; only chips and badges are pill-shaped.",
+      "**Don't** add a second typeface or a display face for headings.",
+      "**Don't** color-only signal a link inside running text; text links are underlined."
     ]
   }
 }

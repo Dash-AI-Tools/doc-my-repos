@@ -2,12 +2,14 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  check,
   customType,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
+  smallint,
   text,
   timestamp,
   unique,
@@ -266,4 +268,33 @@ export const users = pgTable(
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },
   (t) => [unique("users_email_unique").on(t.email)],
+);
+
+/** Raw bytes for the branding logo (`bytea`, at most 512 KB by API validation). */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
+
+/**
+ * Portal branding (org-branding 2.1): one row (`id` fixed to 1), null means default.
+ * The logo bytes live here; `getBranding` never selects them (see decision 1).
+ */
+export const siteBranding = pgTable(
+  "site_branding",
+  {
+    id: smallint("id").primaryKey(),
+    orgName: text("org_name"),
+    pageTitle: text("page_title"),
+    primaryColor: text("primary_color"),
+    accentColor: text("accent_color"),
+    coloredHeader: boolean("colored_header").notNull().default(false),
+    invertLogoOnDark: boolean("invert_logo_on_dark").notNull().default(true),
+    logo: bytea("logo"),
+    logoType: text("logo_type"),
+    logoVersion: integer("logo_version").notNull().default(0),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [check("site_branding_single_row", sql`${t.id} = 1`)],
 );

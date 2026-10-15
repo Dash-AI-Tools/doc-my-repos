@@ -124,10 +124,16 @@ describe("workflow files", () => {
     }
   });
 
-  it("never set E2E_FIXTURES (playwright.config.ts sets it for its own server only)", () => {
+  it("never set E2E_FIXTURES (the e2e stack sets it for its own server only)", () => {
     for (const { file, text } of workflowTexts) expect(text, file).not.toMatch(/E2E_FIXTURES/);
     for (const f of actionFiles) expect(read(f), f).not.toMatch(/E2E_FIXTURES/);
-    expect(read("playwright.config.ts")).toMatch(/E2E_FIXTURES: "1"/);
+    // The playwright fixtures server takes the environment the stack defines, and there the flag
+    // is set for `fixtures` alone (`e2e/support/stack.ts`), so no other server ever serves the
+    // fixture pages.
+    expect(read("playwright.config.ts")).toMatch(/env: serverEnv\("fixtures"\)/);
+    const stack = read("e2e/support/stack.ts");
+    expect(stack.match(/E2E_FIXTURES/g)).toHaveLength(1);
+    expect(stack).toMatch(/name === "fixtures"/);
   });
 
   it("pin every third-party action to a full commit SHA", () => {

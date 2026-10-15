@@ -15,7 +15,7 @@ import { loadStatusPage } from "@/server/status-page";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Sync status · DocMyRepos",
+  title: "Sync status",
   robots: { index: false, follow: false },
 };
 
