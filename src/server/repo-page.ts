@@ -2,6 +2,7 @@ import "server-only";
 
 import type { DocsTreeFolder } from "@/lib/docs-tree";
 import { buildOutline, type OutlineItem } from "@/lib/outline";
+import type { NavView } from "@/lib/reading-prefs";
 import { isReservedOwner } from "@/lib/routes";
 import { parseTocFilters, type TocData, type TocFilterState } from "@/lib/toc-filters";
 
@@ -37,7 +38,8 @@ import { logger, type LogFn } from "./log";
  *
  * `filters` are the type, tag and status filters of the URL (`parseTocFilters`). They narrow the
  * table of contents of an OKF repository only; for any other repository they are ignored
- * (`src/server/toc-data.ts`).
+ * (`src/server/toc-data.ts`). `view` is the reader's navigation view (OKF or Tree); it too applies
+ * to an OKF repository only.
  *
  * Outcomes:
  * - `not_found`: the parameters are not a valid GitHub owner and repository name (checked with
@@ -74,8 +76,10 @@ export type RepoPageData =
        * type, tag and status filters when the repository is OKF.
        */
       readonly tree: DocsTreeFolder;
-      /** The filter controls' data; null for a repository that is not OKF (no OKF UI). */
+      /** The filter controls' data; null for a repository that is not OKF (no OKF UI) or in Tree. */
       readonly toc: TocData | null;
+      /** The navigation view shown; null for a repository that is not OKF (no selector). */
+      readonly view: NavView | null;
       /** The repository's latest recorded sync run (task 12.2); null when none is recorded. */
       readonly lastRun: RepoLastRun | null;
       /** When the data was read; the page formats "x minutes ago" against this. */
@@ -153,6 +157,7 @@ export async function loadRepoPage(
   name: string,
   deps: RepoPageDeps = {},
   filters: TocFilterState = parseTocFilters({}),
+  view: NavView = "okf",
 ): Promise<RepoPageData> {
   if (!isRepoRoute(owner, name)) return { status: "not_found" };
   const now = deps.now ?? (() => new Date());
@@ -164,7 +169,7 @@ export async function loadRepoPage(
     const repo = await getRepo(handle, owner, name);
     if (repo === null) return { status: "not_found" };
     const rows = await getDocsTree(handle, { id: repo.id });
-    const { tree, toc } = await loadToc(handle, repo, rows, filters);
+    const { tree, toc, view: shown } = await loadToc(handle, repo, rows, filters, null, view);
     const { view: readme, outline: readmeOutline } = await readmeView(
       repo,
       new Set(rows.map((r) => r.path)),
@@ -179,6 +184,7 @@ export async function loadRepoPage(
       readmeOutline,
       tree,
       toc,
+      view: shown,
       lastRun: sync?.lastRun ?? null,
       loadedAt: now(),
     };

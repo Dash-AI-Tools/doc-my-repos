@@ -4,8 +4,10 @@ import {
   adjacentInTree,
   ancestorFolders,
   buildDocsTree,
+  buildPathTree,
   compareTreeText,
   countFolders,
+  fileLabel,
   flattenDocsTree,
   resolveDocRoute,
   toNavTree,
@@ -81,7 +83,7 @@ describe("buildDocsTree", () => {
     ]);
   });
 
-  it("uses a folder's index.md as its link and summary, and the root index for the root", () => {
+  it("uses a folder's index.md as its link, and the root index for the root", () => {
     const tree = buildDocsTree(
       [
         row("docs/index.md", "Overview", { description: "All the docs" }),
@@ -91,10 +93,8 @@ describe("buildDocsTree", () => {
       "docs",
     );
     expect(tree.index?.path).toBe("docs/index.md");
-    expect(tree.summary).toBe("All the docs");
     const guides = tree.children[0] as DocsTreeFolder;
     expect(guides.index).toMatchObject({ path: "docs/guides/index.md", stem: "guides/index" });
-    expect(guides.summary).toBe("How to do things");
     expect(outline(guides)).toEqual(["Setup"]);
   });
 
@@ -164,6 +164,96 @@ describe("buildDocsTree", () => {
       "docs",
     );
     expect(tree.children[0]).toMatchObject({ type: "Metric", tags: ["finance"], status: "draft" });
+  });
+});
+
+/** The Tree view as names: folders as `name/`, files by `fileLabel`. */
+function pathOutline(folder: DocsTreeFolder): unknown[] {
+  return folder.children.map((child: DocsTreeNode) =>
+    child.kind === "doc" ? fileLabel(child.path) : { [`${child.name}/`]: pathOutline(child) },
+  );
+}
+
+describe("fileLabel", () => {
+  it("removes a trailing .md or .mdx in any case and keeps the rest as stored", () => {
+    expect(fileLabel("docs/guides/setup.md")).toBe("setup");
+    expect(fileLabel("docs/Setup.MD")).toBe("Setup");
+    expect(fileLabel("docs/a/page.mdx")).toBe("page");
+    expect(fileLabel("docs/a/page.Mdx")).toBe("page");
+    expect(fileLabel("docs/notes.md.md")).toBe("notes.md");
+    expect(fileLabel("docs/README")).toBe("README");
+  });
+});
+
+describe("buildPathTree", () => {
+  const spec = [
+    row("docs/log.md", "Changes"),
+    row("docs/index.md", "Home"),
+    row("docs/guides/setup.md", "Getting started"),
+    row("docs/guides/index.md", "Guides overview"),
+    row("docs/guides/advanced/tuning.md", "Tuning"),
+  ];
+
+  it("lists subfolders first, then files, by name (spec example)", () => {
+    expect(pathOutline(buildPathTree(spec, "docs"))).toEqual([
+      { "guides/": [{ "advanced/": ["tuning"] }, "index", "setup"] },
+      "index",
+      "log",
+    ]);
+  });
+
+  it("keeps index.md and log.md as ordinary files, with no folder index", () => {
+    const tree = buildPathTree(
+      [...spec, row("docs/guides/index.md", "Guides", { description: "All guides" })],
+      "docs",
+    );
+    const guides = tree.children[0];
+    expect(guides?.kind).toBe("folder");
+    if (guides?.kind !== "folder") return;
+    expect(guides.index).toBeNull();
+    expect(tree.index).toBeNull();
+  });
+
+  it("keeps the real titles", () => {
+    const flat = flattenDocsTree(buildPathTree(spec, "docs"));
+    expect(flat.map((d) => d.title)).toEqual([
+      "Tuning",
+      "Guides overview",
+      "Getting started",
+      "Home",
+      "Changes",
+    ]);
+  });
+
+  it("sorts names numerically and ignores the extension and its case", () => {
+    const tree = buildPathTree(
+      [
+        row("docs/10-tuning.md", "A"),
+        row("docs/2-setup.MD", "B"),
+        row("docs/b.mdx", "C"),
+        row("docs/a.md", "D"),
+      ],
+      "docs",
+    );
+    expect(pathOutline(tree)).toEqual(["2-setup", "10-tuning", "a", "b"]);
+  });
+
+  it("drops rows outside the docs folder and is empty with no docs folder", () => {
+    const rows = [row("docs/a.md", "A"), row("other/b.md", "B"), row("docs/c.txt", "C")];
+    expect(pathOutline(buildPathTree(rows, "docs"))).toEqual(["a"]);
+    expect(buildPathTree(rows, null).children).toEqual([]);
+  });
+
+  it("is independent of input order", () => {
+    const a = buildPathTree(spec, "docs");
+    const b = buildPathTree([...spec].reverse(), "docs");
+    expect(pathOutline(a)).toEqual(pathOutline(b));
+  });
+
+  it("gives previous and next in path order (repo-space scenario)", () => {
+    const around = adjacentInTree(buildPathTree(spec, "docs"), "docs/guides/index.md");
+    expect(around?.previous?.path).toBe("docs/guides/advanced/tuning.md");
+    expect(around?.next?.path).toBe("docs/guides/setup.md");
   });
 });
 
@@ -295,6 +385,46 @@ describe("toNavTree", () => {
   );
   const href = (doc: { stem: string }) => `/u/${doc.stem}`;
 
+  it("relabels pages with titleFor and leaves folders their names", () => {
+    const nav = toNavTree(tree, href, undefined, (d) => fileLabel(d.path));
+    expect(nav.children[0]).toMatchObject({ kind: "doc", title: "index", path: "docs/index.md" });
+    const guides = nav.children[1];
+    expect(guides).toMatchObject({ kind: "folder", name: "guides" });
+    if (guides?.kind !== "folder") return;
+    expect(guides.children.map((c) => (c.kind === "doc" ? c.title : `${c.name}/`))).toEqual([
+      "setup",
+      "advanced/",
+    ]);
+  });
+
+  it("makes path-tree folders toggle-only", () => {
+    const nav = toNavTree(
+      buildPathTree(
+        [
+          row("docs/guides/index.md", "Guides", { description: "How-to guides." }),
+          row("docs/guides/setup.md", "Setup"),
+        ],
+        "docs",
+      ),
+      href,
+      undefined,
+      (d) => fileLabel(d.path),
+    );
+    expect(nav.children).toEqual([
+      {
+        kind: "folder",
+        name: "guides",
+        path: "docs/guides",
+        href: null,
+        indexPath: null,
+        children: [
+          { kind: "doc", title: "index", path: "docs/guides/index.md", href: "/u/guides/index" },
+          { kind: "doc", title: "setup", path: "docs/guides/setup.md", href: "/u/guides/setup" },
+        ],
+      },
+    ]);
+  });
+
   it("keeps the order, links every page and turns an index into the folder's link", () => {
     const nav = toNavTree(tree, href);
     expect(nav.children.map((c) => (c.kind === "doc" ? c.title : `${c.name}/`))).toEqual([
@@ -309,7 +439,6 @@ describe("toNavTree", () => {
       path: "docs/guides",
       href: "/u/guides/index",
       indexPath: "docs/guides/index.md",
-      summary: "How-to guides.",
     });
     // the index is the folder's link, not a child
     expect(
@@ -317,9 +446,9 @@ describe("toNavTree", () => {
     ).toEqual(["Setup", false]);
   });
 
-  it("makes the root index a first child, without a summary on the root", () => {
+  it("makes the root index a first child", () => {
     const nav = toNavTree(tree, href);
-    expect(nav).toMatchObject({ name: "", href: null, indexPath: null, summary: null });
+    expect(nav).toMatchObject({ name: "", href: null, indexPath: null });
     expect(nav.children[0]).toEqual({
       kind: "doc",
       title: "Home",
@@ -340,9 +469,9 @@ describe("toNavTree", () => {
     ]);
   });
 
-  it("gives a folder without an index no link and no summary", () => {
+  it("gives a folder without an index no link", () => {
     const odd = toNavTree(tree, href).children[2];
-    expect(odd).toMatchObject({ kind: "folder", href: null, indexPath: null, summary: null });
+    expect(odd).toMatchObject({ kind: "folder", href: null, indexPath: null });
   });
 
   it("drops a page that has no URL", () => {

@@ -12,7 +12,7 @@
  *
  * Decisions the spec leaves open (logged for task 9.1):
  * - A folder's label is its name as stored (case kept); its `index.md`, when present, is the
- *   link target and its description the summary.
+ *   link target. Its description is not shown in the tree: the index page shows it.
  * - `log.md` (the reserved change log) stays in the tree as an ordinary page but sorts after the
  *   folder's other documents: it is history, not content.
  * - Text compares with a fixed collator (`en`, numeric, base sensitivity: `2-setup` before
@@ -56,9 +56,10 @@ export interface DocsTreeFolder {
   readonly path: string;
   /** The folder's `index.md`: the folder entry links to it. */
   readonly index: DocsTreeDoc | null;
-  /** The index document's description, shown as the folder summary. */
-  readonly summary: string | null;
-  /** Documents (by title, `log.md` last), then subfolders (by name). */
+  /**
+   * `buildDocsTree`: documents (by title, `log.md` last), then subfolders (by name).
+   * `buildPathTree`: subfolders (by name), then files (by name).
+   */
   readonly children: readonly DocsTreeNode[];
 }
 
@@ -117,22 +118,21 @@ function freeze(folder: MutableFolder): DocsTreeFolder {
     name: folder.name,
     path: folder.path,
     index,
-    summary: index?.description ?? null,
     children: [...docs, ...folders],
   };
 }
 
 /**
- * Builds the ordered tree for one repository. `docsFolder` is `repos.docs_path`; with no docs
- * folder there are no pages, so the root is empty.
+ * Groups the rows by folder. Rows outside the docs folder, or without a route, are dropped. With
+ * `liftIndex`, `index.md` files are kept apart as index candidates; otherwise they are ordinary.
  */
-export function buildDocsTree(
+function collect(
   rows: readonly DocsTreeRow[],
-  docsFolder: string | null | undefined,
-): DocsTreeFolder {
-  const folderPath = typeof docsFolder === "string" ? docsFolder : "";
+  folderPath: string,
+  liftIndex: boolean,
+): MutableFolder {
   const root = newFolder("", folderPath);
-  if (folderPath === "") return freeze(root);
+  if (folderPath === "") return root;
 
   for (const row of rows) {
     const stem = docRouteStem(row.path, folderPath);
@@ -161,10 +161,62 @@ export function buildDocsTree(
       stem,
       fileName,
     };
-    if (row.reserved === "index") folder.indexCandidates.push(doc);
+    if (liftIndex && row.reserved === "index") folder.indexCandidates.push(doc);
     else folder.docs.push(doc);
   }
-  return freeze(root);
+  return root;
+}
+
+/**
+ * Builds the ordered tree for one repository. `docsFolder` is `repos.docs_path`; with no docs
+ * folder there are no pages, so the root is empty.
+ */
+export function buildDocsTree(
+  rows: readonly DocsTreeRow[],
+  docsFolder: string | null | undefined,
+): DocsTreeFolder {
+  const folderPath = typeof docsFolder === "string" ? docsFolder : "";
+  return freeze(collect(rows, folderPath, true));
+}
+
+/**
+ * The name a file has in the Tree view: its last path segment with a trailing `.md` or `.mdx`
+ * removed, ignoring case as the routes do (`docs/guides/Setup.MD` → `Setup`).
+ */
+export function fileLabel(path: string): string {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  return name.replace(/\.mdx?$/i, "");
+}
+
+function freezePath(folder: MutableFolder): DocsTreeFolder {
+  const folders = [...folder.folders.values()]
+    .map(freezePath)
+    .sort((a, b) => compareTreeText(a.name, b.name) || compareTreeText(a.path, b.path));
+  const docs = [...folder.docs].sort(
+    (a, b) =>
+      compareTreeText(fileLabel(a.path), fileLabel(b.path)) || compareTreeText(a.path, b.path),
+  );
+  return {
+    kind: "folder",
+    name: folder.name,
+    path: folder.path,
+    index: null,
+    children: [...folders, ...docs],
+  };
+}
+
+/**
+ * The tree as the repository lays it out (docs-nav-views, "Tree view mirrors repository paths"):
+ * in each folder its subfolders by name, then its files by name without the extension. `index.md`
+ * and `log.md` are ordinary files and no folder has an index, so every folder is a plain toggle.
+ * Titles are kept: the pager names the page by title even in this order.
+ */
+export function buildPathTree(
+  rows: readonly DocsTreeRow[],
+  docsFolder: string | null | undefined,
+): DocsTreeFolder {
+  const folderPath = typeof docsFolder === "string" ? docsFolder : "";
+  return freezePath(collect(rows, folderPath, false));
 }
 
 /** Every document in table-of-contents order (each folder's index first). */
@@ -291,8 +343,6 @@ export interface NavFolder {
   readonly href: string | null;
   /** Repo-relative path of the folder's `index.md`, to mark it as the current page. */
   readonly indexPath: string | null;
-  /** The index's description. */
-  readonly summary: string | null;
   readonly children: readonly NavNode[];
 }
 
@@ -303,12 +353,15 @@ export type NavNode = NavDoc | NavFolder;
  * the link of every page already built (`hrefFor` returns null for a page that has no URL; such
  * a page is left out). The root's own `index.md` becomes its first child, since the root has no
  * folder row to link from. `labelFor` (optional) gives a page a short label, such as the
- * "Change log" of an OKF repository's `log.md` (task 11.6). Pure; keeps the order of `buildDocsTree`.
+ * "Change log" of an OKF repository's `log.md` (task 11.6). `titleFor` (optional) replaces a page's
+ * title, such as the file name the Tree view shows (`fileLabel`); folders keep their name. Pure;
+ * keeps the order of the tree it is given.
  */
 export function toNavTree(
   tree: DocsTreeFolder,
   hrefFor: (doc: DocsTreeDoc) => string | null,
   labelFor?: (doc: DocsTreeDoc) => string | null,
+  titleFor?: (doc: DocsTreeDoc) => string,
 ): NavFolder {
   const doc = (d: DocsTreeDoc): NavDoc | null => {
     const href = hrefFor(d);
@@ -316,7 +369,7 @@ export function toNavTree(
     const label = labelFor?.(d) ?? null;
     return {
       kind: "doc",
-      title: d.title,
+      title: titleFor?.(d) ?? d.title,
       path: d.path,
       href,
       ...(label === null ? {} : { label }),
@@ -340,7 +393,6 @@ export function toNavTree(
       path: f.path,
       href: index?.href ?? null,
       indexPath: index?.path ?? null,
-      summary: index === null ? null : f.summary,
       children,
     };
   };

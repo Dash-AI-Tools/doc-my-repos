@@ -22,8 +22,8 @@ import { revealInScroller } from "./reveal-in-scroller";
  *   a collapsed folder cannot be opened. Documents stay reachable through search and links.
  * - Order and labels come from `buildDocsTree` (`src/lib/docs-tree.ts`): each folder's own
  *   `index.md` first (as the folder row itself), then documents by title, then subfolders by name.
- * - A folder with an `index.md` links to it and shows the index's description as a summary; the
- *   index is not repeated as a child. A folder without one is just a toggle.
+ * - A folder with an `index.md` links to it; the index is not repeated as a child, and its
+ *   description is not shown (the rows stay one line each). A folder without one is just a toggle.
  * - The current page is marked `aria-current="page"`. Its ancestor folders start open, and open
  *   again whenever the current page changes (a soft navigation keeps this component and the
  *   folders the visitor opened). With no current page, top-level folders start open when the
@@ -209,14 +209,6 @@ function FolderRow({ folder, shared }: { folder: NavFolder; shared: Shared }) {
           <span className="min-w-0 break-words [overflow-wrap:anywhere]">{folder.name}</span>
         </button>
       )}
-      {folder.summary !== null && folder.summary.trim() !== "" ? (
-        <p
-          data-testid="folder-summary"
-          className="line-clamp-2 pl-[1.375rem] text-xs break-words text-muted-foreground"
-        >
-          {folder.summary}
-        </p>
-      ) : null}
       <NodeList id={listId} nodes={folder.children} shared={shared} hidden={!open} nested />
     </li>
   );

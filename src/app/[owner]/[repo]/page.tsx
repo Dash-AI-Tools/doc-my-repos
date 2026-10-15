@@ -14,6 +14,8 @@ import { RepoLoadError } from "@/components/repo-load-error";
 import { repoUrl } from "@/lib/routes";
 import { buildFilterQuery } from "@/lib/search-params";
 import { buildTocFilterView, parseTocFilters, withFilterQuery } from "@/lib/toc-filters";
+import type { NavView } from "@/lib/reading-prefs";
+import { readNavView } from "@/server/nav-view";
 import { loadRepoPage } from "@/server/repo-page";
 
 /**
@@ -43,10 +45,11 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 /**
  * One read per request, shared by `generateMetadata` and the page. Keyed by the canonical filter
  * query (`type=..&tag=..`): the OKF filters of the table of contents (tasks 11.2 and 11.3), which
- * only narrow the tree of an OKF repository.
+ * only narrow the tree of an OKF repository; and by the reader's navigation view (OKF or Tree,
+ * docs-nav-views), read from its cookie so the first HTML already shows the chosen view.
  */
-const load = cache((owner: string, repo: string, filterQuery: string) =>
-  loadRepoPage(owner, repo, {}, parseTocFilters(new URLSearchParams(filterQuery))),
+const load = cache((owner: string, repo: string, filterQuery: string, view: NavView) =>
+  loadRepoPage(owner, repo, {}, parseTocFilters(new URLSearchParams(filterQuery)), view),
 );
 
 export async function generateMetadata({
@@ -58,7 +61,12 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { owner, repo } = await params;
   // The title comes from the stored repository, never from the address as typed.
-  const data = await load(owner, repo, buildFilterQuery(parseTocFilters(await searchParams)));
+  const data = await load(
+    owner,
+    repo,
+    buildFilterQuery(parseTocFilters(await searchParams)),
+    await readNavView(),
+  );
   if (data.status === "ok") return { title: `${data.repo.owner}/${data.repo.name}` };
   if (data.status === "not_found") return { title: "Repository not found" };
   return {};
@@ -73,11 +81,11 @@ export default async function RepoPage({
 }) {
   const { owner, repo: name } = await params;
   const filterQuery = buildFilterQuery(parseTocFilters(await searchParams));
-  const data = await load(owner, name, filterQuery);
+  const data = await load(owner, name, filterQuery, await readNavView());
   if (data.status === "not_found") notFound();
   if (data.status === "error") return <RepoLoadError href={repoUrl(owner, name)} />;
 
-  const { repo, readme, readmeOutline, tree, toc, lastRun, loadedAt } = data;
+  const { repo, readme, readmeOutline, tree, toc, view, lastRun, loadedAt } = data;
   if (repo.owner !== owner || repo.name !== name) {
     redirect(withFilterQuery(repoUrl(repo.owner, repo.name), filterQuery));
   }
@@ -104,6 +112,7 @@ export default async function RepoPage({
             awaitingSync={awaitingSync}
             filters={filters}
             okf={repo.isOkf}
+            view={view}
             showCount
           />
         }

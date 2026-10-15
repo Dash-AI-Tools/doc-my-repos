@@ -195,11 +195,13 @@ const PAGES: readonly PageCase[] = [
     },
   },
   {
-    name: "repo page, table of contents with folder summaries (seeded)",
+    name: "repo page, table of contents with folder indexes (seeded)",
     path: "/acme/doc-showcase",
     stack: "seeded",
     ready: async (page) => {
-      await expect(page.getByTestId("folder-summary").first()).toBeVisible();
+      await expect(
+        page.getByTestId("docs-tree").getByRole("link", { name: "guides", exact: true }),
+      ).toBeVisible();
       await expect(page.getByRole("button", { name: "Collapse all" })).toBeVisible();
     },
   },
@@ -244,7 +246,9 @@ const PAGES: readonly PageCase[] = [
     stack: "seeded",
     ready: async (page) => {
       await expect(page.getByRole("heading", { level: 1, name: "Guides" })).toBeVisible();
-      await expect(page.getByTestId("folder-summary").first()).toBeVisible();
+      await expect(
+        page.getByTestId("docs-tree").getByRole("link", { name: "guides", exact: true }),
+      ).toBeVisible();
     },
   },
   {

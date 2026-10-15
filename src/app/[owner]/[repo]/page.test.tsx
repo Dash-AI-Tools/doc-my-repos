@@ -10,15 +10,28 @@ import {
   type TocData,
   type TocFilterState,
 } from "@/lib/toc-filters";
+import type { NavView } from "@/lib/reading-prefs";
 import type { RepoDetail } from "@/server/queries";
 import type { RepoPageData } from "@/server/repo-page";
 
 const loadRepoPage =
   vi.fn<(owner: string, name: string, filters: TocFilterState) => Promise<RepoPageData>>();
+/** The navigation view each load received, and the one the cookie reader returns. */
+const views: NavView[] = [];
+const navView: { current: NavView } = { current: "okf" };
 vi.mock("@/server/repo-page", () => ({
-  loadRepoPage: (owner: string, name: string, _deps: unknown, filters: TocFilterState) =>
-    loadRepoPage(owner, name, filters),
+  loadRepoPage: (
+    owner: string,
+    name: string,
+    _deps: unknown,
+    filters: TocFilterState,
+    view: NavView,
+  ) => {
+    views.push(view);
+    return loadRepoPage(owner, name, filters);
+  },
 }));
+vi.mock("@/server/nav-view", () => ({ readNavView: async () => navView.current }));
 
 import RepoPage, { dynamic, generateMetadata } from "./page";
 
@@ -76,6 +89,7 @@ function ok(over: Partial<RepoDetail> = {}) {
     readmeOutline: [] as OutlineItem[],
     tree,
     toc: null,
+    view: null,
     lastRun: null,
   };
 }
@@ -95,6 +109,8 @@ async function html(
 
 beforeEach(() => {
   loadRepoPage.mockReset();
+  views.length = 0;
+  navView.current = "okf";
 });
 
 describe("repository page", () => {
@@ -282,6 +298,14 @@ describe("repository page, OKF filters (tasks 11.1 to 11.3)", () => {
       toc,
     };
   }
+
+  it("passes the reader's navigation view from the cookie to the loader", async () => {
+    loadRepoPage.mockResolvedValue(okfData(parseTocFilters({})));
+    await html("acme", "api", {});
+    navView.current = "tree";
+    await html("acme", "api", {});
+    expect(views).toEqual(["okf", "tree"]);
+  });
 
   it("parses the filters of the URL and passes them to the loader", async () => {
     loadRepoPage.mockResolvedValue(okfData(parseTocFilters({})));

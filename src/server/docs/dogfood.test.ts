@@ -679,8 +679,8 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
       if (folder?.kind !== "folder") throw new Error(`no folder ${name}`);
       expect(folder.index?.path, name).toBe(`docs/${name}/index.md`);
       const index = MARKDOWN.find((f) => f.path === `docs/${name}/index.md`) as DiskFile;
-      expect(folder.summary, name).toBe(frontmatterOf(index).description);
-      expect(folder.summary?.length, name).toBeGreaterThan(30);
+      expect(folder.index?.description, name).toBe(frontmatterOf(index).description);
+      expect(folder.index?.description?.length, name).toBeGreaterThan(30);
     }
     // Previous and next follow the same order as the tree.
     const flat = flattenDocsTree(tree);
