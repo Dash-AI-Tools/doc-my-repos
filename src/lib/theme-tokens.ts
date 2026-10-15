@@ -55,6 +55,10 @@ export const TOKEN_NAMES = [
   "private-badge-foreground",
   "okf-badge",
   "okf-badge-foreground",
+  "header",
+  "header-foreground",
+  "header-border",
+  "header-ring",
 ] as const;
 
 export type TokenName = (typeof TOKEN_NAMES)[number];
@@ -98,6 +102,11 @@ export const LIGHT_TOKENS: TokenSet = {
   "private-badge-foreground": "#3a3a3a",
   "okf-badge": "#eaf0ff",
   "okf-badge-foreground": "#1a3bc4",
+  // Header tokens (org-branding 3.2): the default bar is the page background.
+  header: "#ffffff",
+  "header-foreground": "#111111",
+  "header-border": "#e4e4e4",
+  "header-ring": "#2b59ff",
 };
 
 export const DARK_TOKENS: TokenSet = {
@@ -137,6 +146,10 @@ export const DARK_TOKENS: TokenSet = {
   "private-badge-foreground": "#d4d4d8",
   "okf-badge": "#172250",
   "okf-badge-foreground": "#c2d0ff",
+  header: "#0c0c0d",
+  "header-foreground": "#ececec",
+  "header-border": "#262628",
+  "header-ring": "#7c9bff",
 };
 
 export const THEME_TOKENS: Readonly<Record<ThemeName, TokenSet>> = {
@@ -185,6 +198,8 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   text("warning-foreground", "warning", "warning badge"),
   text("private-badge-foreground", "private-badge", "private repository badge"),
   text("okf-badge-foreground", "okf-badge", "OKF / type badge"),
+  text("header-foreground", "header", "header text on the top bar"),
+  { foreground: "header-ring", background: "header", min: 3, reason: "focus ring on the top bar" },
   text("code-foreground", "code-background", "code text"),
   text("foreground", "code-background", "text beside inline code"),
   text("selection-foreground", "selection", "selected text"),
