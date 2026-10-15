@@ -41,7 +41,7 @@ export function SiteHeader({
       <div className="site-shell mx-auto flex min-h-16 w-full max-w-[88rem] flex-wrap items-center gap-x-8 px-5 sm:px-8 lg:px-16">
         <Link
           href="/"
-          className="flex shrink-0 items-center gap-2 text-lg font-bold tracking-tight text-header-foreground no-underline hover:text-header-foreground"
+          className="flex min-w-0 max-w-full shrink items-center gap-2 text-lg font-bold tracking-tight text-header-foreground no-underline hover:text-header-foreground"
         >
           {branding.hasLogo ? (
             // Fixed-height box, so the measured header height never depends on the image.
@@ -49,11 +49,13 @@ export function SiteHeader({
             <img
               src={`/api/branding/logo?v=${branding.logoVersion}`}
               alt={logoAlt}
-              className="h-8 max-w-40 object-contain"
+              className="h-8 max-w-40 shrink-0 object-contain"
               style={{ filter: "var(--logo-filter, none)" }}
             />
           ) : null}
-          {name ?? (branding.hasLogo ? null : "DocMyRepos")}
+          <span className="min-w-0 break-words">
+            {name ?? (branding.hasLogo ? null : "DocMyRepos")}
+          </span>
         </Link>
         <nav
           aria-label="Main"

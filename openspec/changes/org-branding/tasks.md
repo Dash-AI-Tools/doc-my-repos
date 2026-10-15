@@ -25,7 +25,7 @@
 
 - [x] 4.1 Build the `/admin/branding` page and client `BrandingForm` (name, page title, two color inputs each with a native color input and a hex field, colored-bar checkbox, "Invert logo in dark theme" checkbox (on by default), logo upload with preview and Remove, Save, Reset to defaults, field-level errors, live preview of the bar, a button, a link, a badge and the logo in light and dark, with the inversion applied, using `deriveBrandTokens` and the same style block), and verify component tests for each control, validation messages, a failed save keeping the form state, reset, that the preview shows the derived link color when it differs, and that the preview logo is inverted in the dark panel only when the switch is on
 - [x] 4.2 Link the page from `/admin` (overview) and, if the account menu from `starred-repos` exists when this is applied, from that menu, and verify the admin pages' tests and that viewers still get the access-denied panel
-- [ ] 4.3 Check the page and a fully branded portal in light and dark themes and at phone width (header does not overflow with a wide logo or long name, bar content readable), and verify with an axe pass in both themes with the colored bar on and off
+- [x] 4.3 Check the page and a fully branded portal in light and dark themes and at phone width (header does not overflow with a wide logo or long name, bar content readable), and verify with an axe pass in both themes with the colored bar on and off
 
 ## 5. End to end and wrap-up
 

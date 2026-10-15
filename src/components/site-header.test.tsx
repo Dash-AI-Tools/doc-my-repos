@@ -70,4 +70,16 @@ describe("site header branding", () => {
     expect(markup()).not.toContain("--header-ring");
     expect(markup({ ...PLAIN, coloredBar: true })).toContain("--header-ring");
   });
+
+  it("keeps a wide logo and a long name inside the bar", () => {
+    const html = markup({
+      ...PLAIN,
+      orgName: "A very long organization name that keeps going and going",
+      hasLogo: true,
+      logoVersion: 5,
+    });
+    expect(html).toContain("max-w-full");
+    expect(html).toContain("break-words");
+    expect(html).toContain("max-w-40");
+  });
 });
