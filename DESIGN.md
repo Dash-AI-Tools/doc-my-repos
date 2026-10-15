@@ -250,6 +250,12 @@ Near-square. Code blocks, inline code and images are 2px to 4px (`rounded.sm`, `
 
 Sticky, Paper background, bottom Hairline, 64px. Wordmark in bold 18px tracking-tight; nav links 14px Quiet Ink, no underline, to Ink on hover.
 
+When branding is set, the bar uses the `header` tokens (`header`, `header-foreground`, `header-border`, `header-ring`, defaulting to the page tokens) instead: logo (fixed 32px box, `filter: var(--logo-filter, none)`, empty `alt` beside the name) plus organization name as one home link, wordmark fallback. A colored bar fills with the primary and keeps its content at 4.5:1, with the focus ring scoped to the bar; a long name wraps, never overflows. The footer always carries `Powered by DocMyRepos` and a star link to the project repository (new tab, no opener or referrer, inline SVG, no external request), plus the Sync status link; branding never hides them.
+
+### Branding derivation
+
+Two `#rrggbb` inputs, everything else derived (`src/lib/branding/`): text on a fill is black or white, whichever contrasts more; link, hover and ring are the primary shifted in lightness until they pass on every surface of the theme; the dark fill is the lightened primary; accent, badge and selection pairs follow the same construction. The layout renders the overrides as one server-side `<style>` (nothing emitted for defaults), validated twice: rejected on write, ignored on read.
+
 ### Search / Palette Trigger
 
 An underline field, not a box: 36px tall, bottom border in Control Edge that turns Ink on hover, 224px wide at lg and 256px at xl, collapsing to icon-only below lg. The "Search" label is Quiet Ink and a small 2px-cornered keycap shows the shortcut. The search page uses the same idea at 48px with a bottom-border input that darkens on focus, and a solid Ink submit button whose hover turns Signal Blue.
