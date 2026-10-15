@@ -59,9 +59,9 @@ export async function generateMetadata({
   const { owner, repo } = await params;
   // The title comes from the stored repository, never from the address as typed.
   const data = await load(owner, repo, buildFilterQuery(parseTocFilters(await searchParams)));
-  if (data.status === "ok") return { title: `${data.repo.owner}/${data.repo.name} · DocMyRepos` };
-  if (data.status === "not_found") return { title: "Repository not found · DocMyRepos" };
-  return { title: "DocMyRepos" };
+  if (data.status === "ok") return { title: `${data.repo.owner}/${data.repo.name}` };
+  if (data.status === "not_found") return { title: "Repository not found" };
+  return {};
 }
 
 export default async function RepoPage({

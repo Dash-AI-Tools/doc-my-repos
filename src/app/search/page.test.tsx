@@ -68,16 +68,17 @@ describe("search page metadata", () => {
     generateMetadata({ searchParams: Promise.resolve(params) });
 
   it("titles the page Search without a query", async () => {
-    expect((await meta({})).title).toBe("Search · DocMyRepos");
+    expect((await meta({})).title).toBe("Search");
   });
 
   it("puts the query in the title", async () => {
-    expect((await meta({ q: "rate limit" })).title).toBe('"rate limit" · Search');
+    expect((await meta({ q: "rate limit" })).title).toEqual({ absolute: '"rate limit" · Search' });
   });
 
   it("cuts a long query in the title", async () => {
-    const title = String((await meta({ q: "x".repeat(200) })).title);
-    expect(title).toBe(`"${"x".repeat(60)}…" · Search`);
+    expect((await meta({ q: "x".repeat(200) })).title).toEqual({
+      absolute: `"${"x".repeat(60)}…" · Search`,
+    });
   });
 
   it("is not indexed", async () => {

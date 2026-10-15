@@ -7,7 +7,34 @@ import { THEME_STORAGE_KEY } from "@/components/theme-provider";
 import { E2E_CRASH_HEADER } from "@/lib/e2e-fixtures";
 import { THEME_TOKENS } from "@/lib/theme-tokens";
 
-import RootLayout, { viewport } from "./layout";
+import RootLayout, { generateMetadata, viewport } from "./layout";
+
+/** Branding the layout reads; tests set this to a branded portal. */
+const brandingState = vi.hoisted(() => ({
+  current: {
+    orgName: null as string | null,
+    pageTitle: null as string | null,
+    primaryColor: null as string | null,
+    accentColor: null as string | null,
+    coloredHeader: false,
+    invertLogoOnDark: true,
+    logoVersion: 0,
+    hasLogo: false,
+  },
+}));
+vi.mock("@/server/branding", () => ({
+  DEFAULT_BRANDING: {
+    orgName: null,
+    pageTitle: null,
+    primaryColor: null,
+    accentColor: null,
+    coloredHeader: false,
+    invertLogoOnDark: true,
+    logoVersion: 0,
+    hasLogo: false,
+  },
+  getBranding: async () => ({ ...brandingState.current }),
+}));
 
 /** The request headers `headers()` returns; each test sets what the proxy would have sent. */
 const requestHeaders = vi.hoisted(() => ({ current: new Headers() }));
@@ -115,6 +142,62 @@ describe("root layout", () => {
       true,
       true,
     ]);
+  });
+
+  it("emits no branding style by default and marks the bar uncolored", () => {
+    expect(html).not.toContain('id="branding"');
+    expect(html).toContain('data-colored-header="false"');
+  });
+
+  it("emits the derived branding style and marks the bar colored when set", async () => {
+    brandingState.current = {
+      orgName: "Acme",
+      pageTitle: "Acme Docs",
+      primaryColor: "#2b59ff",
+      accentColor: "#2b59ff",
+      coloredHeader: true,
+      invertLogoOnDark: true,
+      logoVersion: 0,
+      hasLogo: false,
+    };
+    try {
+      const markup = renderToStaticMarkup(await renderLayout(NONCE));
+      expect(markup).toContain('id="branding"');
+      expect(markup).toContain("--primary:#2b59ff;");
+      expect(markup).toContain('data-colored-header="true"');
+    } finally {
+      brandingState.current = {
+        orgName: null,
+        pageTitle: null,
+        primaryColor: null,
+        accentColor: null,
+        coloredHeader: false,
+        invertLogoOnDark: true,
+        logoVersion: 0,
+        hasLogo: false,
+      };
+    }
+  });
+});
+
+describe("generateMetadata", () => {
+  it("defaults to DocMyRepos with a matching template", async () => {
+    expect(await generateMetadata()).toEqual({
+      title: { default: "DocMyRepos", template: "%s · DocMyRepos" },
+      description: "Searchable documentation portal for your GitHub org's repos.",
+    });
+  });
+
+  it("prefers the page title, then the organization name", async () => {
+    brandingState.current = { ...brandingState.current, orgName: "Acme", pageTitle: "Acme Docs" };
+    try {
+      expect((await generateMetadata()).title).toEqual({
+        default: "Acme Docs",
+        template: "%s · Acme Docs",
+      });
+    } finally {
+      brandingState.current = { ...brandingState.current, orgName: null, pageTitle: null };
+    }
   });
 });
 

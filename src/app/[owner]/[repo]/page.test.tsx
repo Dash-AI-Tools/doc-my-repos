@@ -231,19 +231,19 @@ describe("generateMetadata", () => {
 
   it("titles the page with the stored owner/name", async () => {
     loadRepoPage.mockResolvedValue(ok());
-    expect(await meta("ACME", "API")).toEqual({ title: "acme/api · DocMyRepos" });
+    expect(await meta("ACME", "API")).toEqual({ title: "acme/api" });
   });
 
   it("never echoes an address that is not a repository", async () => {
     loadRepoPage.mockResolvedValue({ status: "not_found" });
     expect(await meta("search", "<script>")).toEqual({
-      title: "Repository not found · DocMyRepos",
+      title: "Repository not found",
     });
   });
 
   it("uses the plain site title for the in-page error state", async () => {
     loadRepoPage.mockResolvedValue({ status: "error", loadedAt: NOW });
-    expect(await meta("acme", "api")).toEqual({ title: "DocMyRepos" });
+    expect(await meta("acme", "api")).toEqual({});
   });
 });
 

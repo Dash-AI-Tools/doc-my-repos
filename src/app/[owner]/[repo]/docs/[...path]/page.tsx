@@ -108,14 +108,15 @@ export async function generateMetadata({
   if (data.status === "ok") {
     // `description` only when the document has one: an explicit undefined would replace the
     // site description instead of inheriting it.
+    // Absolute: the address already names the page, and the e2e suite asserts it exactly.
     return {
-      title: `${data.doc.title} · ${data.repo.owner}/${data.repo.name}`,
+      title: { absolute: `${data.doc.title} · ${data.repo.owner}/${data.repo.name}` },
       ...(data.doc.description === null ? {} : { description: data.doc.description }),
       alternates: { canonical: data.url },
     };
   }
-  if (data.status === "not_found") return { title: "Document not found · DocMyRepos" };
-  return { title: "DocMyRepos" };
+  if (data.status === "not_found") return { title: "Document not found" };
+  return {};
 }
 
 function pagerLink(
