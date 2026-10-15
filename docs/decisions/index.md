@@ -5,7 +5,7 @@ description: Short records of the design choices that shape DocMyRepos. Search c
 
 # Decisions
 
-Each record states the context, the decision, what follows from it and what was rejected. The full design lives in the OpenSpec change under `openspec/changes/docmyrepos-mvp/`; these pages keep the choices a newcomer is most likely to question.
+Each record states the context, the decision, what follows from it and what was rejected. The full design lives in the OpenSpec change under `openspec/changes/archive/2026-10-14-docmyrepos-mvp/`; these pages keep the choices a newcomer is most likely to question.
 
 - [Postgres full-text search with the simple configuration](./0001-postgres-fts-simple.md)
 - [Serialize syncs with advisory locks, no job queue](./0002-advisory-locks-no-queue.md)

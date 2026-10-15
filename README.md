@@ -309,7 +309,7 @@ openspec validate docmyrepos-mvp
 
 ## Project status and roadmap
 
-The MVP is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) in [`openspec/changes/docmyrepos-mvp/`](openspec/changes/docmyrepos-mvp/) (proposal, nine capability specs, design and the task list), and the application is implemented. What is still open before a first release:
+The MVP is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) in [`openspec/changes/archive/2026-10-14-docmyrepos-mvp/`](openspec/changes/archive/2026-10-14-docmyrepos-mvp/) (proposal, nine capability specs, design and the task list), and the application is implemented. What is still open before a first release:
 
 - The [GitHub App setup guide](docs/github-app-setup.md) has not been walked through end to end on a real organization yet (its last section lists what to confirm).
 - CI has been validated locally but its first run on a pull request is pending, and the Docker image is only verified on arm64 locally (CI builds amd64).

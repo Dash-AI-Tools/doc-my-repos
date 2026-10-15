@@ -5,7 +5,7 @@ description: Syncs of one repository are serialized with a Postgres session-leve
 tags: [decisions, sync, database]
 status: accepted
 sources:
-  - openspec/changes/docmyrepos-mvp/design.md
+  - openspec/changes/archive/2026-10-14-docmyrepos-mvp/design.md
   - src/server/db/advisory-lock.ts
   - src/server/sync/requests.ts
   - src/server/sync/runs.ts

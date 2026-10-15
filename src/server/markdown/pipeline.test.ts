@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { extractMetadata } from "../docs/extract";
 import { parseFrontmatter } from "../docs/frontmatter";
 import { createProcessor, MAX_RENDER_CHARS, renderMarkdown } from "./pipeline";
-import { rehypeSafeHtml, SANITIZE_SCHEMA } from "./sanitize";
+import { anchorId, rehypeSafeHtml, SANITIZE_SCHEMA } from "./sanitize";
 
 async function html(source: string): Promise<string> {
   return (await renderMarkdown(source)).html;
@@ -302,7 +302,8 @@ describe("parity with extractMetadata", () => {
       const rendered = await renderMarkdown(text);
       expect(rendered.headings, file).toEqual(extracted.headings);
       for (const heading of rendered.headings) {
-        if (heading.slug !== "") expect(rendered.html, file).toContain(`id="${heading.slug}"`);
+        if (heading.slug !== "")
+          expect(rendered.html, file).toContain(`id="${anchorId(heading.slug)}"`);
       }
     }
   }, 60_000);

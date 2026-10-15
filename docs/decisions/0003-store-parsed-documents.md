@@ -5,7 +5,7 @@ description: The sync stores each document's Markdown body, frontmatter, heading
 tags: [decisions, sync, markdown]
 status: accepted
 sources:
-  - openspec/changes/docmyrepos-mvp/design.md
+  - openspec/changes/archive/2026-10-14-docmyrepos-mvp/design.md
   - src/server/sync/document-record.ts
   - src/server/markdown/pipeline.ts
 generated: 2026-10-10
