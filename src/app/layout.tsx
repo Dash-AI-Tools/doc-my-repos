@@ -89,7 +89,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         {/* The provider's inline script is the first script child of <body>: it runs before any
             visible content is parsed. It carries the request nonce, so the CSP lets it run. */}
         <ThemeProvider nonce={nonce}>
-          <SiteHeader user={user} />
+          <SiteHeader
+            user={user}
+            branding={{
+              orgName: branding.orgName,
+              pageTitle: branding.pageTitle,
+              logoVersion: branding.logoVersion,
+              hasLogo: branding.hasLogo,
+              coloredBar: coloredBar,
+            }}
+          />
           <main className="site-shell mx-auto w-full max-w-[88rem] flex-1 px-5 py-10 sm:px-8 lg:px-16 lg:py-14">
             {children}
           </main>

@@ -65,14 +65,14 @@ export function PaletteTrigger() {
       aria-haspopup="dialog"
       aria-keyshortcuts={SHORTCUT_KEYS}
       onClick={onClick}
-      className="flex h-9 items-center justify-center gap-2 border-b border-input px-1 text-sm text-muted-foreground no-underline hover:border-foreground hover:text-foreground lg:w-56 lg:justify-start xl:w-64"
+      className="flex h-9 items-center justify-center gap-2 border-b border-header-border px-1 text-sm text-header-foreground no-underline hover:border-header-foreground hover:text-header-foreground lg:w-56 lg:justify-start xl:w-64"
     >
       <SearchIcon />
       <span className="max-lg:sr-only">Search</span>
       <kbd
         aria-hidden="true"
         data-testid="palette-shortcut"
-        className="ml-auto hidden rounded-sm border border-border px-1.5 py-0.5 font-sans text-xs text-muted-foreground lg:inline-block"
+        className="ml-auto hidden rounded-sm border border-header-border px-1.5 py-0.5 font-sans text-xs text-header-foreground lg:inline-block"
       >
         {shortcutLabel(apple)}
       </kbd>

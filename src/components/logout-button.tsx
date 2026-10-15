@@ -15,7 +15,7 @@ export function LogoutButton() {
     <button
       type="button"
       onClick={onLogout}
-      className="text-sm text-muted-foreground hover:text-foreground"
+      className="text-sm text-header-foreground hover:text-header-foreground hover:underline"
     >
       Sign out
     </button>
