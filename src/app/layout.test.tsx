@@ -149,6 +149,36 @@ describe("root layout", () => {
     expect(html).toContain('data-colored-header="false"');
   });
 
+  it("shows the branded logo in the header even signed out", async () => {
+    brandingState.current = {
+      orgName: "Acme",
+      pageTitle: "Acme Docs",
+      primaryColor: null,
+      accentColor: null,
+      coloredHeader: false,
+      invertLogoOnDark: true,
+      logoVersion: 7,
+      hasLogo: true,
+    };
+    try {
+      const markup = renderToStaticMarkup(await renderLayout(NONCE));
+      expect(markup).toContain("/api/branding/logo?v=7");
+      // The sign-in page uses this same layout with no user.
+      expect(markup).not.toContain("admin@example.com");
+    } finally {
+      brandingState.current = {
+        orgName: null,
+        pageTitle: null,
+        primaryColor: null,
+        accentColor: null,
+        coloredHeader: false,
+        invertLogoOnDark: true,
+        logoVersion: 0,
+        hasLogo: false,
+      };
+    }
+  });
+
   it("emits the derived branding style and marks the bar colored when set", async () => {
     brandingState.current = {
       orgName: "Acme",
