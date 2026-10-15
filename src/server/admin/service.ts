@@ -142,6 +142,12 @@ export async function handleGithubConfig(db: Db | null = null): Promise<Response
   }
 }
 
+/** Branding settings for the admin page (server component). Throws 401/403 on denial. */
+export async function getAdminBranding(db: Db | null = null) {
+  await requireAdmin(db);
+  return readBrandingSettings(db);
+}
+
 /** `GET /api/admin/branding`: current settings, logo version, no bytes. */
 export async function handleGetBranding(db: Db | null = null): Promise<Response> {
   const denied = await guard(db);
