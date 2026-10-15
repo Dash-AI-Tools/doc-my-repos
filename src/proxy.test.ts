@@ -266,6 +266,14 @@ describe("proxy: auth gate (access-control)", () => {
     expect((await gated("/api/status")).status).toBe(401);
   });
 
+  it("lets the public logo through but keeps admin branding and other branding paths behind the login", async () => {
+    expect((await gated("/api/branding/logo")).headers.get("x-middleware-next")).toBe("1");
+    expect((await gated("/api/branding/logo?v=2")).headers.get("x-middleware-next")).toBe("1");
+    for (const path of ["/api/admin/branding", "/api/admin/branding/logo", "/api/branding/other"]) {
+      expect((await gated(path)).status, path).toBe(401);
+    }
+  });
+
   it("lets a valid session through and rejects tampered or expired ones", async () => {
     const { signSession, newSessionPayload } = await import("./server/auth/session");
     const valid = signSession(SECRET, newSessionPayload(1, "admin", 0));
