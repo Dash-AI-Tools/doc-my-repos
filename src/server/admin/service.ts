@@ -5,6 +5,7 @@ import { setRepoAllowed } from "@/server/admin/repos";
 import { createUser, listUsers, updateUser } from "@/server/admin/users";
 import { readBrandingSettings } from "@/server/branding";
 import { siteBranding } from "@/server/db/schema";
+import { sniffImageType } from "@/server/assets/image-types";
 import { parseBrandColor, parseOrgName, parsePageTitle } from "@/lib/branding/validate";
 import { allowAllRepos, type QueryOptions } from "@/server/queries/visibility";
 import { listRepos } from "@/server/queries/repos";
@@ -235,6 +236,125 @@ export async function handleResetBranding(db: Db | null = null): Promise<Respons
   try {
     const target = db ?? getDb().db;
     await target.delete(siteBranding);
+    return Response.json({ branding: await readBrandingSettings(target) });
+  } catch {
+    return Response.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+/** Logo uploads are capped at 512 KB; the stream is cut even when `Content-Length` lies. */
+export const MAX_LOGO_BYTES = 512 * 1024;
+
+const LOGO_TYPES = new Set(["png", "jpeg", "webp", "svg"]);
+
+async function readCappedBody(
+  request: Request,
+): Promise<{ bytes: Uint8Array } | { status: number; error: string }> {
+  const reader = request.body?.getReader();
+  if (!reader) return { bytes: new Uint8Array(0) };
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > MAX_LOGO_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return { status: 413, error: "logo must be at most 512 KB" };
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return { bytes };
+}
+
+/** `PUT /api/admin/branding/logo`: raw body, type from bytes, version bump. */
+export async function handleUploadLogo(request: Request, db: Db | null = null): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  const declared = request.headers.get("content-length");
+  if (declared === null || declared.trim() === "") {
+    return Response.json({ error: "Content-Length is required", field: "logo" }, { status: 411 });
+  }
+  const declaredLength = Number(declared);
+  if (!Number.isSafeInteger(declaredLength) || declaredLength < 0) {
+    return Response.json({ error: "Content-Length is invalid", field: "logo" }, { status: 400 });
+  }
+  if (declaredLength > MAX_LOGO_BYTES) {
+    return Response.json({ error: "logo must be at most 512 KB", field: "logo" }, { status: 413 });
+  }
+  try {
+    const target = db ?? getDb().db;
+    const read = await readCappedBody(request);
+    if ("status" in read) {
+      return Response.json({ error: read.error, field: "logo" }, { status: read.status });
+    }
+    if (read.bytes.length === 0) {
+      return Response.json({ error: "logo must not be empty", field: "logo" }, { status: 400 });
+    }
+    const sniffed = sniffImageType(read.bytes);
+    if (sniffed === null || !LOGO_TYPES.has(sniffed)) {
+      return Response.json(
+        { error: "logo must be PNG, JPEG, WebP or SVG content", field: "logo" },
+        { status: 400 },
+      );
+    }
+    const current = await readBrandingSettings(target);
+    const version = current.logoVersion + 1;
+    await target
+      .insert(siteBranding)
+      .values({
+        id: 1,
+        logo: Buffer.from(read.bytes),
+        logoType: sniffed,
+        logoVersion: version,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: siteBranding.id,
+        set: {
+          logo: Buffer.from(read.bytes),
+          logoType: sniffed,
+          logoVersion: version,
+          updatedAt: new Date(),
+        },
+      });
+    return Response.json({ branding: await readBrandingSettings(target) });
+  } catch {
+    return Response.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+/** `DELETE /api/admin/branding/logo`: remove the logo, bump the version. */
+export async function handleRemoveLogo(db: Db | null = null): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  try {
+    const target = db ?? getDb().db;
+    const current = await readBrandingSettings(target);
+    await target
+      .insert(siteBranding)
+      .values({
+        id: 1,
+        logo: null,
+        logoType: null,
+        logoVersion: current.logoVersion + 1,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: siteBranding.id,
+        set: {
+          logo: null,
+          logoType: null,
+          logoVersion: current.logoVersion + 1,
+          updatedAt: new Date(),
+        },
+      });
     return Response.json({ branding: await readBrandingSettings(target) });
   } catch {
     return Response.json({ error: "Internal error" }, { status: 500 });

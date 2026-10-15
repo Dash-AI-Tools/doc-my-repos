@@ -4,7 +4,14 @@ import { siteBranding, users } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import { hashPassword } from "../auth/password";
 import { newSessionPayload, SESSION_COOKIE, signSession } from "../auth/session";
-import { handleGetBranding, handleResetBranding, handleUpdateBranding } from "./service";
+import { getLogo } from "../branding";
+import {
+  handleGetBranding,
+  handleRemoveLogo,
+  handleResetBranding,
+  handleUpdateBranding,
+  handleUploadLogo,
+} from "./service";
 
 const SECRET = "branding-service-test-secret-0123456789";
 
@@ -123,10 +130,79 @@ describeDb("admin branding routes", () => {
     expect(cleared.status).toBe(200);
     expect(await cleared.json()).toMatchObject({ branding: { orgName: null } });
 
+    const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    const up = await handleUploadLogo(logoRequest(PNG, String(PNG.length)), t.db);
+    expect(up.status).toBe(200);
+    expect(await getLogo(t.db)).toMatchObject({ type: "png" });
+
     const reset = await handleResetBranding(t.db);
     expect(reset.status).toBe(200);
     expect(await reset.json()).toMatchObject({
       branding: { orgName: null, primaryColor: null, coloredHeader: false, hasLogo: false },
     });
   });
+
+  it("401s and 403s logo upload and removal", async () => {
+    const png = LOGO_BYTES["png"] ?? new Uint8Array();
+    jar.cookie = "";
+    expect((await handleUploadLogo(logoRequest(png, String(png.length)), t.db)).status).toBe(401);
+    expect((await handleRemoveLogo(t.db)).status).toBe(401);
+    signInAs("user");
+    expect((await handleUploadLogo(logoRequest(png, String(png.length)), t.db)).status).toBe(403);
+    expect((await handleRemoveLogo(t.db)).status).toBe(403);
+    signInAs("admin");
+  });
+
+  it("accepts each logo type, bumps the version on replace and removal", async () => {
+    signInAs("admin");
+    await t.db.delete(siteBranding);
+    let version = 0;
+    for (const type of ["png", "jpeg", "webp", "svg"] as const) {
+      const bytes = LOGO_BYTES[type] ?? new Uint8Array();
+      const response = await handleUploadLogo(logoRequest(bytes, String(bytes.length)), t.db);
+      expect(response.status, type).toBe(200);
+      const logo = await getLogo(t.db);
+      expect(logo?.type).toBe(type);
+      expect(logo?.version).toBeGreaterThan(version);
+      version = logo?.version ?? version;
+    }
+    const removed = await handleRemoveLogo(t.db);
+    expect(removed.status).toBe(200);
+    expect(await getLogo(t.db)).toBeNull();
+    expect(await removed.json()).toMatchObject({ branding: { hasLogo: false } });
+  });
+
+  it("rejects a renamed HTML file, an empty file, and an oversized body with a false Content-Length", async () => {
+    signInAs("admin");
+    await t.db.delete(siteBranding);
+    const html = new TextEncoder().encode("<html><body>not an image</body></html>");
+    expect((await handleUploadLogo(logoRequest(html, String(html.length)), t.db)).status).toBe(400);
+    expect((await handleUploadLogo(logoRequest(new Uint8Array(0), "0"), t.db)).status).toBe(400);
+    const big = new Uint8Array(600 * 1024).fill(0xff);
+    big[0] = 0x89;
+    big[1] = 0x50;
+    big[2] = 0x4e;
+    big[3] = 0x47;
+    expect((await handleUploadLogo(logoRequest(big, "100"), t.db)).status).toBe(413);
+    expect(await getLogo(t.db)).toBeNull();
+  });
 });
+
+function logoRequest(bytes: Uint8Array, contentLength: string | null): Request {
+  const headers = new Headers();
+  if (contentLength !== null) headers.set("content-length", contentLength);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+  return { headers, body: stream } as unknown as Request;
+}
+
+const LOGO_BYTES: Record<string, Uint8Array> = {
+  png: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]),
+  jpeg: new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]),
+  webp: new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x0c, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]),
+  svg: new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+};
