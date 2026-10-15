@@ -50,6 +50,13 @@
       "when": 1791727868818,
       "tag": "0006_crazy_iron_monger",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792040267799,
+      "tag": "0007_red_pixie",
+      "breakpoints": true
     }
   ]
 }

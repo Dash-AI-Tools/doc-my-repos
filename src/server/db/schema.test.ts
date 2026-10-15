@@ -1,7 +1,7 @@
 import { getTableConfig, type PgColumn } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
-import { codeOwners, documents, repos, syncRuns } from "./schema";
+import { codeOwners, documents, repos, siteBranding, syncRuns } from "./schema";
 
 function column(table: Parameters<typeof getTableConfig>[0], name: string): PgColumn {
   const col = getTableConfig(table).columns.find((c) => c.name === name);
@@ -14,13 +14,10 @@ function uniques(table: Parameters<typeof getTableConfig>[0]): string[][] {
 }
 
 describe("db schema", () => {
-  it("defines the four tables", () => {
-    expect([repos, documents, codeOwners, syncRuns].map((t) => getTableConfig(t).name)).toEqual([
-      "repos",
-      "documents",
-      "code_owners",
-      "sync_runs",
-    ]);
+  it("defines the five tables", () => {
+    expect(
+      [repos, documents, codeOwners, syncRuns, siteBranding].map((t) => getTableConfig(t).name),
+    ).toEqual(["repos", "documents", "code_owners", "sync_runs", "site_branding"]);
   });
 
   it("restricts repos.visibility to public and private and requires it", () => {
@@ -118,5 +115,22 @@ describe("db schema", () => {
     ]);
     expect(column(syncRuns, "started_at").notNull).toBe(true);
     expect(column(syncRuns, "finished_at").notNull).toBe(false);
+  });
+
+  it("keeps branding to one row with nullable settings and logo bytes", () => {
+    expect(getTableConfig(siteBranding).name).toBe("site_branding");
+    expect(column(siteBranding, "id").getSQLType()).toBe("smallint");
+    for (const name of ["org_name", "page_title", "primary_color", "accent_color"]) {
+      expect(column(siteBranding, name).notNull).toBe(false);
+    }
+    expect(column(siteBranding, "colored_header").notNull).toBe(true);
+    expect(column(siteBranding, "colored_header").default).toBe(false);
+    expect(column(siteBranding, "invert_logo_on_dark").notNull).toBe(true);
+    expect(column(siteBranding, "invert_logo_on_dark").default).toBe(true);
+    expect(column(siteBranding, "logo").getSQLType()).toBe("bytea");
+    expect(column(siteBranding, "logo_version").notNull).toBe(true);
+    expect(column(siteBranding, "logo_version").default).toBe(0);
+    const checks = getTableConfig(siteBranding).checks.map((c) => c.name);
+    expect(checks).toContain("site_branding_single_row");
   });
 });

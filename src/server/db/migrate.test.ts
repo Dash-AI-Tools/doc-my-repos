@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withAdvisoryLock } from "./advisory-lock";
 import { createDb } from "./client";
 import { MIGRATION_LOCK_KEY, MigrationError, migrateDatabase, runMigrations } from "./migrate";
-import { codeOwners, documents, repos, syncRuns, users } from "./schema";
+import { codeOwners, documents, repos, siteBranding, syncRuns, users } from "./schema";
 import {
   createEmptyDatabase,
   createTestDatabase,
@@ -25,7 +25,7 @@ const journalLength = (
   JSON.parse(readFileSync(`${drizzleDir}/meta/_journal.json`, "utf8")) as { entries: unknown[] }
 ).entries.length;
 
-const tables: AnyPgTable[] = [repos, documents, codeOwners, syncRuns, users];
+const tables: AnyPgTable[] = [repos, documents, codeOwners, syncRuns, users, siteBranding];
 
 describeDb("migrations on a real database", () => {
   let t: TestDatabase;
@@ -337,6 +337,7 @@ describeDb("parallel db:migrate runs on one empty database", () => {
         "code_owners",
         "documents",
         "repos",
+        "site_branding",
         "sync_runs",
         "users",
       ]);
