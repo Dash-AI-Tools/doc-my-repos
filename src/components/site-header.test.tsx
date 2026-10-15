@@ -3,8 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SiteHeader, type HeaderBranding } from "./site-header";
 
+const nav = vi.hoisted(() => ({ pathname: "/" }));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: () => undefined, refresh: () => undefined }),
+  usePathname: () => nav.pathname,
 }));
 
 const PLAIN: HeaderBranding = {
@@ -31,31 +34,35 @@ describe("site header branding", () => {
     expect(html).toContain("text-header-foreground");
   });
 
-  it("shows the logo plus the name, with an empty logo alt", () => {
+  it("shows the logo and the page title, not the organization name", () => {
     const html = markup({
       ...PLAIN,
-      orgName: "Acme",
-      pageTitle: "Acme Docs",
+      orgName: "Globex",
+      pageTitle: "Docs Portal",
       hasLogo: true,
       logoVersion: 3,
     });
     expect(html).toContain("/api/branding/logo?v=3");
-    expect(html).toContain("Acme");
+    expect(html).toContain("Docs Portal");
+    expect(html).not.toContain("Globex");
     expect(html).toContain('alt=""');
   });
 
-  it("names the logo-only link from the title, else Home", () => {
-    const titled = markup({ ...PLAIN, pageTitle: "Acme Docs", hasLogo: true, logoVersion: 1 });
-    expect(titled).toContain('alt="Acme Docs"');
+  it("shows the organization name and the page title when there is no logo", () => {
+    const html = markup({ ...PLAIN, orgName: "Globex", pageTitle: "Docs Portal" });
+    expect(html).toContain("Globex \u00b7 Docs Portal");
+    expect(html).not.toContain("/api/branding/logo");
+  });
+
+  it("shows only the set one of name and title without a logo", () => {
+    expect(markup({ ...PLAIN, pageTitle: "Docs Portal" })).toContain("Docs Portal");
+    expect(markup({ ...PLAIN, orgName: "Globex" })).toContain("Globex");
+  });
+
+  it("names the logo Home when it stands alone", () => {
     const homed = markup({ ...PLAIN, hasLogo: true, logoVersion: 1 });
     expect(homed).toContain('alt="Home"');
     expect(homed).not.toContain("DocMyRepos");
-  });
-
-  it("shows the name without a logo image", () => {
-    const html = markup({ ...PLAIN, orgName: "Acme" });
-    expect(html).toContain("Acme");
-    expect(html).not.toContain("/api/branding/logo");
   });
 
   it("renders the logo in a fixed-height box using the filter variable", () => {
@@ -71,15 +78,63 @@ describe("site header branding", () => {
     expect(markup({ ...PLAIN, coloredBar: true })).toContain("--header-ring");
   });
 
-  it("keeps a wide logo and a long name inside the bar", () => {
+  it("keeps a wide logo and a long title inside the bar", () => {
     const html = markup({
       ...PLAIN,
-      orgName: "A very long organization name that keeps going and going",
+      pageTitle: "A very long page title that keeps going and going",
       hasLogo: true,
       logoVersion: 5,
     });
     expect(html).toContain("max-w-full");
     expect(html).toContain("break-words");
     expect(html).toContain("max-w-40");
+  });
+});
+
+describe("site header account menu", () => {
+  const header = (role: "admin" | "user" | null, pathname = "/"): string => {
+    nav.pathname = pathname;
+    return renderToStaticMarkup(
+      <SiteHeader
+        user={role === null ? null : { email: `${role}@example.com`, role }}
+        branding={PLAIN}
+      />,
+    );
+  };
+
+  it("puts the admin pages and sign out behind the email", () => {
+    const html = header("admin");
+    expect(html).toContain("account-menu-trigger");
+    expect(html).toContain("admin@example.com");
+    expect(html).toContain('aria-expanded="false"');
+    for (const label of ["Users", "Repository access", "Branding"]) {
+      expect(html).toContain(label);
+    }
+    expect(html).not.toContain("Administration");
+    expect(html).toContain("Sign out");
+  });
+
+  it("keeps the top nav free of administration links", () => {
+    const html = header("admin");
+    const navHtml = html.slice(html.indexOf('aria-label="Main"'), html.indexOf("</nav>"));
+    expect(navHtml).not.toContain("admin");
+    expect(navHtml).toContain("Repositories");
+  });
+
+  it("marks the current admin page", () => {
+    const html = header("admin", "/admin/users");
+    expect(html.match(/aria-current="page"/g) ?? []).toHaveLength(1);
+    expect(header("admin")).not.toContain("aria-current");
+  });
+
+  it("hides the admin links from a viewer", () => {
+    const html = header("user");
+    expect(html).toContain("user@example.com");
+    expect(html).not.toContain("/admin");
+    expect(html).toContain("Sign out");
+  });
+
+  it("shows no account menu when signed out", () => {
+    expect(header(null)).not.toContain("account-menu-trigger");
   });
 });

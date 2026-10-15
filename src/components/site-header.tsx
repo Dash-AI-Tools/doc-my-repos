@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 
+import { AccountMenu } from "./account-menu";
 import { HeaderHeight } from "./header-height";
-import { LogoutButton } from "./logout-button";
 import { PaletteTrigger } from "./palette-trigger";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -28,8 +28,14 @@ export function SiteHeader({
   user: HeaderUser | null;
   branding: HeaderBranding;
 }) {
-  const name = branding.orgName;
-  const logoAlt = name !== null ? "" : (branding.pageTitle ?? "Home");
+  // With a logo the page title names the portal (the org name would repeat the logo). Without
+  // one both are shown; with neither, the wordmark. See the org-branding spec.
+  const text = branding.hasLogo
+    ? branding.pageTitle
+    : [branding.orgName, branding.pageTitle].filter((part) => part !== null).join(" · ") ||
+      "DocMyRepos";
+  // The title sits beside the logo, so the image needs no name of its own; alone it says "Home".
+  const logoAlt = branding.hasLogo && branding.pageTitle !== null ? "" : "Home";
   return (
     <header
       className="sticky top-0 z-30 border-b border-header-border bg-header"
@@ -53,9 +59,7 @@ export function SiteHeader({
               style={{ filter: "var(--logo-filter, none)" }}
             />
           ) : null}
-          <span className="min-w-0 break-words">
-            {name ?? (branding.hasLogo ? null : "DocMyRepos")}
-          </span>
+          <span className="min-w-0 break-words">{text}</span>
         </Link>
         <nav
           aria-label="Main"
@@ -67,26 +71,11 @@ export function SiteHeader({
           >
             Repositories
           </Link>
-          {user?.role === "admin" ? (
-            <Link
-              href="/admin"
-              className="font-medium text-header-foreground no-underline hover:text-header-foreground hover:underline"
-            >
-              Admin
-            </Link>
-          ) : null}
         </nav>
         <div className="ml-auto flex h-16 items-center gap-3 sm:gap-5">
           <PaletteTrigger />
           <ThemeToggle />
-          {user ? (
-            <>
-              <span className="hidden text-sm text-header-foreground xl:inline" title="Signed in">
-                {user.email}
-              </span>
-              <LogoutButton />
-            </>
-          ) : null}
+          {user ? <AccountMenu user={user} /> : null}
         </div>
       </div>
     </header>

@@ -20,11 +20,11 @@ The system SHALL show the signed-in user's email in the site header as a button 
 - **THEN** the header shows no email button and no account menu
 
 ### Requirement: Administration links live in the account menu
-The system SHALL offer the administration pages (Administration overview, Users, Repository access, GitHub configuration) only inside the account menu, and only to admins. The header's main navigation SHALL NOT contain an Admin link or any administration link for any user. Non-admin users SHALL see no administration links anywhere in the header. Hiding the links is a convenience and not access control: the admin pages and APIs stay protected as the access-control rules define.
+The system SHALL offer the administration pages (Users, Repository access, GitHub configuration, Branding) only inside the account menu, and only to admins. The header's main navigation SHALL NOT contain an Admin link or any administration link for any user. Non-admin users SHALL see no administration links anywhere in the header. Hiding the links is a convenience and not access control: the admin pages and APIs stay protected as the access-control rules define.
 
 #### Scenario: Admin sees admin links in the menu
 - **WHEN** an admin opens the account menu
-- **THEN** it lists Administration, Users, Repository access and GitHub configuration, each linking to its page
+- **THEN** it lists Users, Repository access, GitHub configuration and Branding, each linking to its page
 
 #### Scenario: Top bar has no admin link
 - **WHEN** an admin views any page

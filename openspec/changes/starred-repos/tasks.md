@@ -26,9 +26,9 @@
 
 ## 4. Account menu
 
-- [ ] 4.1 Build the client `AccountMenu` (email trigger with `aria-expanded`/`aria-controls`, truncation, chevron; panel with the admin links for admins, a rule, and Sign out for everyone; `aria-current` on the current admin page; closes on Escape with focus returned, outside pointerdown, link activation and route change), and verify component tests for admin and viewer menus, each way of closing, keyboard Tab order and the sign-out request and redirect
-- [ ] 4.2 Use it in `src/components/site-header.tsx`: remove the Admin link from the main nav, the `xl`-only email span and the inline `LogoutButton` (delete `logout-button.tsx` once unused), and render nothing when signed out; verify the header tests show no administration link or Sign out in the bar, for admin and viewer, and nothing for a signed-out visitor
-- [ ] 4.3 Check the menu and trigger in light and dark themes, at phone width (menu inside the viewport, no horizontal scroll) and at the widths where the header wraps, then update the Site Header section of `DESIGN.md`; verify with an axe pass on a page with the menu open
+- [x] 4.1 Build the client `AccountMenu` (email trigger with `aria-expanded`/`aria-controls`, truncation, chevron; panel with the admin links for admins, a rule, and Sign out for everyone; `aria-current` on the current admin page; closes on Escape with focus returned, outside pointerdown, link activation and route change), and verify component tests for admin and viewer menus, each way of closing, keyboard Tab order and the sign-out request and redirect
+- [x] 4.2 Use it in `src/components/site-header.tsx`: remove the Admin link from the main nav, the `xl`-only email span and the inline `LogoutButton` (delete `logout-button.tsx` once unused), and render nothing when signed out; verify the header tests show no administration link or Sign out in the bar, for admin and viewer, and nothing for a signed-out visitor
+- [x] 4.3 Check the menu and trigger in light and dark themes, at phone width (menu inside the viewport, no horizontal scroll) and at the widths where the header wraps, then update the Site Header section of `DESIGN.md`; verify with an axe pass on a page with the menu open
 
 ## 5. End to end and wrap-up
 

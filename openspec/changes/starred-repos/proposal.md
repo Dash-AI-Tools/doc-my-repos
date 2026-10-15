@@ -14,7 +14,7 @@ The home page lists every visible repository alphabetically by owner and name. I
 - Non-admins cannot change stars or their order (403, nothing changes). Viewers only see the result.
 - Blocking a repository still hides it everywhere, starred or not. Its star and its place in the order are kept, so re-allowing it returns it to the same spot in the Starred section.
 - A sync never changes a star or the order.
-- **Account menu in the header.** The admin pages are no longer linked from the top bar. The signed-in user's email in the header becomes a button that opens an account menu: for admins it lists Administration, Users, Repository access and GitHub configuration; for every user it ends with Sign out, which moves out of the bar into the menu. The email shows at every screen width (today it is hidden below 1280px). The main navigation loses its **Admin** link. Hiding the links is not access control; the admin pages and APIs stay guarded as before.
+- **Account menu in the header.** The admin pages are no longer linked from the top bar. The signed-in user's email in the header becomes a button that opens an account menu: for admins it lists Users, Repository access, GitHub configuration and Branding; for every user it ends with Sign out, which moves out of the bar into the menu. The email shows at every screen width (today it is hidden below 1280px). The main navigation loses its **Admin** link. Hiding the links is not access control; the admin pages and APIs stay guarded as before.
 - Not changed: search, repository and document pages, the repo card's markup, and per-user favourites.
 
 ## Capabilities

@@ -248,13 +248,13 @@ Near-square. Code blocks, inline code and images are 2px to 4px (`rounded.sm`, `
 
 ### Site Header
 
-Sticky, Paper background, bottom Hairline, 64px. Wordmark in bold 18px tracking-tight; nav links 14px Quiet Ink, no underline, to Ink on hover.
+Sticky, Paper background, bottom Hairline, 64px. Wordmark in bold 18px tracking-tight; nav links 14px Quiet Ink, no underline, to Ink on hover. The signed-in email is a button at every width (truncated, with a chevron) that opens the account menu: a 2px-cornered Paper popover with a Hairline border, holding the admin links for admins (the current one marked), a rule, then Sign out. The bar itself carries no Admin link and no Sign out button.
 
-When branding is set, the bar uses the `header` tokens (`header`, `header-foreground`, `header-border`, `header-ring`, defaulting to the page tokens) instead: logo (fixed 32px box, `filter: var(--logo-filter, none)`, empty `alt` beside the name) plus organization name as one home link, wordmark fallback. A colored bar fills with the primary and keeps its content at 4.5:1, with the focus ring scoped to the bar; a long name wraps, never overflows. The footer always carries `Powered by DocMyRepos` and a star link to the project repository (new tab, no opener or referrer, inline SVG, no external request), plus the Sync status link; branding never hides them.
+When branding is set, the bar uses the `header` tokens (`header`, `header-foreground`, `header-border`, `header-ring`, defaulting to the page tokens) instead: logo (fixed 32px box, `filter: var(--logo-filter, none)`, empty `alt` beside the page title) plus the page title as one home link, wordmark fallback. A colored bar fills with the primary and keeps its content at 4.5:1, with the focus ring scoped to the bar; a long name wraps, never overflows. The footer always carries `Powered by DocMyRepos` and a star link to the project repository (new tab, no opener or referrer, inline SVG, no external request), plus the Sync status link; branding never hides them.
 
 ### Branding derivation
 
-Two `#rrggbb` inputs, everything else derived (`src/lib/branding/`): text on a fill is black or white, whichever contrasts more; link, hover and ring are the primary shifted in lightness until they pass on every surface of the theme; the dark fill is the lightened primary; accent, badge and selection pairs follow the same construction. The layout renders the overrides as one server-side `<style>` (nothing emitted for defaults), validated twice: rejected on write, ignored on read.
+Two `#rrggbb` inputs, everything else derived (`src/lib/branding/`): text on a fill is black or white, whichever contrasts more; link, hover and ring are the primary shifted in lightness until they pass on every surface of the theme; the dark fill is the lightened primary; the dark page and its card, muted, popover, secondary and code surfaces are the primary's hue at fixed dark lightness steps (darkened further when a bright hue would break AA), with the dark text tones re-derived against them; accent, badge and selection pairs follow the same construction. The layout renders the overrides as one server-side `<style>` (nothing emitted for defaults), validated twice: rejected on write, ignored on read.
 
 ### Search / Palette Trigger
 
