@@ -12,3 +12,4 @@ test-results
 .grok
 .dsh
 .agents
+.impeccable/hook.cache.json
