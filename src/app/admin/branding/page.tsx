@@ -8,7 +8,13 @@ export default async function AdminBrandingPage() {
   const branding = await getAdminBranding();
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-3xl font-bold tracking-tight">Branding</h1>
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-bold tracking-tight">Branding</h1>
+        <p className="text-muted-foreground">
+          Set the name, title, colors and logo the portal shows. Preview the result as you type,
+          then save.
+        </p>
+      </div>
       <BrandingForm initial={branding} />
     </div>
   );

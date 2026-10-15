@@ -29,13 +29,28 @@ describe("brandStyleBlock", () => {
     expect(css).toContain("--primary:#2b59ff;");
     expect(css).not.toContain("expression");
     expect(css).not.toContain("<");
-    // No header vars when the bar is not colored.
+    // Without a colored bar the dark header follows the tinted page; the light part is untouched.
     const plain = brandStyleBlock(derived, {
       coloredHeader: false,
       invertLogo: false,
       hasLogo: false,
     });
-    expect(plain).not.toContain("--header:");
+    expect(plain.split("html.dark{")[0]).not.toContain("--header");
+    expect(plain).toContain(`--header:${derived.dark["background"]};`);
+    expect(plain).toContain(`--header-foreground:${derived.dark["foreground"]};`);
+  });
+
+  it("emits the tinted dark surfaces and leaves the light ones to the palette", () => {
+    const css = brandStyleBlock(derived, {
+      coloredHeader: false,
+      invertLogo: false,
+      hasLogo: false,
+    });
+    const [light, dark = ""] = css.split("html.dark{");
+    expect(light).not.toContain("--background:");
+    expect(dark).toContain(`--background:${derived.dark["background"]};`);
+    expect(dark).toContain(`--muted-foreground:${derived.dark["muted-foreground"]};`);
+    expect(dark).toContain(`--card:${derived.dark["card"]};`);
   });
 
   it("inverts always in dark, in root only on a white-text colored bar", () => {

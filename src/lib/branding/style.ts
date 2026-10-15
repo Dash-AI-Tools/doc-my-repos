@@ -8,7 +8,7 @@
  * influence the output.
  */
 
-import type { DerivedBrandTokens } from "./colors";
+import type { BrandThemeTokens, DerivedBrandTokens } from "./colors";
 import { BRAND_COLOR_RE } from "./validate";
 
 export interface BrandStyleOptions {
@@ -29,6 +29,22 @@ const BASE_VARS: readonly string[] = [
   "okf-badge-foreground",
   "selection",
   "selection-foreground",
+  // Dark surfaces and their text tones (only the dark tokens carry these; the light ones are
+  // the shipped palette unchanged).
+  "background",
+  "foreground",
+  "muted",
+  "muted-foreground",
+  "card",
+  "card-foreground",
+  "popover",
+  "popover-foreground",
+  "secondary",
+  "secondary-foreground",
+  "border",
+  "input",
+  "code-background",
+  "code-foreground",
 ];
 
 const HEADER_VARS: readonly string[] = [
@@ -54,6 +70,23 @@ function declarations(
 }
 
 /**
+ * Without a colored bar the dark bar follows the tinted page: the header tokens are the derived
+ * dark surface, text, border and focus ring. `globals.css` defaults them to the neutral dark
+ * palette, which would leave the bar near-black on a tinted page.
+ */
+function darkHeaderFollowsPage(dark: BrandThemeTokens): string {
+  return declarations(
+    {
+      header: dark["background"] ?? "",
+      "header-foreground": dark["foreground"] ?? "",
+      "header-border": dark["border"] ?? "",
+      "header-ring": dark["ring"] ?? "",
+    },
+    HEADER_VARS,
+  );
+}
+
+/**
  * CSS overrides for branding. Empty when nothing is set and no logo needs inversion.
  * `html.dark` always carries the inversion when on; `html:root` only when the bar is
  * colored with a white derived foreground.
@@ -69,7 +102,9 @@ export function brandStyleBlock(
     : "";
   const darkVars = derived
     ? declarations(derived.dark, BASE_VARS) +
-      (options.coloredHeader ? declarations(derived.dark, HEADER_VARS) : "")
+      (options.coloredHeader
+        ? declarations(derived.dark, HEADER_VARS)
+        : darkHeaderFollowsPage(derived.dark))
     : "";
   const lightHeaderFg = derived?.light["header-foreground"];
   const rootInvert =

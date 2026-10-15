@@ -1,8 +1,9 @@
-## Purpose
+# org-branding Specification
 
+## Purpose
 Lets an organization make its portal its own (logo, name, tab title, brand colors, colored top bar) while the DocMyRepos project stays credited in the footer.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Admin branding settings
 The system SHALL let admins view and change the portal's branding settings (organization name, page title, logo, logo inversion, primary color, accent color, colored top bar) from a Branding page in the admin area. The settings SHALL be one portal-wide set, SHALL persist across restarts, and SHALL take effect on the next page load for every visitor. An unset value SHALL mean the built-in default. An admin SHALL be able to reset all branding to the defaults in one action.
@@ -89,11 +90,15 @@ The system SHALL, by default, show the logo with its colors inverted (transparen
 - **THEN** the original uploaded image is served
 
 ### Requirement: Organization name and page title
-The system SHALL show the organization name in the top bar next to the logo, as the link to the home page. The system SHALL use the page title as the browser tab title of the home page and as the suffix of every other page's title (for example "Search · Acme Docs"); when no page title is set it SHALL use the organization name, and when neither is set "DocMyRepos". Names and titles SHALL be plain text of 1 to 60 and 1 to 70 characters, trimmed, without control characters, and SHALL always be shown as text. With a logo and no name, the logo SHALL link to the home page and be named for assistive technology by the page title or "Home". With neither logo nor name, the DocMyRepos wordmark SHALL be shown.
+The system SHALL show the organization name and the page title in the top bar, as the link to the home page. With a logo the bar SHALL show the logo and the page title and SHALL NOT repeat the organization name; without a logo it SHALL show the organization name and the page title. Whichever are set SHALL be shown once, in that order, separated by a middot, and an unset one SHALL be omitted; with neither set the DocMyRepos wordmark SHALL be shown. The system SHALL use the page title as the browser tab title of the home page and as the suffix of every other page's title (for example "Search · Acme Docs"); when no page title is set it SHALL use the organization name, and when neither is set "DocMyRepos". Names and titles SHALL be plain text of 1 to 60 and 1 to 70 characters, trimmed, without control characters, and SHALL always be shown as text. With a logo and no page title, the logo SHALL link to the home page and be named for assistive technology "Home".
 
-#### Scenario: Name beside the logo
-- **WHEN** a logo and an organization name are set
-- **THEN** the top bar shows the logo followed by the name, both linking to the home page
+#### Scenario: Logo beside the page title
+- **WHEN** a logo and an organization name and a page title are all set
+- **THEN** the top bar shows the logo followed by the page title, linking to the home page, and the organization name does not appear in it
+
+#### Scenario: No logo
+- **WHEN** no logo is set and an organization name and a page title are set
+- **THEN** the top bar shows the organization name followed by the page title, as one link to the home page
 
 #### Scenario: Title suffix
 - **WHEN** the page title is "Acme Docs" and a visitor opens the search page
@@ -108,7 +113,7 @@ The system SHALL show the organization name in the top bar next to the logo, as 
 - **THEN** it is shown literally as text and nothing is interpreted
 
 ### Requirement: Primary and accent colors
-The system SHALL let admins set a primary color and an accent color as `#rrggbb` values. The primary color SHALL drive buttons, links, focus indicators, selection and the colored top bar; the accent color SHALL drive accent surfaces such as tinted badges and highlights. The system SHALL derive the text and focus colors and the dark-theme variants from the two values so that every text pairing meets WCAG AA contrast (4.5:1) and every focus indicator and control boundary meets 3:1, in both light and dark themes, for any valid color. The chosen color SHALL be used unchanged as a fill where readable text can be placed on it; where it cannot be used for text or focus directly, a darker or lighter shade of the same hue SHALL be used for those. Colors SHALL NOT affect code highlighting or diagrams.
+The system SHALL let admins set a primary color and an accent color as `#rrggbb` values. The primary color SHALL drive buttons, links, focus indicators, selection and the colored top bar; the accent color SHALL drive accent surfaces such as tinted badges and highlights. The system SHALL derive the text and focus colors and the dark-theme variants from the two values so that every text pairing meets WCAG AA contrast (4.5:1) and every focus indicator and control boundary meets 3:1, in both light and dark themes, for any valid color. The chosen color SHALL be used unchanged as a fill where readable text can be placed on it; where it cannot be used for text or focus directly, a darker or lighter shade of the same hue SHALL be used for those. When a primary color is set, the dark theme's page surfaces (page background, card, muted, popover, secondary, code and border) SHALL be dark shades of that hue and saturation instead of the neutral default, with the text and focus colors derived to stay AA on them; with no primary color set the dark surfaces SHALL stay the neutral default. Colors SHALL NOT affect code highlighting or diagrams.
 
 #### Scenario: Brand color applied
 - **WHEN** an admin sets the primary color to a valid color
@@ -121,6 +126,10 @@ The system SHALL let admins set a primary color and an accent color as `#rrggbb`
 #### Scenario: Dark theme variants
 - **WHEN** a visitor switches to the dark theme
 - **THEN** the primary and accent colors are shown as shades that meet the contrast minimums on the dark surfaces
+
+#### Scenario: Dark surfaces follow the primary
+- **WHEN** an admin sets a primary color and a visitor uses the dark theme
+- **THEN** the page background and the card, muted, popover, secondary and code surfaces are dark shades of that hue rather than the neutral near-black, and every text pairing still meets 4.5:1 and every focus indicator 3:1
 
 #### Scenario: Extremes accepted
 - **WHEN** an admin picks black, white or a mid-grey as a color

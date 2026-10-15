@@ -268,9 +268,9 @@ location / {
 
 Admins can make the portal read as their organization's own from `/admin/branding`:
 
-- **Organization name**: shown in the top bar next to the logo (1 to 60 characters).
-- **Page title**: the browser tab title and the suffix of every page title (`Search · Acme Docs`). Falls back to the organization name, then to `DocMyRepos`.
-- **Primary and accent colors**: `#rrggbb` values typed or picked. The portal derives every readable variant for light and dark themes itself (link, focus, dark shades, accent text), so any valid color keeps text at 4.5:1 and focus indicators at 3:1. The admin page previews the result in both themes before saving.
+- **Organization name**: shown in the top bar (1 to 60 characters). With a logo the bar shows the page title instead, so the name is not repeated.
+- **Page title**: shown in the top bar and used as the browser tab title and the suffix of every page title (`Search · Acme Docs`). Falls back to the organization name, then to `DocMyRepos`. Without a logo the bar shows the organization name and the page title.
+- **Primary and accent colors**: `#rrggbb` values typed or picked. The portal derives every readable variant for light and dark themes itself (link, focus, dark shades, accent text), so any valid color keeps text at 4.5:1 and focus indicators at 3:1. In the dark theme the page and its card, muted, popover, secondary and code surfaces become a dark shade of that hue instead of near-black, with the text tones re-derived to stay readable. The admin page previews the result in both themes before saving.
 - **Colored top bar**: fills the bar with the primary color, off by default.
 - **Logo**: PNG, JPEG, WebP or SVG, at most 512 KB. The type is read from the file content, not its name. **Invert logo in dark theme** (on by default) shows it inverted on dark surfaces with CSS; the stored file is never altered.
 - **Reset to defaults** clears everything, including the logo.

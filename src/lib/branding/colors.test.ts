@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { contrastRatio } from "../theme-tokens";
+import { contrastRatio, THEME_TOKENS } from "../theme-tokens";
 import { deriveBrandTokens, hslToRgb, rgbToHex } from "./colors";
-
-const LIGHT_BG = ["#ffffff", "#f5f5f5", "#ffffff", "#ffffff", "#f5f5f5"];
-const DARK_BG = ["#0c0c0d", "#151516", "#0c0c0d", "#161617", "#151516"];
 
 function sweepColors(): string[] {
   const out = new Set<string>([
@@ -29,6 +26,14 @@ function sweepColors(): string[] {
   return [...out];
 }
 
+/** The tokens as a page renders them: the shipped palette with the branding overrides on top. */
+function effective(
+  theme: "light" | "dark",
+  overrides: Record<string, string>,
+): Record<string, string> {
+  return { ...THEME_TOKENS[theme], ...overrides };
+}
+
 describe("deriveBrandTokens", () => {
   it("returns the fill unchanged when usable", () => {
     const derived = deriveBrandTokens({ primary: "#2b59ff", accent: "#2b59ff" });
@@ -38,11 +43,15 @@ describe("deriveBrandTokens", () => {
   it("keeps every text pair at 4.5:1 and every focus/boundary pair at 3:1", () => {
     for (const color of sweepColors()) {
       const derived = deriveBrandTokens({ primary: color, accent: color });
-      for (const [theme, surfaces] of [
-        ["light", LIGHT_BG],
-        ["dark", DARK_BG],
-      ] as const) {
-        const t = derived[theme];
+      for (const theme of ["light", "dark"] as const) {
+        const t = effective(theme, derived[theme]);
+        const surfaces = [
+          t["background"] ?? "",
+          t["card"] ?? "",
+          t["muted"] ?? "",
+          t["popover"] ?? "",
+          t["code-background"] ?? "",
+        ];
         const textPairs: Array<[string, string, string]> = [
           [t["primary-foreground"] ?? "", t["primary"] ?? "", "primary text"],
           [t["link"] ?? "", surfaces[0] ?? "", "link"],
@@ -51,6 +60,16 @@ describe("deriveBrandTokens", () => {
           [t["okf-badge-foreground"] ?? "", t["okf-badge"] ?? "", "okf"],
           [t["selection-foreground"] ?? "", t["selection"] ?? "", "selection"],
           [t["header-foreground"] ?? "", t["header"] ?? "", "header"],
+          [t["foreground"] ?? "", t["background"] ?? "", "body"],
+          [t["foreground"] ?? "", t["card"] ?? "", "card"],
+          [t["foreground"] ?? "", t["muted"] ?? "", "text on muted"],
+          [t["foreground"] ?? "", t["popover"] ?? "", "popover"],
+          [t["secondary-foreground"] ?? "", t["secondary"] ?? "", "secondary"],
+          [t["muted-foreground"] ?? "", t["background"] ?? "", "muted text on page"],
+          [t["muted-foreground"] ?? "", t["muted"] ?? "", "muted text on muted"],
+          [t["muted-foreground"] ?? "", t["card"] ?? "", "muted text on card"],
+          [t["muted-foreground"] ?? "", t["popover"] ?? "", "muted text in popover"],
+          [t["code-foreground"] ?? "", t["code-background"] ?? "", "code text"],
         ];
         for (const [fg, bg, name] of textPairs) {
           expect(
@@ -74,5 +93,29 @@ describe("deriveBrandTokens", () => {
         ).toBeGreaterThanOrEqual(3);
       }
     }
+  });
+
+  it("tints the dark surfaces with the primary but leaves the light ones alone", () => {
+    const derived = deriveBrandTokens({ primary: "#2b59ff", accent: "#2b59ff" });
+    const background = derived.dark["background"] ?? "";
+    const r = parseInt(background.slice(1, 3), 16);
+    const g = parseInt(background.slice(3, 5), 16);
+    const b = parseInt(background.slice(5, 7), 16);
+    // A dark shade of the blue hue: blue dominant, and dark.
+    expect(b).toBeGreaterThan(r + 30);
+    expect(b).toBeGreaterThan(g + 30);
+    expect(Math.max(r, g, b)).toBeLessThan(90);
+    expect(derived.dark["card"]).toBe(background);
+    expect(derived.dark["muted"]).not.toBe("#151516");
+    // The light theme keeps the shipped surfaces.
+    expect(derived.light["background"]).toBeUndefined();
+  });
+
+  it("keeps a grey primary neutral in the dark theme", () => {
+    const background = deriveBrandTokens({ primary: "#808080", accent: "#808080" }).dark[
+      "background"
+    ];
+    expect(background?.slice(1, 3)).toBe(background?.slice(3, 5));
+    expect(background?.slice(3, 5)).toBe(background?.slice(5, 7));
   });
 });

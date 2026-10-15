@@ -11,10 +11,12 @@
  *   that theme. Light darkens pale colors; dark lightens deep ones; the shift stops at
  *   black/white, which still passes.
  * - Dark `primary` is the lightened variant, so it doubles as readable text on dark surfaces.
+ * - With a primary set, the dark page surfaces are that hue at fixed dark lightness steps and the
+ *   dark text tones are re-derived against them, so a branded dark theme is a shade of the brand.
  * - Accent/OKF/selection follow the same construction.
  */
 
-import { contrastRatio } from "../theme-tokens";
+import { contrastRatio, DARK_TOKENS } from "../theme-tokens";
 
 export interface BrandColorsInput {
   readonly primary: string;
@@ -30,8 +32,44 @@ export interface DerivedBrandTokens {
 }
 
 const LIGHT_SURFACES = ["#ffffff", "#f5f5f5", "#ffffff", "#ffffff", "#f5f5f5"];
-const DARK_SURFACES = ["#0c0c0d", "#151516", "#0c0c0d", "#161617", "#151516"];
 const DARK_BG = "#0c0c0d";
+
+/**
+ * The dark page surfaces when a primary is set: the primary's hue and saturation at fixed dark
+ * lightness steps, so a branded dark theme is a dark shade of the brand, not near-black. A grey
+ * primary keeps a neutral ramp. Lightness only, so the ramp is the same shape for every color.
+ */
+interface DarkSurfaces {
+  readonly background: string;
+  readonly card: string;
+  readonly muted: string;
+  readonly popover: string;
+  readonly secondary: string;
+  readonly border: string;
+  readonly "code-background": string;
+}
+
+function darkSurfaces(primary: string): DarkSurfaces {
+  // A bright hue (yellow at full saturation) reaches AA-breaking luminance at a higher HSL
+  // lightness than a deep one, and white is the lightest text available, so each surface is
+  // darkened until white passes. The ramp shape stays the same for every color.
+  const surface = (l: number): string => {
+    let candidate = withLightness(primary, l);
+    for (let i = 1; i <= 60 && contrastRatio("#ffffff", candidate) < 4.6; i++) {
+      candidate = withLightness(primary, Math.max(0, l - i * 0.01));
+    }
+    return candidate;
+  };
+  return {
+    background: surface(0.16),
+    card: surface(0.16),
+    muted: surface(0.21),
+    popover: surface(0.23),
+    secondary: surface(0.27),
+    border: withLightness(primary, 0.32),
+    "code-background": surface(0.21),
+  };
+}
 
 function clamp01(n: number): number {
   return Math.min(1, Math.max(0, n));
@@ -144,6 +182,7 @@ function themeTokens(
   surfaces: readonly string[],
   darken: boolean,
   darkBg: boolean,
+  dark?: DarkSurfaces,
 ): BrandThemeTokens {
   const link = shiftToMeet(primary, surfaces, 4.5, darken);
   const linkHoverBase = withLightness(
@@ -159,7 +198,9 @@ function themeTokens(
 
   const primaryForeground = bestForegroundOn(darkBg ? primary : primary);
 
-  const accentTint = darkBg ? mixHex(accent, DARK_BG, 0.35) : mixHex(accent, "#ffffff", 0.12);
+  // Accent and header tints mix toward the page surface, so they stay a shade of the page's hue.
+  const base = dark ? dark.background : DARK_BG;
+  const accentTint = darkBg ? mixHex(accent, base, 0.35) : mixHex(accent, "#ffffff", 0.12);
   const accentForeground = darkBg
     ? shiftToMeet(mixHex(accent, "#ffffff", 0.7), [accentTint], 4.5, false)
     : shiftToMeet(accent, [accentTint], 4.5, true);
@@ -178,10 +219,10 @@ function themeTokens(
         ? "#000000"
         : "#ffffff";
 
-  const header = darkBg ? mixHex(primary, DARK_BG, 0.45) : primary;
+  const header = darkBg ? mixHex(primary, base, 0.45) : primary;
   const headerForeground = bestForegroundOn(header);
 
-  return {
+  const tokens: BrandThemeTokens = {
     primary,
     "primary-foreground": primaryForeground,
     link,
@@ -198,6 +239,46 @@ function themeTokens(
     "header-border": headerForeground,
     "header-ring": headerForeground,
   };
+
+  if (dark) {
+    // The tinted surfaces replace the neutral ones, so the text tones are re-derived against
+    // them; the shipped dark palette is the starting point, shifted until it passes.
+    const textSurfaces = [
+      dark.background,
+      dark.card,
+      dark.muted,
+      dark.popover,
+      dark.secondary,
+      dark["code-background"],
+    ];
+    const foreground = shiftToMeet(DARK_TOKENS.foreground, textSurfaces, 4.5, false);
+    tokens.background = dark.background;
+    tokens.card = dark.card;
+    tokens.muted = dark.muted;
+    tokens.popover = dark.popover;
+    tokens.secondary = dark.secondary;
+    tokens.border = dark.border;
+    tokens["code-background"] = dark["code-background"];
+    tokens.foreground = foreground;
+    tokens["card-foreground"] = foreground;
+    tokens["popover-foreground"] = foreground;
+    tokens["secondary-foreground"] = foreground;
+    tokens["muted-foreground"] = shiftToMeet(
+      DARK_TOKENS["muted-foreground"],
+      [dark.background, dark.card, dark.muted, dark.popover],
+      4.5,
+      false,
+    );
+    tokens["code-foreground"] = shiftToMeet(
+      DARK_TOKENS["code-foreground"],
+      [dark["code-background"], dark.background],
+      4.5,
+      false,
+    );
+    tokens.input = shiftToMeet(DARK_TOKENS.input, [dark.background, dark.card], 3, false);
+  }
+
+  return tokens;
 }
 
 /**
@@ -207,14 +288,16 @@ function themeTokens(
  */
 export function deriveBrandTokens(input: BrandColorsInput): DerivedBrandTokens {
   const lightPrimary = input.primary.toLowerCase();
-  const darkPrimary = shiftToMeet(input.primary.toLowerCase(), [DARK_BG], 4.5, false);
+  const dark = darkSurfaces(lightPrimary);
+  const darkPrimary = shiftToMeet(lightPrimary, [DARK_BG], 4.5, false);
   const light = themeTokens(lightPrimary, input.accent.toLowerCase(), LIGHT_SURFACES, true, false);
   const darkInner = themeTokens(
     darkPrimary,
     input.accent.toLowerCase(),
-    DARK_SURFACES,
+    [dark.background, dark.card, dark.muted, dark.popover, dark["code-background"]],
     false,
     true,
+    dark,
   );
   return { light, dark: darkInner };
 }

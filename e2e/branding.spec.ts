@@ -84,11 +84,15 @@ test.afterAll(async ({ request }) => {
 });
 
 test.describe("branded portal", () => {
-  test("shows the logo and name in the bar, and brands tab and page titles", async ({ page }) => {
+  test("shows the logo and page title in the bar, and brands tab and page titles", async ({
+    page,
+  }) => {
     test.skip(SKIP_DB, SKIP_DB_REASON);
     await open(page, "light");
     const bar = page.locator("header").first();
-    await expect(bar.getByRole("link", { name: "Acme" })).toBeVisible();
+    await expect(bar.getByRole("link", { name: "Acme Docs", exact: true })).toBeVisible();
+    // The logo stands in for the organization name, so it is not repeated beside it.
+    await expect(bar.getByRole("link", { name: "Acme", exact: true })).toHaveCount(0);
     await expect(page).toHaveTitle("Acme Docs");
     await page.goto(`${BASE}/search`);
     await expect(page).toHaveTitle("Search \u00b7 Acme Docs");
@@ -99,6 +103,26 @@ test.describe("branded portal", () => {
     await open(page, "light");
     expect(await cssVar(page, "--primary")).toBe("#2b59ff");
     expect(await cssVar(page, "--accent")).not.toBe("");
+  });
+
+  test("uses a dark shade of the primary for the dark page and its surfaces", async ({
+    page,
+    request,
+  }) => {
+    test.skip(SKIP_DB, SKIP_DB_REASON);
+    await open(page, "dark");
+    // #2b59ff lowered to the dark ramp's lightness: a deep blue, not the neutral near-black.
+    expect(await cssVar(page, "--background")).toBe("#001252");
+    expect(await cssVar(page, "--card")).toBe("#001252");
+    expect(await cssVar(page, "--muted")).toBe("#00176b");
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe(
+      "rgb(0, 18, 82)",
+    );
+    // With no colored bar the bar follows the tinted page instead of staying near-black.
+    await setBranding(request, { coloredHeader: false });
+    await open(page, "dark");
+    expect(await cssVar(page, "--header")).toBe("#001252");
+    await setBranding(request, { coloredHeader: true });
   });
 
   test("inverts the logo in the dark theme only when the switch is on", async ({
@@ -189,16 +213,16 @@ test.describe("branded portal", () => {
     await uploadLogo(request, PNG);
   });
 
-  test("fits a wide logo and long name at phone width", async ({ page, request }) => {
+  test("fits a wide logo and long title at phone width", async ({ page, request }) => {
     test.skip(SKIP_DB, SKIP_DB_REASON);
-    await setBranding(request, { orgName: "A very long organization name that keeps going" });
+    await setBranding(request, { pageTitle: "A very long page title that keeps going" });
     await page.setViewportSize({ width: 375, height: 800 });
     await open(page, "light");
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );
     expect(overflow).toBeLessThanOrEqual(1);
-    await setBranding(request, { orgName: BRANDING.orgName });
+    await setBranding(request, { pageTitle: BRANDING.pageTitle });
   });
 
   for (const theme of ["light", "dark"] as const) {
