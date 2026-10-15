@@ -25,6 +25,7 @@ test-results/
 
 # Local tooling
 .claude/dev-loop/
+.opencode-loop/
 .vercel/
 
 # OS
