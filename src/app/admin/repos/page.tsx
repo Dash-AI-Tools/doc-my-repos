@@ -10,7 +10,7 @@ export default async function AdminReposPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Repository access</h1>
-        <p className="mt-2 text-muted-foreground">
+        <p className="mt-2 max-w-prose text-muted-foreground">
           Blocked repositories disappear for all viewers. Their content is kept, so re-allowing
           restores them without re-syncing.
         </p>
