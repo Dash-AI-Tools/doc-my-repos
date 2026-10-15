@@ -7,6 +7,7 @@ import {
 } from "../src/lib/security-headers";
 import { PNG, stubAssets } from "./support/assets";
 import { expect, expectNoCspViolations, test, watchCsp, type CspWatch } from "./support/csp";
+import { openReadingPanel } from "./support/reading-panel";
 import { SEEDED } from "./support/seed-data";
 import { SKIP_DB, SKIP_DB_REASON, stackUrl } from "./support/stack";
 
@@ -168,7 +169,7 @@ test.describe("security headers on the built app", () => {
 async function visit(page: Page, path: string): Promise<void> {
   await page.goto(path);
   // hydrated: the toggle replaces its placeholder on mount
-  await expect(page.getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Text size and reading options" })).toBeVisible();
 }
 
 /** Console errors, minus the browser's own line for a page we expect to answer 404. */
@@ -256,6 +257,7 @@ test.describe("no CSP violations or console errors anywhere, seeded database", (
         await expect(dialog).toBeHidden();
         // switch theme in place: Mermaid re-renders, Shiki swaps variables
         const other = theme === "light" ? "Dark" : "Light";
+        await openReadingPanel(page);
         await page.getByRole("radio", { name: other }).click();
         await expect(page.locator("html")).toHaveClass(
           theme === "light" ? /\bdark\b/ : /^(?!.*\bdark\b)/,
@@ -289,7 +291,9 @@ test.describe("no CSP violations or console errors anywhere, seeded database", (
         ]) {
           const response = await page.goto(path);
           expect(response?.status()).toBe(404);
-          await expect(page.getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+          await expect(
+            page.getByRole("button", { name: "Text size and reading options" }),
+          ).toBeVisible();
         }
         expectNoCspViolations(watch);
         expect(unexpectedErrors(watch, true)).toEqual([]);
@@ -309,6 +313,7 @@ test.describe("the policy blocks what it should (negative controls)", () => {
       const watch = await watchCsp(context);
       const page = await context.newPage();
       await visit(page, "/e2e/theme");
+      await openReadingPanel(page);
       await page.getByRole("radio", { name: "Dark" }).click();
       await expect(page.locator("html")).toHaveClass(/\bdark\b/);
       expectNoCspViolations(watch);

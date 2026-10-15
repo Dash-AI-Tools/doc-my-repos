@@ -4,7 +4,7 @@ import { REPO_URL } from "@/lib/site";
 
 export function SiteFooter() {
   return (
-    <footer className="border-t border-border">
+    <footer data-read-hide className="border-t border-border">
       <div className="site-shell mx-auto flex w-full max-w-[88rem] flex-wrap justify-between gap-2 px-5 py-8 text-sm text-muted-foreground sm:px-8 lg:px-16">
         <span>
           Powered by{" "}

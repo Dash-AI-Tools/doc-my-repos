@@ -73,6 +73,7 @@ export function DocNavPanel({ children }: { children: ReactNode }) {
   return (
     <div
       data-testid="doc-nav-wrap"
+      data-read-hide
       data-open={active ? "true" : "false"}
       className="doc-panel min-w-0 lg:sticky lg:top-24 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto xl:row-span-1"
     >

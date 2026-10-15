@@ -59,12 +59,12 @@ async function search(page: Page, text: string, rows?: number): Promise<void> {
 
 /**
  * Opens a page and waits until it is hydrated: the shortcut listener is attached by React, so a
- * key pressed earlier is simply lost (the header trigger is a plain link until then). The theme
- * toggle swaps its placeholder for the real control on mount, which marks hydration.
+ * key pressed earlier is simply lost (the header trigger is a plain link until then). The reading
+ * button swaps its placeholder for the real control on mount, which marks hydration.
  */
 async function visit(page: Page, path: string): Promise<void> {
   await page.goto(path);
-  await expect(page.getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Text size and reading options" })).toBeVisible();
 }
 
 const optionTitles = (page: Page): Promise<string[]> =>
@@ -107,7 +107,7 @@ test.describe("command palette, seeded database", () => {
       await expect(input(page)).toBeFocused();
     });
 
-    test("the header's tab order is logo, main navigation, search trigger, theme toggle", async ({
+    test("the header's tab order is logo, main navigation, reading options, search trigger", async ({
       page,
     }) => {
       await visit(page, "/");
@@ -117,14 +117,14 @@ test.describe("command palette, seeded database", () => {
         .getByRole("link")
         .count();
       for (let i = 0; i < mainLinks; i += 1) await page.keyboard.press("Tab");
-      await page.keyboard.press("Tab");
-      await expect(trigger(page)).toBeFocused();
+      // The reading options button sits between the navigation and the search trigger.
       await page.keyboard.press("Tab");
       await expect(
-        page.getByRole("radiogroup", { name: "Theme" }).getByRole("radio", { checked: true }),
+        page.getByRole("button", { name: "Text size and reading options" }),
       ).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(trigger(page)).toBeFocused();
       // Enter on the focused trigger opens the palette (a link, activated from the keyboard)
-      await page.keyboard.press("Shift+Tab");
       await page.keyboard.press("Enter");
       await expect(dialog(page)).toBeVisible();
       await expect(input(page)).toBeFocused();

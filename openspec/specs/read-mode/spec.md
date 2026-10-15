@@ -1,15 +1,17 @@
+# read-mode Specification
+
 ## Purpose
 
-Gives readers a distraction-free view of a document that can be turned on and off from the top bar or with the R key, without losing their place, and keeps the single-key shortcut safe and switchable.
+Gives readers a distraction-free view of a document that can be turned on and off from the reading options panel in the top bar or with the R key, without losing their place, and keeps the single-key shortcut safe and switchable.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Read mode toggle
-The system SHALL let a reader turn read mode on and off on a document page with a button in the top bar and with the R key. Both SHALL act on the same state, and the button SHALL show whether read mode is on. The button SHALL have an accessible name, expose the shortcut to assistive technology, and have a visible icon (an open book).
+The system SHALL let a reader turn read mode on and off on a document page with a "Read mode" button in the reading options panel (opened by the reading options icon button in the top bar) and with the R key. Both SHALL act on the same state, and the button SHALL show whether read mode is on. The button SHALL have an accessible name and a visible icon (an open book), and SHALL close the panel when activated. The reading options button SHALL expose the shortcut to assistive technology only while the shortcut is enabled.
 
 #### Scenario: Button turns it on
-- **WHEN** a reader activates the read mode button on a document page
-- **THEN** the page switches to read mode and the button is shown as pressed
+- **WHEN** a reader opens the reading options panel on a document page and activates Read mode
+- **THEN** the page switches to read mode, the panel closes, and the button is shown as pressed the next time the panel is opened
 
 #### Scenario: R key turns it on and off
 - **WHEN** a reader presses R on a document page with focus on the page, and again later
@@ -18,6 +20,10 @@ The system SHALL let a reader turn read mode on and off on a document page with 
 #### Scenario: Escape leaves read mode
 - **WHEN** read mode is on and the reader presses Escape with nothing else open
 - **THEN** read mode turns off
+
+#### Scenario: Reading controls stay in reach
+- **WHEN** read mode is on
+- **THEN** the floating controls offer the same reading options panel (size, theme) beside the exit control
 
 #### Scenario: Floating exit control
 - **WHEN** read mode is on
@@ -42,12 +48,27 @@ The system SHALL, in read mode, show the document's title, description, notices,
 - **WHEN** read mode is on in the light theme and in the dark theme
 - **THEN** all text and controls meet the portal's contrast minimums in both
 
+### Requirement: Paper and serif
+The system SHALL, in read mode, show the page on a warm beige background with dark brown text and set the document's text (title, description, body and previous/next links) in a serif typeface, while code keeps its monospace face. In the dark theme the background SHALL be a warm dark sepia with light cream text rather than beige, so read mode stays comfortable in the dark. The floating controls, code blocks and tables SHALL take the same paper colors. Text, links and code SHALL meet the portal's contrast minimums in both. Leaving read mode SHALL restore the normal colors and typeface exactly.
+
+#### Scenario: Beige and serif
+- **WHEN** read mode is on in the light theme
+- **THEN** the page background is beige, the document text is serif and code is still monospace
+
+#### Scenario: Dark sepia
+- **WHEN** read mode is on in the dark theme
+- **THEN** the page background is a warm dark and the text is light cream, with no beige
+
+#### Scenario: Exit restores
+- **WHEN** read mode turns off
+- **THEN** the page returns to its normal colors and typeface
+
 ### Requirement: Where read mode is available
-The system SHALL offer read mode only on pages that show a document. On other pages (home, search, repository, admin, sign-in) the read mode button SHALL NOT be shown and the R key SHALL do nothing. Read mode SHALL stay on while the reader moves from one document to another, SHALL turn off when the reader reaches a page that is not a document, and SHALL be off on every fresh page load.
+The system SHALL offer read mode only on pages that show a document. On other pages (home, search, repository, admin, sign-in) the Read mode button SHALL NOT be in the panel and the R key SHALL do nothing. Read mode SHALL stay on while the reader moves from one document to another, SHALL turn off when the reader reaches a page that is not a document, and SHALL be off on every fresh page load.
 
 #### Scenario: No button elsewhere
 - **WHEN** a reader is on the home page
-- **THEN** there is no read mode button and pressing R changes nothing
+- **THEN** the reading options panel has no Read mode button and pressing R changes nothing
 
 #### Scenario: Stays on between documents
 - **WHEN** read mode is on and the reader follows a link to another document
@@ -81,7 +102,7 @@ The system SHALL treat R as the read mode shortcut only when the key press canno
 - **THEN** read mode toggles once, not repeatedly
 
 ### Requirement: The shortcut can be turned off
-The system SHALL let the reader turn the R key shortcut off and on again from the text size panel in the top bar, with a checkbox named for the shortcut that is on by default. The choice SHALL be remembered in the same browser, SHALL apply on every page, and SHALL NOT disable the button or Escape.
+The system SHALL let the reader turn the R key shortcut off and on again from the reading options panel in the top bar, with a checkbox named for the shortcut that is on by default. The choice SHALL be remembered in the same browser, SHALL apply on every page, and SHALL NOT disable the button or Escape.
 
 #### Scenario: Turned off
 - **WHEN** the reader unchecks the shortcut and then presses R on a document page
@@ -96,7 +117,7 @@ The system SHALL let the reader turn the R key shortcut off and on again from th
 - **THEN** pressing R toggles read mode again
 
 ### Requirement: Focus, announcements and place
-The system SHALL, when read mode turns on, move keyboard focus to the start of the document content, and when it turns off, return focus to the read mode button in the top bar. It SHALL announce the change to screen readers ("Read mode on. Press R or Escape to exit." and "Read mode off.", the shortcut named only while enabled). It SHALL keep the reader's place: the part of the document that was in view stays in view after the layout changes.
+The system SHALL, when read mode turns on, move keyboard focus to the start of the document content, and when it turns off, return focus to the reading options button in the top bar (the control that holds the Read mode button). It SHALL announce the change to screen readers ("Read mode on. Press R or Escape to exit." and "Read mode off.", the shortcut named only while enabled). It SHALL keep the reader's place: the part of the document that was in view stays in view after the layout changes.
 
 #### Scenario: Focus into the content
 - **WHEN** read mode turns on
@@ -104,7 +125,7 @@ The system SHALL, when read mode turns on, move keyboard focus to the start of t
 
 #### Scenario: Focus back
 - **WHEN** read mode turns off
-- **THEN** keyboard focus is on the read mode button in the top bar
+- **THEN** keyboard focus is on the reading options button in the top bar
 
 #### Scenario: Announcement
 - **WHEN** read mode turns on or off
@@ -115,8 +136,8 @@ The system SHALL, when read mode turns on, move keyboard focus to the start of t
 - **THEN** the heading or paragraph they were reading is still in view and the page does not jump to the top
 
 ### Requirement: Without script
-The system SHALL leave a page without script fully readable: when scripts have not run or are disabled, no read mode button is shown and the document keeps its normal layout.
+The system SHALL leave a page without script fully readable: when scripts have not run or are disabled, no reading options button or Read mode button is shown (only an inert placeholder) and the document keeps its normal layout.
 
 #### Scenario: No button without script
 - **WHEN** a document page is loaded with scripts disabled
-- **THEN** no read mode button is present and the document, docs structure and headings lists are shown as usual
+- **THEN** no reading options or Read mode button is present and the document, docs structure and headings lists are shown as usual

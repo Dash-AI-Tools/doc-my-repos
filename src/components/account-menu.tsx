@@ -84,7 +84,7 @@ export function AccountMenu({ user }: { user: AccountMenuUser }) {
         aria-controls={panelId}
         data-testid="account-menu-trigger"
         onClick={toggle}
-        className="flex max-w-[12rem] cursor-pointer items-center gap-1.5 text-sm text-header-foreground hover:text-header-foreground hover:underline"
+        className="flex min-h-6 max-w-[12rem] cursor-pointer items-center gap-1.5 text-sm text-header-foreground hover:text-header-foreground hover:underline"
       >
         <span className="truncate">{user.email}</span>
         <Chevron />
@@ -93,7 +93,7 @@ export function AccountMenu({ user }: { user: AccountMenuUser }) {
         id={panelId}
         hidden={!visible}
         data-testid="account-menu"
-        className="absolute top-full right-0 z-30 mt-2 flex w-56 flex-col rounded-sm border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+        className="absolute top-full right-0 z-30 mt-2 flex w-56 flex-col max-sm:fixed max-sm:inset-x-2 max-sm:top-[calc(var(--site-header-h,4rem)+0.5rem)] max-sm:w-auto rounded-sm border border-border bg-popover p-1 text-popover-foreground shadow-lg"
       >
         {user.role === "admin"
           ? ADMIN_LINKS.map((link) => (

@@ -181,7 +181,7 @@ test.describe("search page, seeded database", () => {
 
     test("describes the count in a polite live region", async ({ page }) => {
       await page.goto(DEPLOYMENT_URL);
-      const status = page.getByRole("status");
+      const status = page.getByTestId("result-summary");
       await expect(status).toHaveText("Showing 1–10 of 10 results for “deployment”");
       await expect(status).toHaveAttribute("aria-live", "polite");
     });
@@ -345,6 +345,7 @@ test.describe("search page, seeded database", () => {
     test("reload restores the query and filters", async ({ page }) => {
       await page.goto(DEPLOYMENT_URL);
       await option(page, "repo", "acme/knowledge-base").click();
+      await expect(page).toHaveURL(/repo=acme%2Fknowledge-base$/);
       await option(page, "type", "Runbook").click();
       await expect(page).toHaveURL(/type=Runbook$/);
       const url = page.url();
@@ -362,6 +363,9 @@ test.describe("search page, seeded database", () => {
     }) => {
       await page.goto(DEPLOYMENT_URL);
       await option(page, "repo", "acme/knowledge-base").click();
+      // Wait for the first filter to land: a second click while it navigates builds its link from
+      // the old page and drops the repo.
+      await expect(page).toHaveURL(/repo=acme%2Fknowledge-base$/);
       await option(page, "status", "active").click();
       await expect(page).toHaveURL(/q=deployment&repo=acme%2Fknowledge-base&status=active$/);
       const expected = await titles(page);

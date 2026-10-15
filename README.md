@@ -21,6 +21,7 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - [Configuration](#configuration)
 - [Self-hosting](#self-hosting)
 - [Operations](#operations)
+- [Reading aids](#reading-aids)
 - [Security](#security)
 - [Development](#development)
 - [Project status and roadmap](#project-status-and-roadmap)
@@ -276,6 +277,16 @@ Admins can make the portal read as their organization's own from `/admin/brandin
 - **Reset to defaults** clears everything, including the logo.
 
 The logo is served publicly at `/api/branding/logo?v=<version>` (the sign-in page shows it), as the original bytes under a sandboxed content policy, so a script inside an SVG logo never runs. Nothing set means nothing changes. The footer always credits the project (`Powered by DocMyRepos` with a star link to the repository); it cannot be removed from the admin page.
+
+## Reading aids
+
+The top bar has one **reading options** button (a sliders icon, named "Text size and reading options") on every page, including the sign-in page. It opens a panel with a **text size** slider (Small (87.5%), Default (100%), Large (112.5%), Larger (125%), Largest (150%)), a **Read mode** button (on document pages), the **Light, Dark and System** theme buttons and the R key checkbox. The panel closes with Escape, when you click elsewhere, or when focus leaves it. The sizes are relative to your browser's own default text size, so a larger browser setting is respected, and the whole interface scales, not only the documents.
+
+Your choice is stored in a browser cookie named `docmyrepos-text-size` (values `small`, `large`, `larger` or `largest`). Choosing Default removes it, and a browser that never used the control stores nothing. The cookie is a functional preference: it holds only the size name, no identifier, and it is set only when you choose a size. It is not tied to your account and does not follow you to another browser.
+
+**Read mode** hides the site chrome on a document page, leaving the title, body and previous/next links in one centred column on a warm beige paper background (a warm dark sepia in the dark theme) with a serif typeface. Turn it on and off with the **Read mode** button in the reading options panel or the **R** key, and leave it with **Escape** or the "Exit read mode" button. Read mode stays on while you move between documents, and a page load starts with it off.
+
+The R key is ignored while you type in a field, while a dialog or the search palette is open, and with Ctrl, Cmd or Alt held, so the browser's own shortcuts (Ctrl/Cmd+R reloads) are untouched. To turn the key off, uncheck **Press R for read mode** in the reading options panel. The button and Escape keep working. The setting is stored in a browser cookie named `docmyrepos-read-key` (value `off`; when on, nothing is stored). It is a functional preference like the text size cookie.
 
 ## Security
 

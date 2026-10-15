@@ -418,3 +418,12 @@ describe("OkfMetadataCard, filter links carry the stored values", () => {
     expect(query("okf-type").get("type")).toBe("from-column");
   });
 });
+
+describe("OkfMetadataCard, read mode", () => {
+  it("is marked for read mode to hide", () => {
+    card({ type: "Runbook" });
+    expect(
+      document.querySelector("[data-testid='okf-metadata']")?.hasAttribute("data-read-hide"),
+    ).toBe(true);
+  });
+});

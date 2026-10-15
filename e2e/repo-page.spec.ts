@@ -526,7 +526,9 @@ test.describe("repository page, seeded database", () => {
       await expect(page).toHaveTitle(/Repository not found/);
       // the layout stays
       await expect(page.getByRole("banner")).toBeVisible();
-      await expect(page.getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Text size and reading options" }),
+      ).toBeVisible();
       await expect(page.getByTestId("repo-header")).toHaveCount(0);
       // the page says the same for an unknown owner
       expect((await page.goto("/nobody/does-not-exist"))?.status()).toBe(404);

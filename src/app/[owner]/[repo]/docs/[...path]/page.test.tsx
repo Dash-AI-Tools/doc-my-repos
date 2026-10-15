@@ -1,6 +1,8 @@
+import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ReadModeTarget } from "@/components/read-mode-target";
 import { buildDocsTree, type DocsTreeRow } from "@/lib/docs-tree";
 import {
   countTocRows,
@@ -591,3 +593,39 @@ describe("document page, OKF metadata, notices and change log (tasks 11.4 to 11.
     expect(out).not.toContain("Change log");
   });
 });
+
+describe("document page read mode markup", () => {
+  it("marks the parts read mode hides, and the article that takes focus", async () => {
+    loadDocPage.mockResolvedValue(ok({ previous: null, next: null }));
+    const out = await html();
+    expect(out).toMatch(/data-testid="doc-breadcrumb"[^>]*data-read-hide/);
+    expect(out).toMatch(/data-testid="doc-bar"[^>]*data-read-hide/);
+    expect(out).toMatch(/data-testid="doc-nav-wrap"[^>]*data-read-hide/);
+    expect(out).toMatch(/data-testid="doc-sidebar"[^>]*data-read-hide/);
+    expect(out).toMatch(
+      /<div[^>]*data-read-hide[^>]*>(?:(?!<\/div>)[\s\S])*data-testid="doc-source-path"/,
+    );
+    expect(out).toMatch(/<article[^>]*data-read-article[^>]*tabindex="-1"/);
+    expect(out).toMatch(/class="[^"]*\breader-content\b/);
+    expect(out).toMatch(/class="[^"]*\breader-grid\b/);
+  });
+});
+
+describe("document page read mode target", () => {
+  it("renders the marker that makes the page readable", async () => {
+    loadDocPage.mockResolvedValue(ok({ previous: null, next: null }));
+    const tree = await DocPage({
+      params: params(["guides", "setup"]),
+      searchParams: Promise.resolve({}),
+    });
+    expect(containsElement(tree, ReadModeTarget)).toBe(true);
+  });
+});
+
+/** Whether an element tree contains an element of this type anywhere below `node`. */
+function containsElement(node: ReactNode, type: unknown): boolean {
+  if (Array.isArray(node)) return node.some((child) => containsElement(child, type));
+  if (!isValidElement<{ children?: ReactNode }>(node)) return false;
+  if (node.type === type) return true;
+  return containsElement(node.props.children, type);
+}

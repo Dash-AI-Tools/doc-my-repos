@@ -501,9 +501,10 @@ for (const theme of ["light", "dark"] as const) {
         expect(await violations(page)).toEqual([]);
       });
 
-      test(`${entry.name}: no violations with the theme toggle focused`, async ({ page }) => {
+      test(`${entry.name}: no violations with the reading panel open`, async ({ page }) => {
         test.skip(SKIP_DB && needsDatabase(entry), SKIP_DB_REASON);
         await open(page, theme, entry);
+        await page.getByRole("button", { name: "Text size and reading options" }).click();
         await page
           .getByRole("radiogroup", { name: "Theme" })
           .getByRole("radio", { checked: true })
@@ -542,7 +543,9 @@ for (const theme of ["light", "dark"] as const) {
     test.describe("command palette open", () => {
       /** Opens the palette once the page is hydrated (the shortcut listener needs React). */
       async function openPalette(page: Page): Promise<void> {
-        await expect(page.getByRole("radiogroup", { name: "Theme" })).toBeVisible();
+        await expect(
+          page.getByRole("button", { name: "Text size and reading options" }),
+        ).toBeVisible();
         await page.keyboard.press("Control+k");
         await expect(page.getByRole("dialog", { name: "Quick search" })).toBeVisible();
         await expect(page.getByRole("combobox")).toBeFocused();

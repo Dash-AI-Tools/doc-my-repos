@@ -30,3 +30,9 @@ describe("site footer", () => {
     expect(html).not.toMatch(/href="https?:(?!\/\/github\.com\/Dash-AI-Tools\/doc-my-repos")/);
   });
 });
+
+describe("site footer read mode", () => {
+  it("is marked for read mode to hide", () => {
+    expect(renderToStaticMarkup(<SiteFooter />)).toMatch(/<footer[^>]*data-read-hide/);
+  });
+});

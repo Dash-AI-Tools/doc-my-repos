@@ -17,7 +17,7 @@ export interface DocBreadcrumbProps {
 
 export function DocBreadcrumb({ owner, repo, crumbs, title }: DocBreadcrumbProps) {
   return (
-    <nav aria-label="Breadcrumb" data-testid="doc-breadcrumb">
+    <nav aria-label="Breadcrumb" data-testid="doc-breadcrumb" data-read-hide>
       <ol className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
         <li>
           <Link href="/" className="text-foreground">
