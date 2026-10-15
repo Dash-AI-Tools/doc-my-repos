@@ -72,6 +72,11 @@ export const getBranding = cache(async (db: Db | null = null): Promise<BrandingS
   return readBranding(db ?? getDb().db);
 });
 
+/** Uncached read for handlers: fresh after a write in the same request. */
+export async function readBrandingSettings(db: Db | null = null): Promise<BrandingSettings> {
+  return readBranding(db ?? getDb().db);
+}
+
 export interface BrandingLogo {
   readonly bytes: Buffer;
   readonly type: string;

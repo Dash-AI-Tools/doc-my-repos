@@ -3,6 +3,9 @@ import { authErrorResponse, requireAdmin } from "@/server/auth/current-user";
 import { readGithubConfigSummary } from "@/server/admin/github-config";
 import { setRepoAllowed } from "@/server/admin/repos";
 import { createUser, listUsers, updateUser } from "@/server/admin/users";
+import { readBrandingSettings } from "@/server/branding";
+import { siteBranding } from "@/server/db/schema";
+import { parseBrandColor, parseOrgName, parsePageTitle } from "@/lib/branding/validate";
 import { allowAllRepos, type QueryOptions } from "@/server/queries/visibility";
 import { listRepos } from "@/server/queries/repos";
 
@@ -135,5 +138,105 @@ export async function handleGithubConfig(db: Db | null = null): Promise<Response
     return Response.json({ config: await getAdminGithubConfig(db) });
   } catch (error) {
     return authErrorResponse(error);
+  }
+}
+
+/** `GET /api/admin/branding`: current settings, logo version, no bytes. */
+export async function handleGetBranding(db: Db | null = null): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  try {
+    return Response.json({ branding: await readBrandingSettings(db) });
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+}
+
+type BrandingPatch = Partial<{
+  orgName: string | null;
+  pageTitle: string | null;
+  primaryColor: string | null;
+  accentColor: string | null;
+  coloredHeader: boolean;
+  invertLogoOnDark: boolean;
+}>;
+
+function brandingFieldError(field: string, message: string): Response {
+  return Response.json({ error: message, field }, { status: 400 });
+}
+
+/** `PUT /api/admin/branding`: partial update; null/empty clears a field. */
+export async function handleUpdateBranding(
+  request: Request,
+  db: Db | null = null,
+): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  const parsed = await bodyOf(request);
+  if ("error" in parsed) return parsed.error;
+  const body = parsed.body;
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return Response.json({ error: "invalid JSON body" }, { status: 400 });
+  }
+  const patch: BrandingPatch = {};
+  if ("orgName" in body) {
+    const result = parseOrgName(body.orgName);
+    if (!result.ok) return brandingFieldError("orgName", result.error);
+    patch.orgName = result.value;
+  }
+  if ("pageTitle" in body) {
+    const result = parsePageTitle(body.pageTitle);
+    if (!result.ok) return brandingFieldError("pageTitle", result.error);
+    patch.pageTitle = result.value;
+  }
+  if ("primaryColor" in body) {
+    const result = parseBrandColor(body.primaryColor);
+    if (!result.ok) return brandingFieldError("primaryColor", result.error);
+    patch.primaryColor = result.value;
+  }
+  if ("accentColor" in body) {
+    const result = parseBrandColor(body.accentColor);
+    if (!result.ok) return brandingFieldError("accentColor", result.error);
+    patch.accentColor = result.value;
+  }
+  for (const field of ["coloredHeader", "invertLogoOnDark"] as const) {
+    if (field in body) {
+      const value = body[field];
+      if (value === null) {
+        patch[field] = field === "coloredHeader" ? false : true;
+      } else if (typeof value === "boolean") {
+        patch[field] = value;
+      } else {
+        return brandingFieldError(field, `${field} must be a boolean`);
+      }
+    }
+  }
+  try {
+    const target = db ?? getDb().db;
+    if (Object.keys(patch).length > 0) {
+      await target
+        .insert(siteBranding)
+        .values({ id: 1, ...patch, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: siteBranding.id,
+          set: { ...patch, updatedAt: new Date() },
+        });
+    }
+    return Response.json({ branding: await readBrandingSettings(target) });
+  } catch {
+    return Response.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+/** `DELETE /api/admin/branding`: reset everything, including the logo. */
+export async function handleResetBranding(db: Db | null = null): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  try {
+    const target = db ?? getDb().db;
+    await target.delete(siteBranding);
+    return Response.json({ branding: await readBrandingSettings(target) });
+  } catch {
+    return Response.json({ error: "Internal error" }, { status: 500 });
   }
 }
