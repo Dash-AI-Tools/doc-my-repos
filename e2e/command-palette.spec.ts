@@ -732,7 +732,7 @@ test.describe("command palette, seeded database", () => {
           .screenshot({ path: testInfo.outputPath(`palette-${theme}-header.png`) });
         const tokens = THEME_TOKENS[theme];
         const color = await trigger(page).evaluate((el) => getComputedStyle(el).color);
-        const n = parseInt(tokens["muted-foreground"].slice(1), 16);
+        const n = parseInt(tokens["header-foreground"].slice(1), 16);
         expect(color).toBe(`rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`);
       });
     }
