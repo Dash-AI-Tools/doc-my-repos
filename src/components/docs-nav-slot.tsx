@@ -1,10 +1,18 @@
 import Link from "next/link";
 
-import { flattenDocsTree, toNavTree, type DocsTreeDoc, type DocsTreeFolder } from "@/lib/docs-tree";
+import {
+  fileLabel,
+  flattenDocsTree,
+  toNavTree,
+  type DocsTreeDoc,
+  type DocsTreeFolder,
+} from "@/lib/docs-tree";
+import type { NavView } from "@/lib/reading-prefs";
 import { docUrl } from "@/lib/routes";
 import { withFilterQuery, type TocFilterView } from "@/lib/toc-filters";
 
 import { DocsTree } from "./docs-tree";
+import { NavViewSelector } from "./nav-view-selector";
 import { OkfFilters } from "./okf-filters";
 import { documentCountLabel } from "./repo-card";
 
@@ -30,6 +38,13 @@ import { documentCountLabel } from "./repo-card";
  * filter selected the tree starts fully open and is re-keyed so the open set resets, its links
  * carry the filters (so they survive moving between documents), and a selection that matches
  * nothing says so with a way to clear it instead of the "no documentation files" state.
+ *
+ * Navigation views (docs-nav-views): `view` is null for a repository that is not OKF (no
+ * selector). Otherwise the OKF / Tree selector comes first in the landmark, above the label (in
+ * the slide-in panel: right under its Close button). In Tree, `tree` is the path-ordered tree
+ * (`buildPathTree`, built by the loader) and `filters` is null: pages are labeled by file name
+ * (`fileLabel`), with no "Change log" label. The tree is keyed by the view too, so a switch resets
+ * the open folders (those holding the current page open again).
  */
 export interface DocsNavSlotProps {
   readonly docCount: number;
@@ -49,6 +64,8 @@ export interface DocsNavSlotProps {
    * Separate from `filters`, which is null for an OKF repository with no type, tag or status.
    */
   readonly okf?: boolean;
+  /** The navigation view shown; null/absent for a repository that is not OKF (no selector). */
+  readonly view?: NavView | null;
 }
 
 const TREE_ID = "docs-tree";
@@ -65,9 +82,11 @@ function NavBody({
   showCount,
   filters,
   okf,
-}: Required<Omit<DocsNavSlotProps, "currentPath" | "filters">> & {
+  view,
+}: Required<Omit<DocsNavSlotProps, "currentPath" | "filters" | "view">> & {
   currentPath: string | null;
   filters: TocFilterView | null;
+  view: NavView | null;
 }) {
   if (awaitingSync) {
     return (
@@ -84,8 +103,11 @@ function NavBody({
   };
   // OKF repositories only: `log.md` is a change log, not a
   // typed concept, so it carries that label in the tree instead of a type.
+  // In Tree every file is just a file: no label, and its name instead of its title.
+  const isTree = view === "tree";
   const labelFor = (doc: DocsTreeDoc): string | null =>
-    okf && doc.reserved === "log" ? CHANGE_LOG_LABEL : null;
+    okf && !isTree && doc.reserved === "log" ? CHANGE_LOG_LABEL : null;
+  const titleFor = isTree ? (doc: DocsTreeDoc) => fileLabel(doc.path) : undefined;
   if (flattenDocsTree(tree).length === 0 && !filtered) {
     return (
       <div data-testid="docs-nav-empty" className="mt-2 text-sm text-muted-foreground">
@@ -106,7 +128,12 @@ function NavBody({
           {documentCountLabel(docCount)}
         </p>
       ) : null}
-      {filters !== null ? <OkfFilters view={filters} /> : null}
+      {filters !== null ? (
+        // A Hairline rule closes the filters, so they read apart from the structure below.
+        <div data-testid="okf-filters-section" className="border-b border-border pb-4">
+          <OkfFilters view={filters} />
+        </div>
+      ) : null}
       {filters !== null && filters.active && filters.matches === 0 ? (
         <div data-testid="docs-nav-no-match" className="mt-3 text-sm text-muted-foreground">
           <p className="font-medium text-foreground">No documents match these filters</p>
@@ -120,9 +147,9 @@ function NavBody({
       ) : null}
       {flattenDocsTree(tree).length > 0 ? (
         <DocsTree
-          // A new filter is a new tree: closed or opened folders of the old one mean nothing.
-          key={query}
-          tree={toNavTree(tree, hrefFor, labelFor)}
+          // A new filter or view is a new tree: closed or opened folders of the old one mean nothing.
+          key={`${view ?? ""}:${query}`}
+          tree={toNavTree(tree, hrefFor, labelFor, titleFor)}
           currentPath={currentPath}
           id={TREE_ID}
           expandAll={filtered}
@@ -142,6 +169,7 @@ export function DocsNavSlot({
   showCount = false,
   filters = null,
   okf = false,
+  view = null,
 }: DocsNavSlotProps) {
   const body = (
     <NavBody
@@ -154,10 +182,12 @@ export function DocsNavSlot({
       showCount={showCount}
       filters={filters}
       okf={okf}
+      view={view}
     />
   );
   return (
     <nav aria-label="Documentation" data-testid="docs-nav" className="min-w-0 text-card-foreground">
+      {view === null ? null : <NavViewSelector view={view} />}
       <p className="text-base font-bold">Documentation</p>
       {body}
     </nav>

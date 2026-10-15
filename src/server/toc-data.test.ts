@@ -174,4 +174,54 @@ describeDb("OKF table of contents filters through the page loaders", () => {
     if (data.status !== "ok") throw new Error(data.status);
     expect(paths(data.navTree)).toHaveLength(6);
   });
+
+  // docs-nav-views: the Tree view. kb in path order is sub/ (c, d), then a, b, index, log.
+  it("Tree, repository page: the whole tree in path order, no filters, view returned", async () => {
+    const data = await loadRepoPage("acme", "kb", deps, filters("type=Table"), "tree");
+    if (data.status !== "ok") throw new Error(data.status);
+    expect(data.view).toBe("tree");
+    expect(data.toc).toBeNull();
+    expect(paths(data.tree)).toEqual([
+      "docs/sub/c.md",
+      "docs/sub/d.md",
+      "docs/a.md",
+      "docs/b.md",
+      "docs/index.md",
+      "docs/log.md",
+    ]);
+    expect(data.tree.index).toBeNull();
+  });
+
+  it("Tree, document page: ignores filters and previous/next follow path order", async () => {
+    const data = await loadDocPage("acme", "kb", ["a"], deps, filters("type=Table"), "tree");
+    if (data.status !== "ok") throw new Error(data.status);
+    expect(data.view).toBe("tree");
+    expect(data.toc).toBeNull();
+    expect(paths(data.navTree)).toHaveLength(6);
+    expect(data.previous?.path).toBe("docs/sub/d.md");
+    expect(data.next?.path).toBe("docs/b.md");
+    // The pager keeps titles; the breadcrumb is still built from the OKF tree.
+    expect(data.previous?.title).toBe("Delta");
+  });
+
+  it("OKF view: unchanged, with view okf", async () => {
+    const repo = await loadRepoPage("acme", "kb", deps, filters(""), "okf");
+    const doc = await loadDocPage("acme", "kb", ["a"], deps, filters(""));
+    if (repo.status !== "ok" || doc.status !== "ok") throw new Error("not ok");
+    expect(repo.view).toBe("okf");
+    expect(doc.view).toBe("okf");
+    expect(doc.previous?.path).toBe("docs/index.md");
+    expect(repo.toc?.counts).toEqual({ matches: 4, total: 4 });
+  });
+
+  it("not OKF: a Tree choice changes nothing and there is no view", async () => {
+    const repo = await loadRepoPage("acme", "plain", deps, filters(""), "tree");
+    const doc = await loadDocPage("acme", "plain", ["a"], deps, filters(""), "tree");
+    if (repo.status !== "ok" || doc.status !== "ok") throw new Error("not ok");
+    expect(repo.view).toBeNull();
+    expect(doc.view).toBeNull();
+    expect(paths(repo.tree)[0]).toBe("docs/index.md");
+    expect(doc.navTree).toBe(doc.tree);
+    expect(doc.previous?.path).toBe("docs/index.md");
+  });
 });

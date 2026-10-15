@@ -11,6 +11,7 @@ import {
   type TocFilterState,
 } from "@/lib/toc-filters";
 import type { DocPageData, DocPageOk } from "@/server/doc-page";
+import type { NavView } from "@/lib/reading-prefs";
 import type { RepoDetail } from "@/server/queries";
 
 const loadDocPage =
@@ -22,6 +23,9 @@ const loadDocPage =
       filters: TocFilterState,
     ) => Promise<DocPageData>
   >();
+/** The navigation view each load received, and the one the cookie reader returns. */
+const views: NavView[] = [];
+const navView: { current: NavView } = { current: "okf" };
 vi.mock("@/server/doc-page", () => ({
   loadDocPage: (
     owner: string,
@@ -29,8 +33,13 @@ vi.mock("@/server/doc-page", () => ({
     segments: readonly string[],
     _deps: unknown,
     filters: TocFilterState,
-  ) => loadDocPage(owner, name, segments, filters),
+    view: NavView,
+  ) => {
+    views.push(view);
+    return loadDocPage(owner, name, segments, filters);
+  },
 }));
+vi.mock("@/server/nav-view", () => ({ readNavView: async () => navView.current }));
 
 import DocPage, { dynamic, generateMetadata } from "./page";
 
@@ -107,6 +116,7 @@ function ok(over: Partial<DocPageOk> = {}): DocPageOk {
     tree,
     navTree: tree,
     toc: null,
+    view: null,
     previous: null,
     next: null,
     crumbs: [{ label: "guides", href: null }],
@@ -130,6 +140,8 @@ async function html(
 }
 
 beforeEach(() => {
+  views.length = 0;
+  navView.current = "okf";
   loadDocPage.mockReset();
 });
 
@@ -250,6 +262,14 @@ describe("document page", () => {
       ["special", "100% done"],
       parseTocFilters({}),
     );
+  });
+
+  it("passes the reader's navigation view from the cookie to the loader", async () => {
+    loadDocPage.mockResolvedValue({ status: "not_found" });
+    await expect(html()).rejects.toBeDefined();
+    navView.current = "tree";
+    await expect(html()).rejects.toBeDefined();
+    expect(views).toEqual(["okf", "tree"]);
   });
 
   it("answers not found for a malformed escape without loading", async () => {

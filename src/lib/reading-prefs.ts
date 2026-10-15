@@ -36,8 +36,18 @@ export type ReadKeyChoice = "on" | "off";
 
 export const DEFAULT_READ_KEY: ReadKeyChoice = "on";
 
+/**
+ * The docs navigation view of an OKF repository (docs-nav-views): the OKF structure with its
+ * filters, or the Tree that mirrors the repository paths. The default is "no cookie".
+ */
+export const NAV_VIEW_COOKIE = "docmyrepos-nav-view";
+
+export type NavView = "okf" | "tree";
+
+export const DEFAULT_NAV_VIEW: NavView = "okf";
+
 /** One year, in seconds. */
-const PREFERENCE_MAX_AGE = 60 * 60 * 24 * 365;
+export const PREFERENCE_MAX_AGE = 60 * 60 * 24 * 365;
 
 /** The step with this id. Every id in `TextSizeId` has one. */
 export function textSizeStep(id: TextSizeId): TextSizeStep {
@@ -58,6 +68,11 @@ export function parseTextSize(value: unknown): TextSizeId {
 /** The shortcut setting named by a stored value. Only `off` turns it off; anything else is on. */
 export function parseReadKey(value: unknown): ReadKeyChoice {
   return value === "off" ? "off" : DEFAULT_READ_KEY;
+}
+
+/** The navigation view named by a stored value. Only `tree` means Tree; anything else is OKF. */
+export function parseNavView(value: unknown): NavView {
+  return value === "tree" ? "tree" : DEFAULT_NAV_VIEW;
 }
 
 /**

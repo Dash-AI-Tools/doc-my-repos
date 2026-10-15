@@ -289,6 +289,8 @@ The panel closes on Escape (focus returns to the button), on a pointer press out
 
 Left navigation. Folder names are bold 14px Ink and hover to Signal Blue; leaf links are Quiet Ink and go to Ink on hover. The current page is Signal Blue and bold. Nested levels indent 12px behind a Hairline rule; a chevron rotates 90 degrees when a folder opens. Expand/collapse-all controls are small underlined text buttons. Typed (OKF) pages carry a small Blue Wash badge only in OKF repos.
 
+In an OKF repo the column opens with the **navigation view selector**, above the "Documentation" label (in the slide-in panel, right under Close): two equal-width text buttons, "OKF" and "Tree", on a full-width Hairline bottom rule, at least 36px tall. The selected one is bold Ink with the theme toggle's 2px inset Ink underline; the other is Quiet Ink (500) with a Tint hover fill. Selection is the underline and weight, never a filled chip. The OKF view is the tree above. The Tree view shows the same component with each page labeled by its file name without `.md`/`.mdx` (`setup`, `index`, `log`), subfolders before files, each by name; folders only toggle (no index link) and there are no badges, labels or filters. Plain repos have no selector.
+
 ### On-this-page Outline
 
 Right navigation on a Hairline spine. The active heading gets a 1px Signal Blue bar overlapping the spine, Ink semibold text; others are transparent-barred Quiet Ink, to Ink on hover. Nested headings indent 12px. Below xl the same list opens from a dropdown (see Document Bar).

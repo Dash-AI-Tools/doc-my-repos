@@ -171,18 +171,14 @@ test.describe("docs table of contents and document pages, seeded database", () =
       await context.close();
     });
 
-    test("a folder with an index.md links to it and shows its description", async ({ page }) => {
+    test("a folder with an index.md links to it, without its description", async ({ page }) => {
       await page.goto(repoPath(SEEDED.showcase));
       const guides = folder(page, "guides");
       const link = guides.getByRole("link", { name: "guides", exact: true });
       await expect(link).toHaveAttribute("href", "/acme/doc-showcase/docs/guides/index");
-      await expect(guides.getByTestId("folder-summary").first()).toHaveText(
-        "How-to guides for operators.",
-      );
-      // the index is the folder entry, not a child; a folder without one has no link or summary
+      await expect(guides.getByText("How-to guides for operators.")).toHaveCount(0);
+      // the index is the folder entry, not a child; a folder without one has no link
       await expect(guides.getByRole("link", { name: "Guides", exact: true })).toHaveCount(0);
-      const reference = folder(page, "reference");
-      await expect(reference.getByTestId("folder-summary")).toHaveCount(0);
       await expect(tree(page).getByRole("link", { name: "reference", exact: true })).toHaveCount(0);
       await link.click();
       await expect(page).toHaveURL(`${stackUrl("seeded")}/acme/doc-showcase/docs/guides/index`);

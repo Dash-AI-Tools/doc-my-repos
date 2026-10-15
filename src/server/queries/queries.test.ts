@@ -693,7 +693,7 @@ describeDb("query layer on a real database", () => {
       });
       const tree = buildDocsTree(rows, repo?.docsPath);
       expect(tree.index?.title).toBe("Overview");
-      expect(tree.summary).toBe("Everything about Acme");
+      expect(tree.index?.description).toBe("Everything about Acme");
       expect(flattenDocsTree(tree).map((d) => d.title)).toEqual([
         "Overview",
         "Both md",

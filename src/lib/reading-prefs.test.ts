@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_NAV_VIEW,
+  NAV_VIEW_COOKIE,
+  parseNavView,
   DEFAULT_READ_KEY,
   DEFAULT_TEXT_SIZE,
   READ_KEY_COOKIE,
@@ -74,6 +77,31 @@ describe("parseReadKey", () => {
     ["missing", undefined],
   ])("maps %s to the default (on)", (_label, value) => {
     expect(parseReadKey(value)).toBe(DEFAULT_READ_KEY);
+  });
+});
+
+describe("parseNavView", () => {
+  it("is tree only for the exact value tree", () => {
+    expect(parseNavView("tree")).toBe("tree");
+  });
+
+  it.each([
+    ["okf", "okf"],
+    ["other case", "Tree"],
+    ["padded", " tree"],
+    ["garbage", "garbage"],
+    ["empty", ""],
+    ["array-like", ["tree"]],
+    ["object", { 0: "tree", length: 1 }],
+    ["overlong", "tree".repeat(5_000)],
+    ["missing", undefined],
+  ])("maps %s to the default (okf)", (_label, value) => {
+    expect(parseNavView(value)).toBe(DEFAULT_NAV_VIEW);
+    expect(DEFAULT_NAV_VIEW).toBe("okf");
+  });
+
+  it("has the documented cookie name", () => {
+    expect(NAV_VIEW_COOKIE).toBe("docmyrepos-nav-view");
   });
 });
 

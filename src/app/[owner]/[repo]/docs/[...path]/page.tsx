@@ -20,7 +20,9 @@ import { docUrl, repoUrl } from "@/lib/routes";
 import { buildFilterQuery } from "@/lib/search-params";
 import { buildTocFilterView, parseTocFilters, withFilterQuery } from "@/lib/toc-filters";
 import { formatAbsoluteTime, formatRelativeTime } from "@/lib/time";
+import type { NavView } from "@/lib/reading-prefs";
 import { loadDocPage, type DocPageOk } from "@/server/doc-page";
+import { readNavView } from "@/server/nav-view";
 
 /**
  * Document page `/<owner>/<repo>/docs/<path>` (task 9.7, spec "Document page navigation"): the
@@ -74,22 +76,28 @@ function decodeSegments(raw: readonly string[]): string[] | null {
 }
 
 /** One read per request, shared by `generateMetadata` and the page. */
-const load = cache((owner: string, repo: string, key: string, filterQuery: string) =>
+const load = cache((owner: string, repo: string, key: string, filterQuery: string, view: NavView) =>
   loadDocPage(
     owner,
     repo,
     JSON.parse(key) as string[],
     {},
     parseTocFilters(new URLSearchParams(filterQuery)),
+    view,
   ),
 );
 
 /**
  * `filterQuery` is the canonical `type=..&tag=..&status=..` of the URL (tasks 11.2 and 11.3): it
- * only narrows the sidebar's table of contents of an OKF repository.
+ * only narrows the sidebar's table of contents of an OKF repository. The reader's navigation view
+ * (OKF or Tree, docs-nav-views) comes from its cookie, so the first HTML already shows it.
  */
-const loadFor = (owner: string, repo: string, segments: readonly string[], filterQuery: string) =>
-  load(owner, repo, JSON.stringify(segments), filterQuery);
+const loadFor = async (
+  owner: string,
+  repo: string,
+  segments: readonly string[],
+  filterQuery: string,
+) => load(owner, repo, JSON.stringify(segments), filterQuery, await readNavView());
 
 export async function generateMetadata({
   params,
@@ -155,7 +163,8 @@ export default async function DocPage({
     );
   }
 
-  const { repo, doc, body, notice, outline, navTree, toc, crumbs, sourceUrl, loadedAt } = data;
+  const { repo, doc, body, notice, outline, navTree, toc, view, crumbs, sourceUrl, loadedAt } =
+    data;
   const filters =
     toc === null
       ? null
@@ -201,6 +210,7 @@ export default async function DocPage({
             awaitingSync={awaitingSync}
             filters={filters}
             okf={repo.isOkf}
+            view={view}
           />
         }
       >

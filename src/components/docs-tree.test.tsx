@@ -138,21 +138,20 @@ describe("DocsTree, spec scenario 'Folder index'", () => {
     row("docs/reference/endpoints.md", "Endpoints"),
   ]);
 
-  it("links the folder entry to its index.md and shows the index description", () => {
+  it("links the folder entry to its index.md and does not show the index description", () => {
     show(tree);
     const link = screen.getByRole("link", { name: "guides" });
     expect(link.getAttribute("href")).toBe("/acme/api/docs/guides/index");
-    expect(screen.getByTestId("folder-summary").textContent).toBe("How-to guides for operators.");
+    expect(screen.queryByText("How-to guides for operators.")).toBeNull();
     // the link is next to the folder's toggle, never inside a button
     expect(link.closest("button")).toBeNull();
     expect(toggle("guides").getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("does not repeat the index as a child, and a folder without one has no link or summary", () => {
+  it("does not repeat the index as a child, and a folder without one has no link", () => {
     show(tree);
     expect(screen.queryByRole("link", { name: "Guides overview" })).toBeNull();
     expect(screen.queryByRole("link", { name: "reference" })).toBeNull();
-    expect(screen.getAllByTestId("folder-summary")).toHaveLength(1);
     expect(entries(listOf(toggle("guides")))).toEqual(["Setup"]);
   });
 
