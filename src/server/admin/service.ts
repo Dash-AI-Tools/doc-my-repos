@@ -85,16 +85,25 @@ export async function handleUpdateUser(
   request: Request,
   db: Db | null = null,
 ): Promise<Response> {
-  const denied = await guard(db);
-  if (denied) return denied;
+  let actorId: number;
+  try {
+    actorId = (await requireAdmin(db)).id;
+  } catch (error) {
+    return authErrorResponse(error);
+  }
   const parsed = await bodyOf(request);
   if ("error" in parsed) return parsed.error;
   try {
-    const result = await updateUser(db ?? getDb().db, id, {
-      role: parsed.body.role,
-      disabled: parsed.body.disabled,
-      password: parsed.body.password,
-    });
+    const result = await updateUser(
+      db ?? getDb().db,
+      id,
+      {
+        role: parsed.body.role,
+        disabled: parsed.body.disabled,
+        password: parsed.body.password,
+      },
+      actorId,
+    );
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     return Response.json({ user: result.user });
   } catch {

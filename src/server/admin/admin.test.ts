@@ -33,6 +33,12 @@ describeDb("admin user management", () => {
       disabled: false,
     });
     expect(JSON.stringify(await listUsers(t.db))).not.toContain("scrypt");
+    const backup = await createUser(t.db, {
+      email: "backup@example.com",
+      password: "backup-pass-1234",
+      role: "admin",
+    });
+    expect(backup.ok).toBe(true);
 
     const duplicate = await createUser(t.db, {
       email: "admin@example.com",
@@ -64,6 +70,27 @@ describeDb("admin user management", () => {
       ok: false,
       status: 404,
     });
+  });
+
+  it("keeps an admin in charge: no self-demotion, no removing the last enabled admin", async () => {
+    const [first, second] = await listUsers(t.db);
+    if (!first || !second) throw new Error("expected two seeded admins");
+    expect(await updateUser(t.db, first.id, { role: "user" }, first.id)).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    expect(await updateUser(t.db, first.id, { disabled: true }, first.id)).toMatchObject({
+      status: 409,
+    });
+    expect(await updateUser(t.db, second.id, { disabled: true }, first.id)).toMatchObject({
+      ok: true,
+    });
+    expect(await updateUser(t.db, first.id, { role: "user" })).toMatchObject({
+      ok: false,
+      status: 409,
+      error: "At least one enabled admin must remain",
+    });
+    await updateUser(t.db, second.id, { disabled: false }, first.id);
   });
 });
 
