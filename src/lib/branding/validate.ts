@@ -12,6 +12,12 @@ export const MAX_PAGE_TITLE_LENGTH = 70;
 
 export const BRAND_COLOR_RE = /^#[0-9a-f]{6}$/;
 
+/**
+ * Native `<input type="color">` requires a concrete `#rrggbb` value, so an empty field shows
+ * this until the user picks. Not a design color: nothing is saved from it.
+ */
+export const COLOR_INPUT_FALLBACK = "#000000";
+
 /** C0/C1 controls, DEL, and bidi overrides/isolates/embedding marks. */
 const FORBIDDEN_TEXT_RE = /[\u0000-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/u;
 

@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 
 import { deriveBrandTokens } from "@/lib/branding/colors";
 import { brandStyleBlock } from "@/lib/branding/style";
-import { parseBrandColor, parseOrgName, parsePageTitle } from "@/lib/branding/validate";
+import {
+  parseBrandColor,
+  parseOrgName,
+  parsePageTitle,
+  COLOR_INPUT_FALLBACK,
+} from "@/lib/branding/validate";
 import type { BrandingSettings } from "@/server/branding";
 
 /** Field-level problems, keyed by field. */
@@ -248,7 +253,7 @@ export function BrandingForm({ initial }: { initial: BrandingSettings }) {
 
   function colorValue(text: string): string {
     const parsed = parseBrandColor(text);
-    return parsed.ok && parsed.value !== null ? parsed.value : "#000000";
+    return parsed.ok && parsed.value !== null ? parsed.value : COLOR_INPUT_FALLBACK;
   }
 
   const light = derived?.light;
