@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, count, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Db } from "@/server/db/client";
@@ -69,16 +69,18 @@ export interface UpdateUserInput {
 }
 
 export type UpdateUserResult =
-  { ok: true; user: AdminUserView } | { ok: false; status: 400 | 404; error: string };
+  { ok: true; user: AdminUserView } | { ok: false; status: 400 | 404 | 409; error: string };
 
 /**
  * Updates role, disabled flag, or password. Password changes and disabling bump `pwVersion`,
- * so outstanding sessions stop working. Enabling does not need a bump.
+ * so outstanding sessions stop working. Enabling does not need a bump. An admin cannot demote or
+ * disable themselves (`actorId`), and the last enabled admin can never lose admin access (409).
  */
 export async function updateUser(
   db: Db,
   id: number,
   input: UpdateUserInput,
+  actorId?: number,
 ): Promise<UpdateUserResult> {
   const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
   const row = rows[0];
@@ -105,6 +107,20 @@ export async function updateUser(
     }
     patch.passwordHash = await hashPassword(password.data);
     bumpVersion = true;
+  }
+  const losesAdmin =
+    row.role === "admin" && !row.disabled && (patch.role === "user" || patch.disabled === true);
+  if (losesAdmin) {
+    if (actorId === id) {
+      return { ok: false, status: 409, error: "You cannot demote or disable your own account" };
+    }
+    const others = await db
+      .select({ n: count() })
+      .from(users)
+      .where(and(eq(users.role, "admin"), eq(users.disabled, false), ne(users.id, id)));
+    if ((others[0]?.n ?? 0) === 0) {
+      return { ok: false, status: 409, error: "At least one enabled admin must remain" };
+    }
   }
   if (bumpVersion) patch.pwVersion = row.pwVersion + 1;
 
