@@ -24,7 +24,7 @@ The system SHALL provide an Ask page at `/ask` with a question field, the conver
 - **THEN** they are sent to sign in
 
 ### Requirement: Grounded answers
-The system SHALL answer a question using only excerpts of documents the user can read, retrieved for that question, and SHALL instruct the model to answer only from them. When the retrieved excerpts do not contain the answer, the answer SHALL say that the documentation does not cover it and SHALL suggest a search, rather than guess. When no document matches at all, the system SHALL answer so without calling the model.
+The system SHALL answer a question using only excerpts of documents the user can read, retrieved for that question, and SHALL instruct the model to answer only from them. When the retrieved excerpts do not contain the answer, the answer SHALL say that the documentation does not cover it and SHALL suggest a search, rather than guess. When no document matches at all, the system SHALL answer so without asking the model for an answer.
 
 #### Scenario: Answer from the docs
 - **WHEN** a user asks how to rotate the signing key and a document explains it
@@ -36,7 +36,7 @@ The system SHALL answer a question using only excerpts of documents the user can
 
 #### Scenario: Nothing found
 - **WHEN** no document matches the question's search terms
-- **THEN** the page says nothing relevant was found and offers the search, and no request is sent to the model provider
+- **THEN** the page says nothing relevant was found and offers the search, and no answer is requested from the model provider (only the short search-query call that precedes retrieval was made)
 
 #### Scenario: Off-topic request
 - **WHEN** a user asks for something unrelated to the documentation, such as a poem
