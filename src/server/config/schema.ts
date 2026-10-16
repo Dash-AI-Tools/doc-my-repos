@@ -168,6 +168,39 @@ const comments = z
   })
   .prefault({});
 
+/**
+ * Ask-the-docs limits (ask-the-docs design decision 8). There is no `enabled` key: on/off, provider
+ * and model are an admin choice stored in the database; credentials come from the environment.
+ */
+export const ASK_LIMIT_DEFAULTS = {
+  questionsPerDay: 100,
+  questionsPerTenMinutes: 20,
+  maxOutputTokens: 1000,
+  maxConcurrent: 8,
+} as const;
+
+function askLimit(name: string, def: number, min: number, max: number) {
+  return z
+    .int(`${name} must be a whole number`)
+    .min(min, `${name} must be at least ${min}`)
+    .max(max, `${name} must be at most ${max}`)
+    .default(def);
+}
+
+const ask = z
+  .strictObject({
+    questionsPerDay: askLimit("questionsPerDay", ASK_LIMIT_DEFAULTS.questionsPerDay, 1, 10_000),
+    questionsPerTenMinutes: askLimit(
+      "questionsPerTenMinutes",
+      ASK_LIMIT_DEFAULTS.questionsPerTenMinutes,
+      1,
+      1000,
+    ),
+    maxOutputTokens: askLimit("maxOutputTokens", ASK_LIMIT_DEFAULTS.maxOutputTokens, 100, 8000),
+    maxConcurrent: askLimit("maxConcurrent", ASK_LIMIT_DEFAULTS.maxConcurrent, 1, 100),
+  })
+  .prefault({});
+
 export const configSchema = z
   .strictObject({
     repos: z.array(repoEntry).min(1, "repos must list at least one repository").optional(),
@@ -176,6 +209,7 @@ export const configSchema = z
     limits,
     sync: syncSchedule,
     comments,
+    ask,
   })
   .superRefine((cfg, ctx) => {
     if (cfg.repos && cfg.exclude) {

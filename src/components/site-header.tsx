@@ -24,9 +24,12 @@ export interface HeaderBranding {
 export function SiteHeader({
   user,
   branding,
+  askEnabled = false,
 }: {
   user: HeaderUser | null;
   branding: HeaderBranding;
+  /** Ask is on and usable (ask-the-docs): shows the Ask link in the main navigation. */
+  askEnabled?: boolean;
 }) {
   // With a logo the page title names the portal (the org name would repeat the logo). Without
   // one both are shown; with neither, the wordmark. See the org-branding spec.
@@ -72,6 +75,14 @@ export function SiteHeader({
           >
             Repositories
           </Link>
+          {askEnabled ? (
+            <Link
+              href="/ask"
+              className="font-medium text-header-foreground no-underline hover:text-header-foreground hover:underline"
+            >
+              Ask
+            </Link>
+          ) : null}
         </nav>
         <div className="ml-auto flex min-h-16 max-w-full flex-wrap items-center justify-end gap-x-3 gap-y-2 py-2 sm:gap-x-5">
           <TextSizeMenu />

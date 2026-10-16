@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { cookies, headers } from "next/headers";
 import type { ReactNode } from "react";
+import { AskLauncher } from "@/components/ask-launcher";
 import { CommandPalette } from "@/components/command-palette";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -9,6 +10,8 @@ import { ReadingControls } from "@/components/reading-controls";
 import { ThemeProvider } from "@/components/theme-provider";
 import { E2E_CRASH_HEADER, shouldCrashRootLayout } from "@/lib/e2e-fixtures";
 import { NONCE_HEADER, isValidNonce } from "@/lib/security-headers";
+import { loadAskPage } from "@/server/ask-page";
+import { getAskState } from "@/server/ask/settings";
 import { getCurrentUser } from "@/server/auth/current-user";
 import { deriveBrandTokens } from "@/lib/branding/colors";
 import { brandStyleBlock } from "@/lib/branding/style";
@@ -76,6 +79,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Branding (org-branding 3.1): same derivation as the admin preview; a bad row or a down
   // database falls back to the defaults, so the page still renders.
   const branding = await getBranding().catch(() => DEFAULT_BRANDING);
+  // Ask is shown to signed-in readers only when an admin turned it on and the provider is usable.
+  // Never throws: any failure reads as off.
+  const askEnabled = user !== null && (await getAskState()).state === "ready";
+  const ask = askEnabled ? await loadAskPage({}) : null;
   const { primaryColor, accentColor } = branding;
   const derived =
     primaryColor !== null && accentColor !== null
@@ -111,6 +118,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <ReadModeProvider initialShortcutEnabled={shortcutEnabled}>
             <SiteHeader
               user={user}
+              askEnabled={askEnabled}
               branding={{
                 orgName: branding.orgName,
                 pageTitle: branding.pageTitle,
@@ -125,6 +133,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <SiteFooter />
             <CommandPalette />
             <ReadingControls />
+            {ask?.status === "ready" ? (
+              <AskLauncher
+                providerLabel={ask.providerLabel}
+                host={ask.host}
+                scope={null}
+                repos={ask.repos}
+              />
+            ) : null}
           </ReadModeProvider>
         </ThemeProvider>
       </body>

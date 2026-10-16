@@ -63,6 +63,8 @@ export interface RepoHeaderProps {
   readonly lastRun?: RepoHeaderLastRun | null;
   /** The time "x ago" is measured against. The page passes the time of the read. */
   readonly now: Date;
+  /** Ask is on: the link to `/ask` limited to this repository. Absent or null shows none. */
+  readonly askHref?: string | null;
 }
 
 const BADGE = "inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-xs font-medium";
@@ -76,7 +78,7 @@ function TimeText({ date, now }: { readonly date: Date; readonly now: Date }) {
   );
 }
 
-export function RepoHeader({ repo, now, lastRun = null }: RepoHeaderProps) {
+export function RepoHeader({ repo, now, lastRun = null, askHref = null }: RepoHeaderProps) {
   const syncedAt = repo.lastSyncedAt;
   const warnings = repo.syncWarnings ?? [];
   const chip = repoStatusChip(repo.syncStatus, warnings.length);
@@ -137,30 +139,41 @@ export function RepoHeader({ repo, now, lastRun = null }: RepoHeaderProps) {
           </p>
         </div>
 
-        <a
-          data-testid="github-link"
-          href={githubRepoUrl(repo.htmlUrl, repo.owner, repo.name)}
-          rel="noopener noreferrer"
-          className="inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-            focusable="false"
+        <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+          {askHref !== null ? (
+            <Link
+              data-testid="ask-about-repo"
+              href={askHref}
+              className="inline-flex min-h-6 items-center text-sm font-medium underline underline-offset-4"
+            >
+              Ask about this repository
+            </Link>
+          ) : null}
+          <a
+            data-testid="github-link"
+            href={githubRepoUrl(repo.htmlUrl, repo.owner, repo.name)}
+            rel="noopener noreferrer"
+            className="inline-flex shrink-0 items-center gap-2 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
           >
-            <path d="M14 3h7v7" />
-            <path d="M21 3 10 14" />
-            <path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" />
-          </svg>
-          View on GitHub
-        </a>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="M14 3h7v7" />
+              <path d="M21 3 10 14" />
+              <path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" />
+            </svg>
+            View on GitHub
+          </a>
+        </div>
       </div>
 
       <p

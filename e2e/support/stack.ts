@@ -37,10 +37,15 @@ export const STACKS = {
   starred: { port: 3104 },
   comments: { port: 3105 },
   commentsoff: { port: 3106 },
+  ask: { port: 3107 },
 } as const;
 
+/** The fake model provider the `ask` server talks to (see `e2e/support/fake-provider-server.ts`). */
+export const FAKE_PROVIDER_PORT = 3190;
+export const fakeProviderUrl = `http://127.0.0.1:${FAKE_PROVIDER_PORT}`;
+
 export type StackName = keyof typeof STACKS;
-export type DatabaseKind = "seeded" | "empty" | "starred" | "comments" | "commentsoff";
+export type DatabaseKind = "seeded" | "empty" | "starred" | "comments" | "commentsoff" | "ask";
 
 export function stackUrl(name: StackName): string {
   return `http://127.0.0.1:${STACKS[name].port}`;
@@ -97,6 +102,12 @@ defaults:
     - docs
 `;
 
+/** The `ask` server: small limits so the specs can reach them (per user: 4 questions in 10 minutes). */
+const CONFIG_ASK_YAML = `${CONFIG_YAML}ask:
+  questionsPerTenMinutes: 4
+  maxConcurrent: 2
+`;
+
 const CONFIG_COMMENTS_OFF_YAML = `${CONFIG_YAML}comments:
   enabled: false
 `;
@@ -107,6 +118,8 @@ export interface WorkDir {
   readonly configPath: string;
   /** Same as `configPath` with `comments.enabled: false` (the `commentsoff` server). */
   readonly commentsOffConfigPath: string;
+  /** Same as `configPath` with small Ask limits (the `ask` server). */
+  readonly askConfigPath: string;
 }
 
 /**
@@ -123,6 +136,7 @@ export function workDir(): WorkDir {
   const keyPath = join(dir, "app-key.pem");
   const configPath = join(dir, "docmyrepos.config.yml");
   const commentsOffConfigPath = join(dir, "docmyrepos.config.comments-off.yml");
+  const askConfigPath = join(dir, "docmyrepos.config.ask.yml");
   if (!existsSync(keyPath)) {
     mkdirSync(dir, { recursive: true });
     const { privateKey } = generateKeyPairSync("rsa", {
@@ -133,8 +147,9 @@ export function workDir(): WorkDir {
     writeFileSync(keyPath, privateKey, { mode: 0o600 });
     writeFileSync(configPath, CONFIG_YAML);
     writeFileSync(commentsOffConfigPath, CONFIG_COMMENTS_OFF_YAML);
+    writeFileSync(askConfigPath, CONFIG_ASK_YAML);
   }
-  return { dir, keyPath, configPath, commentsOffConfigPath };
+  return { dir, keyPath, configPath, commentsOffConfigPath, askConfigPath };
 }
 
 /**
@@ -147,17 +162,19 @@ export function workDir(): WorkDir {
  * no spec can see the branding (or anything else) of a developer's database.
  */
 export function serverEnv(name: StackName): Record<string, string> {
-  const { keyPath, configPath, commentsOffConfigPath } = workDir();
+  const { keyPath, configPath, commentsOffConfigPath, askConfigPath } = workDir();
   const readsDatabase =
     name === "seeded" ||
     name === "empty" ||
     name === "starred" ||
     name === "comments" ||
-    name === "commentsoff";
+    name === "commentsoff" ||
+    name === "ask";
   return {
     ...(name === "fixtures" ? { E2E_FIXTURES: "1" } : {}),
     DATABASE_URL: readsDatabase ? databaseUrl(name) : UNREACHABLE_DATABASE_URL,
-    CONFIG_PATH: name === "commentsoff" ? commentsOffConfigPath : configPath,
+    CONFIG_PATH:
+      name === "commentsoff" ? commentsOffConfigPath : name === "ask" ? askConfigPath : configPath,
     GITHUB_APP_ID: "1",
     GITHUB_APP_INSTALLATION_ID: "1",
     GITHUB_APP_PRIVATE_KEY: "",
@@ -171,5 +188,7 @@ export function serverEnv(name: StackName): Record<string, string> {
     // The production build would otherwise start the background sync (src/instrumentation.ts) and
     // mark every seeded repository as failed: the GitHub App credentials here are not real.
     SYNC_SCHEDULER: "0",
+    // Only the `ask` server has a provider; the others show how Ask looks when none is set up.
+    ...(name === "ask" ? { AI_OPENAI_BASE_URL: `${fakeProviderUrl}/v1` } : {}),
   };
 }

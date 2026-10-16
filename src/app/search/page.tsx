@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { SearchView } from "@/components/search-view";
 import { parseSearchParams, type RawSearchParams } from "@/lib/search-params";
+import { getAskState } from "@/server/ask/settings";
 import { loadSearchPage } from "@/server/search-page";
 
 /**
@@ -40,5 +41,10 @@ export async function generateMetadata({
 export default async function SearchPage({ searchParams }: { searchParams: PageSearchParams }) {
   const state = parseSearchParams(await searchParams);
   const view = await loadSearchPage(state);
-  return <SearchView view={view} />;
+  // "Ask instead" opens the Ask page with this query filled in; it is never sent from here.
+  const askHref =
+    state.q !== "" && (await getAskState()).state === "ready"
+      ? `/ask?q=${encodeURIComponent(state.q)}`
+      : null;
+  return <SearchView view={view} askHref={askHref} />;
 }

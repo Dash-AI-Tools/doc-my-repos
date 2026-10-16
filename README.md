@@ -23,6 +23,7 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - [Operations](#operations)
 - [API reference](#api-reference)
 - [Comments](#comments)
+- [Ask the docs](#ask-the-docs)
 - [Reading aids](#reading-aids)
 - [Security](#security)
 - [Development](#development)
@@ -37,6 +38,7 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - **OKF aware**: when a repository uses OKF, filter by concept `type` (plus tags and status) and see each document's metadata, notices and change log. A switch at the top of the docs column toggles between this OKF view and a **Tree** view that mirrors the repository's folders and file names. Other repositories show no OKF interface.
 - **API reference**: OpenAPI 3.0/3.1 and Swagger 2.0 files are found in each repository and shown on a read-only reference page (see [API reference](#api-reference)).
 - **Comments**: signed-in users discuss a document on its page, admins can answer as the organization and moderate. Comments are stored in the portal, not in GitHub (see [Comments](#comments)).
+- **Ask the docs**: an optional assistant answers questions in plain language from the synced documents, with references to the exact sections. Off until an admin sets it up; the operator brings the model (see [Ask the docs](#ask-the-docs)).
 - **Light and dark themes**: light, dark, or follow the system, including code blocks and diagrams, without a flash on load.
 - **Fresh content**: GitHub webhooks re-sync a repository when its default branch changes, and a scheduled full sync catches missed deliveries. Syncs are incremental (tree SHA, then blob SHA), idempotent and serialized per repository; a failed sync keeps the previous content.
 - **Self-hostable**: one Next.js app plus Postgres, with a Docker image and Compose file. Behind a login with admin and user roles (see [Security](#security)).
@@ -185,18 +187,20 @@ comments:
   enabled: true # false turns comments off
 ```
 
-| Key                     | Default                        | Meaning                                                                                                                                 |
-| ----------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `repos`                 | all accessible repos           | Only these repositories. Entries are a name or `{ name, docsPath }`. No owner prefix, no duplicates. Cannot be combined with `exclude`. |
-| `exclude`               | none                           | Skip these repositories.                                                                                                                |
-| `defaults.docsPaths`    | `docs`, `doc`, `documentation` | Docs folder candidates, tried in order, matched case-insensitively. Relative paths without `..`.                                        |
-| `limits.maxDocsPerRepo` | `2000` (1 to 10000)            | More documents: only the first N in path order are synced and a warning is shown.                                                       |
-| `limits.maxFileBytes`   | `262144` (1024 to 262144)      | Larger files are skipped with a warning. 256 KB is also the maximum.                                                                    |
-| `repos[].apiSpecs`      | none                           | Exact repository paths (at most 10) of OpenAPI or Swagger files. They replace the default search. See [API reference](#api-reference).  |
-| `limits.maxSpecBytes`   | `2097152` (1024 to 2097152)    | Larger spec files are skipped with a warning. 2 MB is also the maximum: it can be lowered, not raised.                                  |
-| `sync.intervalMinutes`  | `60`                           | Period of the full sync that catches missed webhooks. `0` turns it off, otherwise `5` to `10080`.                                       |
-| `sync.onStartup`        | `true`                         | One full sync about 10 seconds after the server starts.                                                                                 |
-| `comments.enabled`      | `true`                         | `false` removes the Comments section and turns the comment APIs off. Stored comments are kept. See [Comments](#comments).               |
+| Key                                                 | Default                        | Meaning                                                                                                                                   |
+| --------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `repos`                                             | all accessible repos           | Only these repositories. Entries are a name or `{ name, docsPath }`. No owner prefix, no duplicates. Cannot be combined with `exclude`.   |
+| `exclude`                                           | none                           | Skip these repositories.                                                                                                                  |
+| `defaults.docsPaths`                                | `docs`, `doc`, `documentation` | Docs folder candidates, tried in order, matched case-insensitively. Relative paths without `..`.                                          |
+| `limits.maxDocsPerRepo`                             | `2000` (1 to 10000)            | More documents: only the first N in path order are synced and a warning is shown.                                                         |
+| `limits.maxFileBytes`                               | `262144` (1024 to 262144)      | Larger files are skipped with a warning. 256 KB is also the maximum.                                                                      |
+| `repos[].apiSpecs`                                  | none                           | Exact repository paths (at most 10) of OpenAPI or Swagger files. They replace the default search. See [API reference](#api-reference).    |
+| `limits.maxSpecBytes`                               | `2097152` (1024 to 2097152)    | Larger spec files are skipped with a warning. 2 MB is also the maximum: it can be lowered, not raised.                                    |
+| `sync.intervalMinutes`                              | `60`                           | Period of the full sync that catches missed webhooks. `0` turns it off, otherwise `5` to `10080`.                                         |
+| `sync.onStartup`                                    | `true`                         | One full sync about 10 seconds after the server starts.                                                                                   |
+| `comments.enabled`                                  | `true`                         | `false` removes the Comments section and turns the comment APIs off. Stored comments are kept. See [Comments](#comments).                 |
+| `ask.questionsPerDay`, `ask.questionsPerTenMinutes` | `100`, `20`                    | Questions one user may ask per day and per ten minutes (1 to 10000, 1 to 1000). See [Ask the docs](#ask-the-docs).                        |
+| `ask.maxOutputTokens`, `ask.maxConcurrent`          | `1000`, `8`                    | Longest answer in tokens (100 to 8000) and answers at once per server process (1 to 100). Whether Ask is on is an admin choice, not here. |
 
 Files left out by the limits are listed as a warning in the repository header and on `/status`. Changes to `sync` apply after a restart. The file path defaults to `docmyrepos.config.yml` in the working directory; set `CONFIG_PATH` to use another.
 
@@ -214,6 +218,8 @@ Files left out by the limits are listed as a warning in the repository header an
 | `SYNC_SECRET`                                                        | yes      | Secret protecting `POST /api/sync`, 16+ characters.                                                                               |
 | `SESSION_SECRET`                                                     | yes      | Signs the login session cookie, 16+ characters. Not a placeholder.                                                                |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD`                                      | no       | Bootstrap admin, created on first login when no users exist. Password 12+ characters.                                             |
+| `AI_ANTHROPIC_API_KEY`                                               | no       | Anthropic API key for [Ask](#ask-the-docs). Enables the `anthropic` provider.                                                     |
+| `AI_OPENAI_BASE_URL`, `AI_OPENAI_API_KEY`                            | no       | Base URL (`https`, or `http` on a loopback address) and key of an OpenAI-compatible endpoint for [Ask](#ask-the-docs).            |
 | `CONFIG_PATH`                                                        | no       | Config file path. Default `docmyrepos.config.yml`.                                                                                |
 | `LOG_LEVEL`                                                          | no       | `debug`, `info` (default), `warn`, `error` or `silent`. An unknown value stops startup.                                           |
 | `SYNC_SCHEDULER`                                                     | no       | `1` or `0` forces the background sync scheduler on or off. Default: on when `NODE_ENV=production`, off otherwise.                 |
@@ -313,6 +319,19 @@ Every document page has a **Comments** section where signed-in users start threa
 - **Name display.** A comment shows the part of the author's email before the `@`; admins also see the full email. The name is saved with the comment, so it survives the account's removal.
 - **Limits.** Plain text of 1 to 4,000 characters (no HTML or Markdown; `http(s)` addresses become safe links), 20 new comments per user per 10 minutes, 1,000 comments per document, and writes must be same-origin JSON requests.
 - **The switch.** `comments.enabled` in `docmyrepos.config.yml` (default `true`). With `false` the section and the `/api/comments*` routes disappear (404) and stored comments are kept; the admin Comments page still opens so they can be purged.
+
+## Ask the docs
+
+**Ask** answers a question in plain language from the synced documents and lists the sections it used as links. It is off by default and invisible until an admin turns it on. The full guide is [docs/guides/ask.md](docs/guides/ask.md).
+
+- **Setting it up.** The **operator** sets credentials in the environment: `AI_ANTHROPIC_API_KEY` for Anthropic, or `AI_OPENAI_BASE_URL` (and `AI_OPENAI_API_KEY`) for an OpenAI-compatible endpoint. An **admin** then opens `/admin/ask`, chooses the provider and model, presses **Test connection** and turns Ask on. The choice is stored in the database and applies to the next question without a restart. Keys and endpoints are never entered in the browser, stored in the database or shown, so an admin can only choose among what the operator provided.
+- **Examples.** Anthropic: `AI_ANTHROPIC_API_KEY=...`. A hosted provider: `AI_OPENAI_BASE_URL=https://models.example.com/v1` and `AI_OPENAI_API_KEY=...`. A local model with no key: `AI_OPENAI_BASE_URL=http://127.0.0.1:11434/v1` (Ollama, vLLM). The URL must be `https`, except for `localhost`, `127.x.x.x` and `::1`.
+- **What is sent to the provider.** The question (at most 2,000 characters), up to four earlier exchanges, and the selected excerpts (at most 8 sections, 12,000 characters) of documents the reader can open, labelled as data. Never the reader's identity, cookies, other documents or credentials. The Ask page names the provider before the first question. Use a local model if nothing may leave your server.
+- **Grounded and cited.** Retrieval uses the existing full-text search and its single visibility filter, with keyword queries written by the model. If nothing matches, the page says so and the model is not asked for an answer. Answers cite excerpts as `[1]`, `[2]` and link to the document at the heading.
+- **Limits and records.** Per user: `ask.questionsPerDay` (100) and `ask.questionsPerTenMinutes` (20), one answer at a time, and `ask.maxConcurrent` (8) answers per process, with `429` or `503` and `Retry-After`. Each accepted question writes one usage row (user, time, provider, token counts, outcome), kept 90 days. **No question, answer or excerpt is stored or logged**; the conversation lives in the browser tab.
+- **Reverse proxy.** The answer streams as server-sent events from `POST /api/ask`. The app sends `X-Accel-Buffering: no`; in nginx also set `proxy_buffering off;` for `/api/ask` and a `proxy_read_timeout` above 60 seconds. Rate-limit this path in the proxy too.
+- **Prompt injection and accuracy.** Documents are untrusted and may contain instructions for the model. Excerpts are passed as labelled data, the model has no tools, and the answer is rendered without images, HTML or links of its own, so an injected instruction can change the wording of an answer but cannot reach out. That is a reduction, not a guarantee: answers can be wrong or misleading, so check the references.
+- **Failures.** A provider error shows a short fixed message, never provider text or a key. If the saved choice loses its credentials, Ask hides itself, `/status` and `/admin/ask` name the missing variable, and the rest of the portal keeps working.
 
 ## Reading aids
 

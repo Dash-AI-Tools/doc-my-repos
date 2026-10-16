@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { askStatusLine, type AskStatusInput } from "@/lib/ask/status";
 import { repoUrl } from "@/lib/routes";
 import {
   formatDuration,
@@ -151,7 +152,42 @@ function StatusHeading() {
   );
 }
 
-export function StatusView({ data, now }: { readonly data: StatusViewData; readonly now: Date }) {
+const ASK_TONE = { good: "success", bad: "error" } as const satisfies Record<string, StatusTone>;
+
+function AskStatus({ ask }: { readonly ask: AskStatusInput }) {
+  const line = askStatusLine(ask);
+  return (
+    <section aria-labelledby="status-ask-heading" className="flex flex-col gap-3">
+      <h2 id="status-ask-heading" className="text-xl font-semibold">
+        Ask
+      </h2>
+      <p data-testid="status-ask" className="flex flex-wrap items-center gap-2 text-sm">
+        {line.tone === "neutral" ? (
+          <span
+            data-testid="status-ask-state"
+            data-tone="neutral"
+            className={`${CHIP} bg-muted text-muted-foreground`}
+          >
+            {line.label}
+          </span>
+        ) : (
+          <Chip tone={ASK_TONE[line.tone]} label={line.label} testId="status-ask-state" />
+        )}
+        <span data-testid="status-ask-detail">{line.detail}</span>
+      </p>
+    </section>
+  );
+}
+
+export function StatusView({
+  data,
+  ask,
+  now,
+}: {
+  readonly data: StatusViewData;
+  readonly ask?: AskStatusInput;
+  readonly now: Date;
+}) {
   const by = data.reposByStatus;
   return (
     <div className="flex flex-col gap-8">
@@ -180,6 +216,8 @@ export function StatusView({ data, now }: { readonly data: StatusViewData; reado
           <LastRun run={data.lastRun} now={now} />
         )}
       </section>
+
+      {ask ? <AskStatus ask={ask} /> : null}
 
       <section aria-labelledby="status-repos-heading" className="flex flex-col gap-3">
         <h2 id="status-repos-heading" className="text-xl font-semibold">

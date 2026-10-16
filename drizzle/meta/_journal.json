@@ -78,6 +78,13 @@
       "when": 1792116072427,
       "tag": "0010_plain_firelord",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792124902996,
+      "tag": "0011_sweet_expediter",
+      "breakpoints": true
     }
   ]
 }

@@ -16,3 +16,7 @@ Changes to this documentation, oldest first. New entries go at the end.
 ## 2026-10-15
 
 - Added the [Comments guide](./guides/comments.md): who can comment, where comments are stored, what happens to them when a document moves, the limits, moderation and the `comments.enabled` switch.
+
+## 2026-10-16
+
+- Added the [Ask the docs guide](./guides/ask.md): setting up the provider and model, what is sent to the provider, how answers are grounded and cited, the limits, privacy and the proxy settings for streaming.

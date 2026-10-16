@@ -124,6 +124,8 @@ function yamlKeys(value: unknown): string[] {
 
 /** Names that look like credentials. Matched against keys and against ALL_CAPS words. */
 const SECRET_NAME = /TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|PRIVATE|PEM/i;
+/** Config keys that match `SECRET_NAME` by spelling but hold a number, not a secret. */
+const NON_SECRET_KEYS = new Set(["maxOutputTokens"]);
 
 describe("splitExample", () => {
   it("rejects an alternative line that is not a comment", () => {
@@ -190,7 +192,7 @@ describe("docmyrepos.config.example.yml", () => {
   it("names no secret-looking keys or environment variables", () => {
     const texts = [SPLIT.active, ...SPLIT.alternatives.map((a) => a.uncommented)];
     const keys = texts.flatMap((text) => yamlKeys(parse(text)));
-    expect(keys.filter((key) => SECRET_NAME.test(key))).toEqual([]);
+    expect(keys.filter((key) => SECRET_NAME.test(key) && !NON_SECRET_KEYS.has(key))).toEqual([]);
 
     const capsWords = EXAMPLE_TEXT.match(/\b[A-Z][A-Z0-9_]{2,}\b/g) ?? [];
     expect(capsWords.filter((word) => SECRET_NAME.test(word))).toEqual([]);

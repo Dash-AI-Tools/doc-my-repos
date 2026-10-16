@@ -381,3 +381,44 @@ export const docComments = pgTable(
     check("doc_comments_body_length", sql`char_length(${t.body}) <= 4000`),
   ],
 );
+
+/**
+ * Ask-the-docs settings (ask-the-docs design decision 9): one row (`id` fixed to 1), edited by an
+ * admin. Credentials are never stored here; `provider` and `model` are re-validated on read.
+ */
+export const askSettings = pgTable(
+  "ask_settings",
+  {
+    id: smallint("id").primaryKey(),
+    enabled: boolean("enabled").notNull().default(false),
+    provider: text("provider"),
+    model: text("model"),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+    updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [check("ask_settings_single_row", sql`${t.id} = 1`)],
+);
+
+/**
+ * One row per question accepted for the model (ask-the-docs design decision 7). Counts and an
+ * outcome only: there is deliberately no column that could hold a question, an answer or an
+ * excerpt. Rows older than 90 days are deleted opportunistically.
+ */
+export const askUsage = pgTable(
+  "ask_usage",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    provider: text("provider").notNull(),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    excerptCount: integer("excerpt_count").notNull().default(0),
+    // `started` until the answer ends; then a fixed outcome word (see src/server/ask/limits.ts).
+    outcome: text("outcome").notNull().default("started"),
+  },
+  (t) => [
+    index("ask_usage_user_created_idx").on(t.userId, t.createdAt),
+    index("ask_usage_created_idx").on(t.createdAt),
+  ],
+);

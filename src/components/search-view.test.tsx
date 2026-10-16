@@ -126,3 +126,31 @@ describe("SearchView", () => {
     expect(container.querySelector(".lg\\:grid-cols-\\[16rem_minmax\\(0\\,1fr\\)\\]")).toBeNull();
   });
 });
+
+describe("SearchView: Ask instead", () => {
+  const link = () => screen.queryByTestId("ask-instead");
+
+  it("offers the Ask page with the query, only when Ask is on and there is a query", () => {
+    render(<SearchView view={okView()} askHref="/ask?q=deployment" />);
+    expect(link()?.getAttribute("href")).toBe("/ask?q=deployment");
+    expect(link()?.textContent).toBe("Ask instead");
+  });
+
+  it("shows it on a search with no results too", () => {
+    render(<SearchView view={okView({}, [], 0)} askHref="/ask?q=deployment" />);
+    expect(link()).not.toBeNull();
+  });
+
+  it("shows nothing when Ask is off", () => {
+    render(<SearchView view={okView()} />);
+    expect(link()).toBeNull();
+    cleanup();
+    render(<SearchView view={okView()} askHref={null} />);
+    expect(link()).toBeNull();
+  });
+
+  it("shows nothing before a query is entered", () => {
+    render(<SearchView view={{ status: "idle", state: EMPTY_SEARCH_STATE }} askHref="/ask?q=" />);
+    expect(link()).toBeNull();
+  });
+});

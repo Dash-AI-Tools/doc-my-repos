@@ -375,3 +375,60 @@ describe("configSchema comments", () => {
     expect(issues({ comments: null })).toEqual([expect.stringMatching(/^comments: /)]);
   });
 });
+
+describe("configSchema ask limits", () => {
+  const defaults = {
+    questionsPerDay: 100,
+    questionsPerTenMinutes: 20,
+    maxOutputTokens: 1000,
+    maxConcurrent: 8,
+  };
+
+  it("defaults when the section is absent or empty", () => {
+    expect(configSchema.parse({}).ask).toEqual(defaults);
+    expect(configSchema.parse({ ask: {} }).ask).toEqual(defaults);
+  });
+
+  it("accepts values within bounds, keeping the others at their defaults", () => {
+    expect(configSchema.parse({ ask: { questionsPerDay: 5, maxConcurrent: 1 } }).ask).toEqual({
+      ...defaults,
+      questionsPerDay: 5,
+      maxConcurrent: 1,
+    });
+  });
+
+  it("rejects values outside the bounds, naming the field", () => {
+    expect(issues({ ask: { questionsPerDay: 0 } })).toEqual([
+      "ask.questionsPerDay: questionsPerDay must be at least 1",
+    ]);
+    expect(issues({ ask: { questionsPerDay: 10_001 } })).toEqual([
+      "ask.questionsPerDay: questionsPerDay must be at most 10000",
+    ]);
+    expect(issues({ ask: { questionsPerTenMinutes: 1001 } })).toEqual([
+      "ask.questionsPerTenMinutes: questionsPerTenMinutes must be at most 1000",
+    ]);
+    expect(issues({ ask: { maxOutputTokens: 99 } })).toEqual([
+      "ask.maxOutputTokens: maxOutputTokens must be at least 100",
+    ]);
+    expect(issues({ ask: { maxOutputTokens: 8001 } })).toEqual([
+      "ask.maxOutputTokens: maxOutputTokens must be at most 8000",
+    ]);
+    expect(issues({ ask: { maxConcurrent: 0 } })).toEqual([
+      "ask.maxConcurrent: maxConcurrent must be at least 1",
+    ]);
+  });
+
+  it("rejects non-numeric and fractional values", () => {
+    for (const value of ["100", "many", null, true, 1.5]) {
+      expect(issues({ ask: { questionsPerDay: value } })).toEqual([
+        "ask.questionsPerDay: questionsPerDay must be a whole number",
+      ]);
+    }
+  });
+
+  it("rejects unknown keys, including a leftover enabled", () => {
+    expect(issues({ ask: { enabled: true } })).toEqual(["ask.enabled: unknown field"]);
+    expect(issues({ ask: { model: "x" } })).toEqual(["ask.model: unknown field"]);
+    expect(issues({ ask: null })).toEqual([expect.stringMatching(/^ask: /)]);
+  });
+});

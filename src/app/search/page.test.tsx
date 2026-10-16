@@ -9,6 +9,9 @@ vi.mock("@/server/search-page", () => ({
   loadSearchPage: (state: SearchState) => loadSearchPage(state),
 }));
 
+const askState = vi.hoisted(() => ({ current: { state: "off" } as { state: string } }));
+vi.mock("@/server/ask/settings", () => ({ getAskState: async () => askState.current }));
+
 import SearchPage, { dynamic, generateMetadata } from "./page";
 
 async function html(params: Record<string, string | string[] | undefined>): Promise<string> {
@@ -16,6 +19,7 @@ async function html(params: Record<string, string | string[] | undefined>): Prom
 }
 
 beforeEach(() => {
+  askState.current = { state: "off" };
   loadSearchPage.mockReset();
   loadSearchPage.mockImplementation((state) => Promise.resolve({ status: "idle", state }));
 });
@@ -48,6 +52,18 @@ describe("search page", () => {
     expect(out).toMatch(/<h1[^>]*>Search<\/h1>/);
     expect(out).toContain('data-testid="no-query"');
     expect(out).toContain('action="/search"');
+  });
+
+  it("offers Ask instead, with the query encoded, only when Ask is ready", async () => {
+    loadSearchPage.mockImplementation((state) => Promise.resolve({ status: "error", state }));
+    expect(await html({ q: "rotate keys & more" })).not.toContain("Ask instead");
+    askState.current = { state: "unavailable" };
+    expect(await html({ q: "rotate keys" })).not.toContain("Ask instead");
+    askState.current = { state: "ready" };
+    const out = await html({ q: "rotate keys & more" });
+    expect(out).toContain('href="/ask?q=rotate%20keys%20%26%20more"');
+    expect(out).toContain("Ask instead");
+    expect(await html({})).not.toContain("Ask instead"); // no query, no link
   });
 
   it("renders the error state in the page", async () => {

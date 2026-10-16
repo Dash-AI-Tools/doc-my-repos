@@ -16,6 +16,7 @@ import { repoUrl } from "@/lib/routes";
 import { buildFilterQuery } from "@/lib/search-params";
 import { buildTocFilterView, parseTocFilters, withFilterQuery } from "@/lib/toc-filters";
 import type { NavView } from "@/lib/reading-prefs";
+import { getAskState } from "@/server/ask/settings";
 import { readNavView } from "@/server/nav-view";
 import { loadRepoPage } from "@/server/repo-page";
 
@@ -96,6 +97,11 @@ export default async function RepoPage({
       ? null
       : buildTocFilterView({ basePath, state: toc.state, facets: toc.facets, counts: toc.counts });
   const awaitingSync = repo.syncStatus === "pending" || repo.lastSyncedAt === null;
+  // The Ask link only exists while Ask is on and usable.
+  const askHref =
+    (await getAskState()).state === "ready"
+      ? `/ask?repo=${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`
+      : null;
 
   return (
     <DocReader>
@@ -118,7 +124,7 @@ export default async function RepoPage({
           />
         }
       >
-        <RepoHeader repo={repo} lastRun={lastRun} now={loadedAt} />
+        <RepoHeader repo={repo} lastRun={lastRun} now={loadedAt} askHref={askHref} />
         <ReadmeSection
           readme={readme}
           path={repo.readme?.path ?? null}

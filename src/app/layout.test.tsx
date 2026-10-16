@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { CommandPalette } from "@/components/command-palette";
 import { THEME_STORAGE_KEY } from "@/components/theme-provider";
 import { E2E_CRASH_HEADER } from "@/lib/e2e-fixtures";
+import { SiteHeader } from "@/components/site-header";
 import { THEME_TOKENS } from "@/lib/theme-tokens";
 
 import RootLayout, { generateMetadata, viewport } from "./layout";
@@ -49,8 +50,14 @@ vi.mock("next/headers", () => ({
     },
   }),
 }));
-// The header's user section comes from the session; layout tests render logged-out.
-vi.mock("@/server/auth/current-user", () => ({ getCurrentUser: async () => null }));
+// The header's user section comes from the session; layout tests render logged-out unless a test
+// signs a user in. Ask's state decides whether the header shows the Ask link.
+const session = vi.hoisted(() => ({
+  user: null as null | { id: number; email: string; role: "admin" | "user" },
+  ask: { state: "off" } as { state: string },
+}));
+vi.mock("@/server/auth/current-user", () => ({ getCurrentUser: async () => session.user }));
+vi.mock("@/server/ask/settings", () => ({ getAskState: async () => session.ask }));
 
 const NONCE = "AAECAwQFBgcICQoLDA0ODw==";
 
@@ -68,6 +75,48 @@ function countElements(node: ReactNode, type: unknown): number {
   if (!isValidElement<{ children?: ReactNode }>(node)) return 0;
   return (node.type === type ? 1 : 0) + countElements(node.props.children, type);
 }
+
+/** The props of the first element of `type` in the tree, or null. */
+function propsOf<P>(node: ReactNode, type: unknown): P | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = propsOf<P>(child, type);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!isValidElement<{ children?: ReactNode }>(node)) return null;
+  if (node.type === type) return node.props as unknown as P;
+  return propsOf<P>(node.props.children, type);
+}
+
+describe("root layout: the Ask link", () => {
+  afterEach(() => {
+    session.user = null;
+    session.ask = { state: "off" };
+  });
+
+  const askEnabled = async () =>
+    propsOf<{ askEnabled: boolean }>(await renderLayout(), SiteHeader)?.askEnabled;
+
+  it("is off for a signed-in reader while Ask is off or unavailable", async () => {
+    session.user = { id: 1, email: "u@example.com", role: "user" };
+    expect(await askEnabled()).toBe(false);
+    session.ask = { state: "unavailable" };
+    expect(await askEnabled()).toBe(false);
+  });
+
+  it("is on for a signed-in reader when Ask is ready", async () => {
+    session.user = { id: 1, email: "u@example.com", role: "user" };
+    session.ask = { state: "ready" };
+    expect(await askEnabled()).toBe(true);
+  });
+
+  it("is off for a signed-out visitor even when Ask is ready", async () => {
+    session.ask = { state: "ready" };
+    expect(await askEnabled()).toBe(false);
+  });
+});
 
 describe("root layout", () => {
   let html = "";

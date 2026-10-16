@@ -32,6 +32,8 @@ vi.mock("@/server/repo-page", () => ({
   },
 }));
 vi.mock("@/server/nav-view", () => ({ readNavView: async () => navView.current }));
+const askState = vi.hoisted(() => ({ current: { state: "off" } as { state: string } }));
+vi.mock("@/server/ask/settings", () => ({ getAskState: async () => askState.current }));
 
 import RepoPage, { dynamic, generateMetadata } from "./page";
 
@@ -114,6 +116,7 @@ beforeEach(() => {
   loadRepoPage.mockReset();
   views.length = 0;
   navView.current = "okf";
+  askState.current = { state: "off" };
 });
 
 const spec = (path: string, over: Record<string, unknown> = {}) => ({
@@ -457,5 +460,18 @@ describe("repository page, OKF filters (tasks 11.1 to 11.3)", () => {
       expect(out).toContain('href="/acme/api/docs/reference/endpoints"');
       expect(out).not.toContain("?type=");
     }
+  });
+});
+
+describe("repository page: Ask about this repository", () => {
+  it("links to /ask limited to this repository only while Ask is ready", async () => {
+    loadRepoPage.mockResolvedValue(ok());
+    expect(await html()).not.toContain("Ask about this repository");
+    askState.current = { state: "unavailable" };
+    expect(await html()).not.toContain("Ask about this repository");
+    askState.current = { state: "ready" };
+    const out = await html();
+    expect(out).toContain("Ask about this repository");
+    expect(out).toContain('href="/ask?repo=acme/api"');
   });
 });
