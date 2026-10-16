@@ -1,4 +1,4 @@
-import { handleListRepos, handleSetRepoAllowed } from "@/server/admin/service";
+import { handleListRepos, handleUpdateRepo } from "@/server/admin/service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -8,7 +8,7 @@ export function GET(): Promise<Response> {
   return handleListRepos();
 }
 
-/** `PATCH /api/admin/repos` with `{owner, name, isAllowed}`. */
+/** `PATCH /api/admin/repos` with `{owner, name}` and `isAllowed` and/or `isStarred`. */
 export function PATCH(request: Request): Promise<Response> {
-  return handleSetRepoAllowed(request);
+  return handleUpdateRepo(request);
 }

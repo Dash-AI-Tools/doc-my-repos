@@ -35,10 +35,10 @@ export default async function HomePage() {
       </section>
       {home.status === "error" ? (
         <LoadErrorState />
-      ) : home.repos.length === 0 ? (
+      ) : home.starred.length + home.repos.length === 0 ? (
         <EmptyState />
       ) : (
-        <RepoGrid repos={home.repos} now={home.loadedAt} />
+        <RepoGrid starred={home.starred} repos={home.repos} now={home.loadedAt} />
       )}
     </div>
   );

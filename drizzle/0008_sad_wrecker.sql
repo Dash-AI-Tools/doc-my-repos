@@ -1,0 +1,1 @@
+ALTER TABLE "repos" ADD COLUMN "star_position" integer;

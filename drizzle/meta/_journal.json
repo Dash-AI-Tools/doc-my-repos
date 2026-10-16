@@ -57,6 +57,13 @@
       "when": 1792040267799,
       "tag": "0007_red_pixie",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792104177811,
+      "tag": "0008_sad_wrecker",
+      "breakpoints": true
     }
   ]
 }

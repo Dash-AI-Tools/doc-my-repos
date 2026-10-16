@@ -101,6 +101,13 @@ describe("db schema", () => {
     }
   });
 
+  it("stores the star place as a nullable integer with no default (null = not starred)", () => {
+    const col = column(repos, "star_position");
+    expect(col.getSQLType()).toBe("integer");
+    expect(col.notNull).toBe(false);
+    expect(col.hasDefault).toBe(false);
+  });
+
   it("has no default for repos.visibility so the sync must supply it", () => {
     expect(column(repos, "visibility").hasDefault).toBe(false);
   });

@@ -516,6 +516,8 @@ describeDb("query layer on a real database", () => {
         htmlUrl: "https://github.com/Acme/Handbook",
         visibility: "public",
         isAllowed: true,
+        starPosition: null,
+        isStarred: false,
         isOkf: true,
         okfVersion: "0.2",
         syncStatus: "ok",
@@ -531,6 +533,26 @@ describeDb("query layer on a real database", () => {
       });
       expect(list[2]?.docCount).toBe(0);
       expect(list[3]?.docCount).toBe(BIG_DOCS);
+    });
+
+    it("returns the star place and derives isStarred; a blocked starred repo stays hidden", async () => {
+      const id = await insertRepo(t.db, {
+        githubId: 9001,
+        owner: "star",
+        name: "kept",
+        visibility: "public",
+        starPosition: 3,
+      });
+      try {
+        const starred = (await listRepos(t.db)).find((r) => r.id === id);
+        expect(starred).toMatchObject({ starPosition: 3, isStarred: true });
+        await t.db.update(repos).set({ isAllowed: false }).where(eq(repos.id, id));
+        expect((await listRepos(t.db)).some((r) => r.id === id)).toBe(false);
+        const all = await listRepos(t.db, {}, { visibility: allowAllRepos });
+        expect(all.find((r) => r.id === id)).toMatchObject({ starPosition: 3, isStarred: true });
+      } finally {
+        await t.db.delete(repos).where(eq(repos.id, id));
+      }
     });
 
     it("pages stably and ignores invalid paging values", async () => {

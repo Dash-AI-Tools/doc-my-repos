@@ -159,6 +159,10 @@ export const repos = pgTable(
     // Admin allow/block toggle (access-control): blocked repos keep content but are hidden
     // everywhere via the visibility chokepoint. Default true so existing rows stay visible.
     isAllowed: boolean("is_allowed").notNull().default(true),
+    // Admin-curated, portal-wide star: null = not starred, otherwise the place in the starred
+    // order. Written only by star/unstar/reorder (never by the sync's explicit-column upsert), so
+    // blocking and syncing keep it. Not unique or contiguous: reads order by it then id.
+    starPosition: integer("star_position"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },

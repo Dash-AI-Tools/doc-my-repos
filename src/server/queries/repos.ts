@@ -35,6 +35,10 @@ export interface RepoSummary {
   readonly visibility: RepoVisibility;
   /** False when an admin blocked the repo (hidden everywhere, content kept). */
   readonly isAllowed: boolean;
+  /** Place in the admin-set starred order; null when not starred. */
+  readonly starPosition: number | null;
+  /** Starred by an admin (portal-wide); derived from `starPosition`. */
+  readonly isStarred: boolean;
   readonly isOkf: boolean;
   readonly okfVersion: string | null;
   /** `error` when the last sync failed; previously stored content is still served. */
@@ -109,6 +113,7 @@ const summaryColumns = {
   htmlUrl: repos.htmlUrl,
   visibility: repos.visibility,
   isAllowed: repos.isAllowed,
+  starPosition: repos.starPosition,
   isOkf: repos.isOkf,
   okfVersion: repos.okfVersion,
   syncStatus: repos.syncStatus,
@@ -125,6 +130,7 @@ type SummaryRow = {
   htmlUrl: string;
   visibility: RepoVisibility;
   isAllowed: boolean;
+  starPosition: number | null;
   isOkf: boolean;
   okfVersion: string | null;
   syncStatus: RepoSyncStatus;
@@ -146,6 +152,8 @@ function toSummary(row: SummaryRow): RepoSummary {
     htmlUrl: row.htmlUrl,
     visibility: row.visibility,
     isAllowed: row.isAllowed,
+    starPosition: row.starPosition,
+    isStarred: row.starPosition !== null,
     isOkf: row.isOkf,
     okfVersion: row.okfVersion,
     syncStatus: row.syncStatus,

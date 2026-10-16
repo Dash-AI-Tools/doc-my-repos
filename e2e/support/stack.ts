@@ -12,6 +12,7 @@ import { join } from "node:path";
  * | `seeded`      | 3101 | `docmyrepos_e2e_<id>_seeded`      | `SEED_REPOS` (seed-data.ts)      |
  * | `empty`       | 3102 | `docmyrepos_e2e_<id>_empty`       | migrated, no rows                |
  * | `unreachable` | 3103 | a port nothing listens on         | database error state             |
+ * | `starred`     | 3104 | `docmyrepos_e2e_<id>_starred`     | `SEED_REPOS`, for specs that star|
  *
  * `playwright.config.ts` starts the servers and `global-setup.ts` creates and seeds the databases;
  * Playwright starts web servers BEFORE it runs the global setup, so nothing in a server needs its
@@ -31,10 +32,11 @@ export const STACKS = {
   seeded: { port: 3101 },
   empty: { port: 3102 },
   unreachable: { port: 3103 },
+  starred: { port: 3104 },
 } as const;
 
 export type StackName = keyof typeof STACKS;
-export type DatabaseKind = "seeded" | "empty";
+export type DatabaseKind = "seeded" | "empty" | "starred";
 
 export function stackUrl(name: StackName): string {
   return `http://127.0.0.1:${STACKS[name].port}`;
@@ -134,7 +136,7 @@ export function workDir(): WorkDir {
  */
 export function serverEnv(name: StackName): Record<string, string> {
   const { keyPath, configPath } = workDir();
-  const readsDatabase = name === "seeded" || name === "empty";
+  const readsDatabase = name === "seeded" || name === "empty" || name === "starred";
   return {
     ...(name === "fixtures" ? { E2E_FIXTURES: "1" } : {}),
     DATABASE_URL: readsDatabase ? databaseUrl(name) : UNREACHABLE_DATABASE_URL,

@@ -4,7 +4,7 @@ import { SKIP_DB, STACKS, serverEnv, stackUrl } from "./e2e/support/stack";
 
 /**
  * End-to-end tests (tasks 7.8 and 9.2). `pnpm test:e2e` builds the app once and serves the
- * production build on four ports (see `e2e/support/stack.ts`):
+ * production build on these ports (see `e2e/support/stack.ts`):
  *
  * - 3100 `fixtures`: no database; the e2e-only fixture pages (`E2E_FIXTURES=1`, see
  *   `src/lib/e2e-fixtures.ts`). Outside CI a server already running on the port is reused, so you
@@ -13,6 +13,8 @@ import { SKIP_DB, STACKS, serverEnv, stackUrl } from "./e2e/support/stack";
  *   exec next start --port 3100` (the dead `DATABASE_URL` keeps your own branding out of the run).
  * - 3101 `seeded`: a throwaway database filled from `e2e/support/seed-data.ts`.
  * - 3102 `empty`: a throwaway, migrated, empty database.
+ *   (3104 `starred` is a second seeded database for specs that star and reorder repositories, so
+ *   they cannot disturb the read-only specs on `seeded`.)
  * - 3103 `unreachable`: `DATABASE_URL` points at a port nothing listens on.
  *
  * The last three need Postgres (`docker compose --env-file .env.example up -d --wait db`, or
@@ -55,7 +57,7 @@ export default defineConfig({
     },
     ...(SKIP_DB
       ? []
-      : (["seeded", "empty"] as const).map((name) => ({
+      : (["seeded", "empty", "starred"] as const).map((name) => ({
           command: start(STACKS[name].port),
           url: stackUrl(name),
           reuseExistingServer: false,
