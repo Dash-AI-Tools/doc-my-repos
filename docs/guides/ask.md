@@ -53,6 +53,8 @@ An Anthropic account: enter the key under _Anthropic API key_.
 
 A hosted OpenAI-compatible provider: base URL `https://models.example.com/v1` and its key.
 
+DeepSeek: base URL `https://api.deepseek.com/v1`, its API key, and a model name such as `deepseek-chat` or `deepseek-reasoner`. Choose _OpenAI-compatible endpoint_ as the provider.
+
 A model on the same machine (Ollama), no key: base URL `http://127.0.0.1:11434/v1`.
 
 ## What a reader sees

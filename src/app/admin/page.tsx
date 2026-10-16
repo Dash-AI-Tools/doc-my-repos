@@ -52,7 +52,10 @@ export default async function AdminPage() {
             </p>
           </li>
           <li>
-            <Link href="/admin/repos" className="font-medium underline underline-offset-4">
+            <Link
+              href="/admin/workspace?tab=repos"
+              className="font-medium underline underline-offset-4"
+            >
               Repository access
             </Link>
             <p className="text-sm text-muted-foreground">

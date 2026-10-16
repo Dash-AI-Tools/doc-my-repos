@@ -85,21 +85,13 @@ describe("AccountMenu", () => {
     // Document order is the Tab order (nothing carries a tabindex).
     expect(
       [...container.querySelectorAll("button, a")].map((el) => el.textContent?.trim()),
-    ).toEqual([
-      "admin@example.com",
-      "Users",
-      "Repository access",
-      "Workspace configuration",
-      "Branding",
-      "Sign out",
-    ]);
+    ).toEqual(["admin@example.com", "Users", "Workspace configuration", "Branding", "Sign out"]);
   });
 
   it("shows the admin links to an admin and none to a viewer", () => {
     render(<AccountMenu user={{ email: "admin@example.com", role: "admin" }} />);
     fireEvent.click(screen.getByTestId("account-menu-trigger"));
     expect(screen.getByRole("link", { name: "Users" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Repository access" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Workspace configuration" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Branding" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Administration" })).toBeNull();

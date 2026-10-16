@@ -64,9 +64,8 @@ export interface ManualSyncService {
   syncOne(target: SyncOneTarget, options: { trigger: "manual" }): Promise<ManualSyncOneResult>;
 }
 
-export interface ManualSyncDeps {
-  /** The configured sync secret, or null when it is missing or invalid. Must not touch the DB. */
-  readSecret(): string | null;
+/** What running a sync needs once the caller is authorized. */
+export interface AuthorizedSyncDeps {
   /**
    * Builds the service from the current settings. Rejects with `ConfigError` when the environment
    * is invalid, or `NotConfiguredError` when the GitHub settings are incomplete.
@@ -75,6 +74,11 @@ export interface ManualSyncDeps {
   now?: () => number;
   /** Structured log. Only event names, outcome words, counts and problem names are passed. */
   log?: Logger;
+}
+
+export interface ManualSyncDeps extends AuthorizedSyncDeps {
+  /** The configured sync secret, or null when it is missing or invalid. Must not touch the DB. */
+  readSecret(): string | null;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -356,8 +360,8 @@ function isConfigError(error: unknown): error is Error & { problems: readonly st
 }
 
 /**
- * Handles one `POST /api/sync` request. Never throws: every failure becomes a response with a
- * fixed body.
+ * Handles one `POST /api/sync` request: checks the bearer secret, then runs the sync. Never
+ * throws: every failure becomes a response with a fixed body.
  */
 export async function handleManualSync(request: Request, deps: ManualSyncDeps): Promise<Response> {
   const log = deps.log ?? logger;
@@ -374,7 +378,27 @@ export async function handleManualSync(request: Request, deps: ManualSyncDeps): 
       return unauthorized();
     }
     log.info("sync_api.auth", { outcome: "authorized" });
+  } catch (error) {
+    log.error("sync_api.failed", {
+      reason: describeSyncError(error, now()).kind,
+      ...errorFields(error),
+    });
+    return internalError();
+  }
+  return runAuthorizedSync(request, deps);
+}
 
+/**
+ * Reads the optional body and runs the sync it names. The caller has already been authorized (the
+ * bearer secret for `/api/sync`, an admin session for `/api/admin/sync`). Never throws.
+ */
+export async function runAuthorizedSync(
+  request: Request,
+  deps: AuthorizedSyncDeps,
+): Promise<Response> {
+  const log = deps.log ?? logger;
+  const now = deps.now ?? Date.now;
+  try {
     const body = await parseBody(request);
     if (!body.ok) {
       log.info("sync_api.rejected", { httpStatus: body.response.status });

@@ -197,7 +197,6 @@ test("an admin reaches the admin pages through the email menu; the top bar has n
 
   for (const [name, path] of [
     ["Users", "/admin/users"],
-    ["Repository access", "/admin/repos"],
     ["Workspace configuration", "/admin/workspace"],
   ] as const) {
     await page.goto("/");

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { fieldClass } from "@/lib/ui";
 
 import { RepoLine, repoLabel, type RepoAccessRow } from "./repo-access-row";
+import { RunSyncButton } from "./run-sync-button";
 import { StarredRepoList } from "./starred-repo-list";
 
 export type { RepoAccessRow } from "./repo-access-row";
@@ -40,7 +41,14 @@ function starredInOrder(repos: readonly RepoAccessRow[]): RepoAccessRow[] {
     .sort((a, b) => (a.starPosition ?? 0) - (b.starPosition ?? 0) || a.id - b.id);
 }
 
-export function RepoAccessManager({ initialRepos }: { initialRepos: RepoAccessRow[] }) {
+export function RepoAccessManager({
+  initialRepos,
+  canSync = false,
+}: {
+  initialRepos: RepoAccessRow[];
+  /** Whether the saved GitHub settings are complete enough to sync. */
+  canSync?: boolean;
+}) {
   const router = useRouter();
   const ids = useId();
   const [repos, setRepos] = useState(initialRepos);
@@ -188,6 +196,7 @@ export function RepoAccessManager({ initialRepos }: { initialRepos: RepoAccessRo
       ) : null}
 
       <section className="flex flex-col gap-4" aria-labelledby={`${ids}-h`}>
+        {initialRepos.length === 0 ? <RunSyncButton canSync={canSync} /> : null}
         <h2 id={`${ids}-h`} className="text-xl font-bold tracking-tight">
           Repositories{" "}
           <span className="font-normal text-muted-foreground tabular-nums">{repos.length}</span>

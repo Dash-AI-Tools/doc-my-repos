@@ -32,6 +32,21 @@ vi.mock("@/server/admin/ask", () => ({
   }),
 }));
 
+vi.mock("@/server/admin/service", () => ({
+  getAdminRepos: async () => [
+    {
+      id: 1,
+      owner: "acme",
+      name: "api",
+      visibility: "public",
+      isAllowed: true,
+      starPosition: null,
+      isStarred: false,
+      syncStatus: "ok",
+    },
+  ],
+}));
+
 vi.mock("@/server/admin/settings", () => ({
   getAdminSettingsView: async () => ({
     version: 2,
@@ -99,5 +114,13 @@ describe("/admin/workspace", () => {
     expect(html).toContain("GitHub &amp; sync");
     expect(html).toMatch(/role="tab"[^>]*aria-selected="true"[^>]*data-testid="tab-ask"/);
     expect(html).toContain("Turn Ask on");
+  });
+
+  it("holds Repository access in its own tab, and opens that tab for ?tab=repos", async () => {
+    const html = renderToStaticMarkup(
+      await AdminGithubPage({ searchParams: params({ tab: "repos" }) }),
+    );
+    expect(html).toMatch(/role="tab"[^>]*aria-selected="true"[^>]*data-testid="tab-repos"/);
+    expect(html).toContain("acme/api");
   });
 });
