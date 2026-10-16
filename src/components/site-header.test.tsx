@@ -184,3 +184,25 @@ describe("site header read mode", () => {
     expect(markup()).toMatch(/<header[^>]*data-read-hide/);
   });
 });
+
+describe("site header Ask link", () => {
+  const render = (askEnabled?: boolean) =>
+    renderToStaticMarkup(
+      inLayout(
+        <SiteHeader
+          user={{ email: "u@example.com", role: "user" }}
+          branding={PLAIN}
+          {...(askEnabled === undefined ? {} : { askEnabled })}
+        />,
+      ),
+    );
+
+  it("is shown in the main navigation only when Ask is enabled", () => {
+    const nav = (html: string) =>
+      html.slice(html.indexOf('aria-label="Main"'), html.indexOf("</nav>"));
+    expect(nav(render(true))).toContain('href="/ask"');
+    expect(nav(render(true))).toMatch(/Repositories[\s\S]*Ask/);
+    expect(render(false)).not.toContain('href="/ask"');
+    expect(render()).not.toContain('href="/ask"'); // the default is off
+  });
+});

@@ -26,6 +26,7 @@ function ok(over: Partial<Extract<StatusPageData, { status: "ok" }>["sync"]> = {
   return {
     status: "ok",
     loadedAt: NOW,
+    ask: { state: "off" },
     sync: {
       lastRun: {
         trigger: "schedule",
@@ -80,6 +81,13 @@ async function html(): Promise<string> {
 }
 
 beforeEach(() => loadStatusPage.mockReset());
+
+function withAsk(
+  data: Extract<StatusPageData, { status: "ok" }>,
+  ask: Extract<StatusPageData, { status: "ok" }>["ask"],
+): StatusPageData {
+  return { ...data, ask };
+}
 
 describe("/status page", () => {
   it("is rendered per request and not indexed", () => {
@@ -152,6 +160,40 @@ describe("/status page", () => {
     const out = await html();
     expect(out).toContain('data-testid="status-last-run-error"');
     expect(out).toContain("GitHub App installation unavailable");
+  });
+
+  it("shows the Ask line: off, ready, and unavailable naming variables only", async () => {
+    const data = ok();
+    if (data.status !== "ok") throw new Error("fixture");
+    const lines: [Parameters<typeof withAsk>[1], string[], string[]][] = [
+      [{ state: "off" }, ["Off"], ["AI_"]],
+      [
+        { state: "ready", provider: "anthropic", model: "claude-x" },
+        ["Ready", "Anthropic", "claude-x"],
+        ["AI_"],
+      ],
+      [
+        { state: "unavailable", missing: ["AI_ANTHROPIC_API_KEY"] },
+        ["Unavailable", "Set AI_ANTHROPIC_API_KEY."],
+        [],
+      ],
+      [
+        {
+          state: "unavailable",
+          missing: [],
+          problem: "AI_OPENAI_BASE_URL: must be an https URL",
+        },
+        ["Unavailable", "AI_OPENAI_BASE_URL: must be an https URL."],
+        [],
+      ],
+    ];
+    for (const [ask, present, absent] of lines) {
+      loadStatusPage.mockResolvedValue(withAsk(data, ask));
+      const out = await html();
+      expect(out).toContain('data-testid="status-ask"');
+      for (const text of present) expect(out).toContain(text);
+      for (const text of absent) expect(out).not.toContain(text);
+    }
   });
 
   it("renders the in-page error state", async () => {

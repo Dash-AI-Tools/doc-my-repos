@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getAskState, type AskState } from "./ask/settings";
 import type { Db } from "./db/client";
 import { expectedFailureKind } from "./home";
 import { getSyncStatus, type QueryOptions, type SyncStatus } from "./queries";
@@ -15,7 +16,12 @@ import { logger, type LogFn } from "./log";
  */
 
 export type StatusPageData =
-  | { readonly status: "ok"; readonly sync: SyncStatus; readonly loadedAt: Date }
+  | {
+      readonly status: "ok";
+      readonly sync: SyncStatus;
+      readonly ask: AskState;
+      readonly loadedAt: Date;
+    }
   | { readonly status: "error"; readonly loadedAt: Date };
 
 export interface StatusPageDeps {
@@ -26,6 +32,8 @@ export interface StatusPageDeps {
   readonly log?: LogFn;
   /** Query options (tests swap the visibility filter). */
   readonly options?: QueryOptions;
+  /** Where Ask stands. Default: the stored choice plus the environment (never throws). */
+  readonly askState?: () => Promise<AskState>;
 }
 
 export async function loadStatusPage(deps: StatusPageDeps = {}): Promise<StatusPageData> {
@@ -34,7 +42,8 @@ export async function loadStatusPage(deps: StatusPageDeps = {}): Promise<StatusP
   const db = deps.db ?? (() => getRuntime().db.db);
   try {
     const sync = await getSyncStatus(db(), {}, deps.options);
-    return { status: "ok", sync, loadedAt: now() };
+    const ask = await (deps.askState ?? (() => getAskState()))();
+    return { status: "ok", sync, ask, loadedAt: now() };
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;

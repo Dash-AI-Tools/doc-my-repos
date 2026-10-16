@@ -259,3 +259,19 @@ describe("RepoHeader, sync state (tasks 12.2 and 12.3)", () => {
     expect(screen.queryByTestId("repo-sync-warnings")).toBeNull();
   });
 });
+
+describe("RepoHeader: Ask about this repository", () => {
+  it("links to the Ask page limited to the repository when Ask is on", () => {
+    render(<RepoHeader repo={BASE} now={NOW} askHref="/ask?repo=acme/api-service" />);
+    const link = screen.getByRole("link", { name: "Ask about this repository" });
+    expect(link.getAttribute("href")).toBe("/ask?repo=acme/api-service");
+  });
+
+  it("shows no link when Ask is off", () => {
+    render(<RepoHeader repo={BASE} now={NOW} />);
+    expect(screen.queryByRole("link", { name: "Ask about this repository" })).toBeNull();
+    cleanup();
+    render(<RepoHeader repo={BASE} now={NOW} askHref={null} />);
+    expect(screen.queryByTestId("ask-about-repo")).toBeNull();
+  });
+});

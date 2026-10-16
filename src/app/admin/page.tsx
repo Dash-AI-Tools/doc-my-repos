@@ -34,6 +34,14 @@ export default function AdminPage() {
             </p>
           </li>
           <li>
+            <Link href="/admin/ask" className="font-medium underline underline-offset-4">
+              Ask
+            </Link>
+            <p className="text-sm text-muted-foreground">
+              Let readers ask questions of the docs: turn it on, choose the provider and model.
+            </p>
+          </li>
+          <li>
             <Link href="/admin/github" className="font-medium underline underline-offset-4">
               GitHub configuration
             </Link>
