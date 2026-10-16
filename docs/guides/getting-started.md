@@ -15,7 +15,7 @@ stale_after: 2999-01-01
 
 # Getting started
 
-This guide takes you from nothing to a portal showing your repositories' docs. The product overview and the full self-hosting notes are in the repository [README](../../README.md).
+This guide takes you from nothing to a portal showing your repositories' docs by hand. For a one-command install that also creates the GitHub App, see the [Install wizard](./install-wizard.md). The product overview and the full self-hosting notes are in the repository [README](../../README.md).
 
 ## Checklist
 

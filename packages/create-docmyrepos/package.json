@@ -1,0 +1,22 @@
+{
+  "name": "create-docmyrepos",
+  "version": "0.1.0",
+  "description": "Installer for DocMyRepos: sets up a self-hosted documentation portal for a GitHub organization.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "create-docmyrepos": "bin/create-docmyrepos.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/embed-manifest.mjs && tsc -p tsconfig.json"
+  }
+}

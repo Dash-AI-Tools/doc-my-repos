@@ -15,7 +15,12 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "tests/unit/**/*.test.ts"],
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "tests/unit/**/*.test.ts",
+      "packages/*/src/**/*.test.ts",
+    ],
     // Keeps the structured logger quiet; tests that check log output capture it at `debug`
     // (`captureOutput` in src/server/test-logger.ts) or inject a recording logger.
     env: { LOG_LEVEL: "silent" },

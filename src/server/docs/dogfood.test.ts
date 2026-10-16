@@ -166,6 +166,7 @@ const EXPECTED_TYPES: Readonly<Record<string, string>> = {
   "docs/guides/comments.md": "Guide",
   "docs/guides/configuration.md": "Guide",
   "docs/guides/getting-started.md": "Guide",
+  "docs/guides/install-wizard.md": "Guide",
   "docs/guides/okf-support.md": "Guide",
   "docs/guides/search.md": "Guide",
   "docs/guides/webhooks.md": "Guide",
@@ -669,6 +670,7 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
       "Comments",
       "Configuration",
       "Getting started",
+      "Install wizard",
       "OKF support",
       "Search",
       "Webhooks",
@@ -690,7 +692,7 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
     expect(flat[0]?.path).toBe("docs/index.md");
     const around = adjacentInTree(tree, "docs/guides/getting-started.md");
     expect(around?.previous?.path).toBe("docs/guides/configuration.md");
-    expect(around?.next?.path).toBe("docs/guides/okf-support.md");
+    expect(around?.next?.path).toBe("docs/guides/install-wizard.md");
   });
 
   it("shows the type filter values with counts, and combines with tags and status", async () => {
@@ -698,14 +700,14 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
     expect(facets.total).toBe(Object.keys(EXPECTED_TYPES).length);
     // By count, then by value.
     expect(facets.types).toEqual([
-      { value: "Guide", count: 7 },
+      { value: "Guide", count: 8 },
       { value: "Concept", count: 4 },
       { value: "Decision", count: 4 },
       { value: "Reference", count: 2 },
       { value: "Runbook", count: 1 },
     ]);
     expect(facets.statuses).toEqual([
-      { value: "stable", count: 13 },
+      { value: "stable", count: 14 },
       { value: "accepted", count: 4 },
       { value: "draft", count: 1 },
     ]);
@@ -723,10 +725,10 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
 
     // Selecting a type narrows the others' counts the way the UI relies on.
     const guides = await getRepoFacets(h.db, { id: ref.id }, { type: "Guide" });
-    expect(guides.total).toBe(7);
+    expect(guides.total).toBe(8);
     expect(guides.types.map((t) => t.value)).toContain("Decision");
     expect(guides.statuses).toEqual([
-      { value: "stable", count: 6 },
+      { value: "stable", count: 7 },
       { value: "draft", count: 1 },
     ]);
     const both = await getRepoFacets(h.db, { id: ref.id }, { type: "Guide", status: "draft" });

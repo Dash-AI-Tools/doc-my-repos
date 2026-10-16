@@ -116,11 +116,35 @@ The app authenticates as a **GitHub App installation** (read-only, never a perso
 
 ## Quickstart
 
-You need a **GitHub App** first. Register and install it by following the [GitHub App setup guide](docs/github-app-setup.md) (read-only _Contents_ and _Metadata_, four events, a webhook URL and secret). You end with the App id, a private key and the installation id. There is also an [App manifest](docs/github-app-manifest.json).
+### With the installer (recommended)
 
-### With Docker (recommended)
+Requires Node.js 20 or newer and Docker with Compose, running.
 
-Requires Docker with Compose.
+```bash
+npx create-docmyrepos
+```
+
+(`npm create docmyrepos` does the same.) The installer sets up a complete installation in a new folder, `./docmyrepos` by default, and starts it.
+
+- **What it checks.** Docker, Compose v2, the folder and the port, before it asks anything that takes effort. A missing prerequisite stops it with how to fix it, and nothing is written.
+- **What it asks.** Your GitHub organization, the address the portal is reached at (default `http://localhost:3000`), the port, the first admin's email and password (or it generates a strong one), and which repositories to include (all the App can access, or a picked list). It creates a read-only GitHub App for you through your browser, or checks an existing App's id, key and webhook secret against GitHub. Secrets (session, sync, database) are generated, never asked for.
+- **What it writes.** `docker-compose.yml` (the published image pinned to the installer's version, hardened like the one in this repository), `.env` (owner-only, every setting and secret), `docmyrepos.config.yml`, a `.gitignore`, and the App key (a file, or inline in `.env` when a file would be unreadable in the container). It never overwrites an existing installation. Then it pulls the image, starts the app and Postgres, waits for the health check, starts the first sync and prints the address and the sign-in.
+- **Non-interactive.** `--yes` with flags and environment variables; secrets are never flags.
+
+  ```bash
+  DOCMYREPOS_ADMIN_PASSWORD="$(openssl rand -base64 24)" \
+  DOCMYREPOS_APP_ID=123456 DOCMYREPOS_APP_KEY_FILE=./app-key.pem DOCMYREPOS_WEBHOOK_SECRET=... \
+    npx create-docmyrepos --yes --org acme --admin-email admin@acme.io --app existing
+  ```
+
+- **Dry run.** `npx create-docmyrepos --dry-run` runs the checks, prints every file and command with secrets hidden, and writes, creates and starts nothing.
+- **Read it first.** It has no dependencies and no telemetry; its only network traffic is to GitHub and, through Docker, the image registry. See exactly what npm serves before you run it: `npm view create-docmyrepos`, then `npm pack create-docmyrepos` and list the tarball.
+
+Every option and what the installer does in detail: [Install wizard guide](docs/guides/install-wizard.md) or `npx create-docmyrepos --help`.
+
+### With Docker Compose, from a checkout
+
+You need a **GitHub App** first. Register and install it by following the [GitHub App setup guide](docs/github-app-setup.md) (read-only _Contents_ and _Metadata_, four events, a webhook URL and secret). You end with the App id, a private key and the installation id. There is also an [App manifest](docs/github-app-manifest.json). Requires Docker with Compose.
 
 ```bash
 git clone https://github.com/Dash-AI-Tools/doc-my-repos.git
@@ -365,7 +389,7 @@ openspec validate docmyrepos-mvp
 
 **End-to-end tests.** One-time setup: `pnpm exec playwright install chromium` (add `--with-deps` on a fresh Linux machine). Then, with Postgres up (`pnpm db:up`), `pnpm test:e2e` builds the app once and starts four servers on ports 3100 to 3103: fixture pages without a database, a throwaway database seeded with public and private repositories (`e2e/support/seed-data.ts`), an empty one, and one whose database is unreachable. Each run creates `docmyrepos_e2e_<random>_seeded` and `_empty` databases on the server in `DATABASE_URL_E2E` (default: the compose database) and drops them afterwards. The servers use a generated throwaway GitHub App key and placeholder secrets, and GitHub is never contacted. Without a reachable Postgres the run fails at once and prints the command above; `E2E_SKIP_DB=1` runs only the specs that need no database. The suite includes axe accessibility checks in both themes.
 
-**CI** (`.github/workflows/ci.yml`) runs lint, format check, type check, unit tests, the production build, the e2e tests with a Postgres 17 service, a Docker image build on linux/amd64 with a smoke test, and `openspec validate`, on every pull request and on pushes to `main`. It uses no secrets, so it also runs for pull requests from forks. Actions are pinned to commit SHAs and kept current by Dependabot.
+**CI** (`.github/workflows/ci.yml`) runs lint, format check, type check, unit tests, the production build, the e2e tests with a Postgres 17 service, a Docker image build on linux/amd64 with a smoke test, an end-to-end run of the installer against that image and a fake GitHub (both key layouts), and `openspec validate`, on every pull request and on pushes to `main`. It uses no secrets, so it also runs for pull requests from forks. Actions are pinned to commit SHAs and kept current by Dependabot.
 
 **Layout.** `src/server/` holds everything that touches GitHub, Postgres or the filesystem and has no React; `src/components/` has no database access; `src/app/` is routing. Every read of repos, documents, search, facets and assets goes through the one visibility filter in `src/server/queries/`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the pull request checklist.
 

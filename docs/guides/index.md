@@ -1,6 +1,6 @@
 ---
 title: Guides
-description: Task-oriented guides for running DocMyRepos. Getting started, comments, configuration, webhooks, search and OKF support.
+description: Task-oriented guides for running DocMyRepos. Getting started, the install wizard, comments, configuration, webhooks, search and OKF support.
 ---
 
 # Guides
@@ -8,6 +8,7 @@ description: Task-oriented guides for running DocMyRepos. Getting started, comme
 Step-by-step pages for the things you do with DocMyRepos.
 
 - [Getting started](./getting-started.md): run it with Docker, or develop on the host.
+- [Install wizard](./install-wizard.md): `npx create-docmyrepos`, a one-command install with the GitHub App created for you.
 - [Comments](./comments.md): discussing a document on its page, who can do what, limits and moderation.
 - [Configuration](./configuration.md): `docmyrepos.config.yml`, environment variables, limits and the scheduler.
 - [Webhooks](./webhooks.md): which GitHub events are handled and how deliveries are processed.
