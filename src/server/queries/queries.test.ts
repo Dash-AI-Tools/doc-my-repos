@@ -9,12 +9,24 @@ import { buildDocsTree, flattenDocsTree } from "../../lib/docs-tree";
 import { docPathCandidates } from "../../lib/routes";
 import type { Db } from "../db/client";
 import * as schema from "../db/schema";
-import { codeOwners, documents, repos, syncRuns, type SyncRepoResult } from "../db/schema";
+import {
+  codeOwners,
+  docComments,
+  documents,
+  repos,
+  syncRuns,
+  type SyncRepoResult,
+} from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import {
+  countDocComments,
   countDocs,
   findAssetRepo,
   getAdjacentDocs,
+  getCommentDocument,
+  getCommentStates,
+  getCommentTarget,
+  getCommentThread,
   getDocPaths,
   getDocsTree,
   getDocumentByPath,
@@ -23,6 +35,8 @@ import {
   getRepoSyncInfo,
   getSyncStatus,
   listCodeOwners,
+  listCommentsForModeration,
+  listDocComments,
   listRepos,
   NOT_QUERIES,
   QUERY_FUNCTIONS,
@@ -70,6 +84,9 @@ type Seed = {
   secret: number;
   empty: number;
   big: number;
+  /** A thread root and its reply on the private repository's document. */
+  secretRoot: number;
+  secretReply: number;
 };
 
 async function insertRepo(
@@ -230,8 +247,34 @@ async function seed(db: Db): Promise<Seed> {
       sourcePath: "CODEOWNERS",
     },
   ]);
+  const [secretRoot] = await db
+    .insert(docComments)
+    .values({
+      githubRepoId: 102,
+      path: "documentation/private.md",
+      authorLabel: "carol",
+      body: "Private question",
+    })
+    .returning({ id: docComments.id });
+  const [secretReply] = await db
+    .insert(docComments)
+    .values({
+      githubRepoId: 102,
+      path: "documentation/private.md",
+      parentId: secretRoot?.id,
+      authorLabel: "dan",
+      body: "Private answer",
+    })
+    .returning({ id: docComments.id });
   await seedRuns(db);
-  return { handbook, secret, empty, big };
+  return {
+    handbook,
+    secret,
+    empty,
+    big,
+    secretRoot: secretRoot?.id ?? 0,
+    secretReply: secretReply?.id ?? 0,
+  };
 }
 
 /** A `sync_runs.results` entry with zero counts unless overridden. */
@@ -459,6 +502,71 @@ function flipCases(s: Seed): Record<keyof typeof QUERY_FUNCTIONS, FlipCase[]> {
     getRepoSyncInfo: [
       { label: "by id", run: (db, o) => getRepoSyncInfo(db, byId, o), seen: (r) => r !== null },
       { label: "by name", run: (db, o) => getRepoSyncInfo(db, byName, o), seen: (r) => r !== null },
+    ],
+    listDocComments: [
+      {
+        label: "by id",
+        run: (db, o) => listDocComments(db, { repo: byId, path: "documentation/private.md" }, o),
+        seen: (r) => (r as { threads: unknown[] }).threads.length > 0,
+      },
+      {
+        label: "by name",
+        run: (db, o) => listDocComments(db, { repo: byName, path: "documentation/private.md" }, o),
+        seen: (r) => (r as { threads: unknown[] }).threads.length > 0,
+      },
+    ],
+    countDocComments: [
+      {
+        label: "comments",
+        run: (db, o) => countDocComments(db, { repo: byId, path: "documentation/private.md" }, o),
+        seen: (r) => (r as { comments: number }).comments > 0,
+      },
+      {
+        label: "open threads",
+        run: (db, o) => countDocComments(db, { repo: byName, path: "documentation/private.md" }, o),
+        seen: (r) => (r as { openThreads: number }).openThreads > 0,
+      },
+    ],
+    getCommentDocument: [
+      {
+        label: "by name",
+        run: (db, o) =>
+          getCommentDocument(db, { repo: byName, path: "documentation/private.md" }, o),
+        seen: (r) => !!r,
+      },
+    ],
+    getCommentTarget: [
+      { label: "root", run: (db, o) => getCommentTarget(db, s.secretRoot, o), seen: (r) => !!r },
+      { label: "reply", run: (db, o) => getCommentTarget(db, s.secretReply, o), seen: (r) => !!r },
+    ],
+    getCommentThread: [
+      { label: "root", run: (db, o) => getCommentThread(db, s.secretRoot, o), seen: (r) => !!r },
+    ],
+    listCommentsForModeration: [
+      {
+        label: "list",
+        run: (db, o) => listCommentsForModeration(db, {}, o),
+        seen: (r) =>
+          (r as { items: { githubRepoId: number }[] }).items.some((x) => x.githubRepoId === 102),
+      },
+      {
+        label: "repository filter",
+        run: (db, o) => listCommentsForModeration(db, { githubRepoId: 102 }, o),
+        seen: (r) => (r as { items: unknown[] }).items.length > 0,
+      },
+    ],
+    getCommentStates: [
+      {
+        label: "by ids",
+        run: (db, o) => getCommentStates(db, { ids: [s.secretRoot, s.secretReply] }, o),
+        seen: nonEmpty,
+      },
+      {
+        label: "by document",
+        run: (db, o) =>
+          getCommentStates(db, { githubRepoId: 102, path: "documentation/private.md" }, o),
+        seen: nonEmpty,
+      },
     ],
     searchFacets: [
       {

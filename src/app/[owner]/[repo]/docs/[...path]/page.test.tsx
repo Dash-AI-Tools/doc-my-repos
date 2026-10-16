@@ -11,6 +11,7 @@ import {
   type TocFilterState,
 } from "@/lib/toc-filters";
 import type { DocPageData, DocPageOk } from "@/server/doc-page";
+import type { DocCommentsData } from "@/lib/comments-view";
 import type { NavView } from "@/lib/reading-prefs";
 import type { RepoDetail } from "@/server/queries";
 
@@ -38,6 +39,16 @@ vi.mock("@/server/doc-page", () => ({
     views.push(view);
     return loadDocPage(owner, name, segments, filters);
   },
+}));
+const loadDocComments =
+  vi.fn<(owner: string, name: string, path: string) => Promise<DocCommentsData>>();
+vi.mock("@/server/doc-comments", () => ({
+  loadDocComments: (owner: string, name: string, path: string) =>
+    loadDocComments(owner, name, path),
+}));
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: () => undefined }),
 }));
 vi.mock("@/server/nav-view", () => ({ readNavView: async () => navView.current }));
 
@@ -145,6 +156,8 @@ beforeEach(() => {
   views.length = 0;
   navView.current = "okf";
   loadDocPage.mockReset();
+  loadDocComments.mockReset();
+  loadDocComments.mockResolvedValue({ status: "disabled" });
 });
 
 describe("document page", () => {
@@ -651,3 +664,86 @@ function containsElement(node: ReactNode, type: unknown): boolean {
   if (node.type === type) return true;
   return containsElement(node.props.children, type);
 }
+
+describe("document page, comments (document-comments tasks 4.1 and 4.5)", () => {
+  const readyComments = (over: Partial<Extract<DocCommentsData, { status: "ready" }>> = {}) =>
+    ({
+      status: "ready",
+      repo: "acme/api",
+      path: "docs/guides/setup.md",
+      threads: [
+        {
+          root: {
+            id: 1,
+            parentId: null,
+            authorId: 2,
+            authorLabel: "ana",
+            authorEmail: null,
+            asOrg: false,
+            body: "The install step is missing the database.",
+            createdAt: "2026-10-10T11:00:00.000Z",
+            editedAt: null,
+            deleted: false,
+            resolvedAt: null,
+          },
+          replies: [],
+        },
+      ],
+      nextCursor: null,
+      counts: { comments: 3, openThreads: 1 },
+      viewer: { userId: 2, isAdmin: false },
+      orgName: "Organization",
+      loadedAt: NOW.toISOString(),
+      ...over,
+    }) satisfies DocCommentsData;
+
+  it("loads the comments of this document and renders the section after the article, with the count link in the header", async () => {
+    loadDocPage.mockResolvedValue(ok());
+    loadDocComments.mockResolvedValue(readyComments());
+    const out = await html();
+    expect(loadDocComments).toHaveBeenCalledWith("acme", "api", "docs/guides/setup.md");
+    expect(out).toContain('data-testid="comments-section"');
+    expect(out.indexOf("</article>")).toBeLessThan(out.indexOf('id="comments"'));
+    expect(out).toContain("The install step is missing the database.");
+    // The count link sits in the header row, which read mode hides.
+    expect(out).toMatch(
+      /<div[^>]*data-read-hide[^>]*>(?:(?!<\/header>)[\s\S])*data-testid="comment-count-link"[^>]*href="#comments"[^>]*>3 comments</,
+    );
+    expect(out).toMatch(
+      /<section[^>]*id="comments"[^>]*data-read-hide|<section[^>]*data-read-hide[^>]*id="comments"/,
+    );
+  });
+
+  it("shows no section and no count link when comments are off", async () => {
+    loadDocPage.mockResolvedValue(ok());
+    loadDocComments.mockResolvedValue({ status: "disabled" });
+    const out = await html();
+    expect(out).not.toContain('id="comments"');
+    expect(out).not.toContain("comment-count-link");
+  });
+
+  it("shows an empty section for a document with no comments", async () => {
+    loadDocPage.mockResolvedValue(ok());
+    loadDocComments.mockResolvedValue(
+      readyComments({ threads: [], counts: { comments: 0, openThreads: 0 } }),
+    );
+    const out = await html();
+    expect(out).toContain("No comments yet.");
+    expect(out).toContain(">0 comments<");
+  });
+
+  it("keeps the page when the comments cannot be read", async () => {
+    loadDocPage.mockResolvedValue(ok());
+    loadDocComments.mockResolvedValue({ status: "unavailable" });
+    const out = await html();
+    expect(out).toContain("Comments are temporarily unavailable.");
+    expect(out).toContain('data-testid="doc-article"');
+    expect(out).not.toContain("comment-count-link");
+  });
+
+  it("does not load comments for a page that is not found or redirects", async () => {
+    loadDocPage.mockResolvedValue({ status: "not_found" });
+    await expect(html()).rejects.toBeDefined();
+    expect(loadDocComments).not.toHaveBeenCalled();
+  });
+});

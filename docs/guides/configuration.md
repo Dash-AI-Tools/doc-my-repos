@@ -42,6 +42,8 @@ limits:
 sync:
   intervalMinutes: 60
   onStartup: true
+comments:
+  enabled: true # false removes comments from document pages
 ```
 
 | Key                     | Type                     | Default                        | Rules                                                                                                                                   |
@@ -55,6 +57,7 @@ sync:
 | `limits.maxFileBytes`   | integer                  | `262144`                       | 1024 to 262144 (256 KB). Larger files are skipped, with a warning.                                                                      |
 | `sync.intervalMinutes`  | integer                  | `60`                           | `0` (off) or 5 to 10080.                                                                                                                |
 | `sync.onStartup`        | boolean                  | `true`                         | Run one full sync shortly after the server starts.                                                                                      |
+| `comments.enabled`      | boolean                  | `true`                         | `false` removes the Comments section and the comment APIs. Stored comments are kept. See [Comments](./comments.md).                     |
 
 The schema is strict at every level: an unknown key is an error, as is an empty list or a key with no value. The YAML is parsed as YAML 1.2 with duplicate keys rejected, at most 10 aliases and 32 levels of nesting.
 

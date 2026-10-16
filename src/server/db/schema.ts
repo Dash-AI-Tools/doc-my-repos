@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -301,4 +302,41 @@ export const siteBranding = pgTable(
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },
   (t) => [check("site_branding_single_row", sql`${t.id} = 1`)],
+);
+
+/**
+ * Document comments (document-comments design decision 1). Keyed by the GitHub repository id and
+ * the document path, with deliberately NO foreign key to `repos` or `documents`: removal and sync
+ * delete those rows, and a re-added repository comes back with a new `repos.id`, so a cascade would
+ * destroy comments that must survive. Reads go through the query layer (visibility filter); the
+ * author's name is a snapshot (`author_label`) so removing a user does not rewrite history.
+ */
+export const docComments = pgTable(
+  "doc_comments",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+    githubRepoId: bigint("github_repo_id", { mode: "number" }).notNull(),
+    path: text("path").notNull(),
+    // A reply points at its thread root; deleting a root (moderation) deletes its replies.
+    parentId: bigint("parent_id", { mode: "number" }).references(
+      (): AnyPgColumn => docComments.id,
+      { onDelete: "cascade" },
+    ),
+    authorId: integer("author_id").references(() => users.id, { onDelete: "set null" }),
+    authorLabel: text("author_label").notNull(),
+    asOrg: boolean("as_org").notNull().default(false),
+    body: text("body").notNull(),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    editedAt: timestamptz("edited_at"),
+    deletedAt: timestamptz("deleted_at"),
+    deletedByAdmin: boolean("deleted_by_admin").notNull().default(false),
+    resolvedAt: timestamptz("resolved_at"),
+    resolvedBy: integer("resolved_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    index("doc_comments_doc_created_idx").on(t.githubRepoId, t.path, t.createdAt),
+    index("doc_comments_created_idx").on(t.createdAt.desc()),
+    check("doc_comments_reply_not_resolved", sql`${t.parentId} IS NULL OR ${t.resolvedAt} IS NULL`),
+    check("doc_comments_body_length", sql`char_length(${t.body}) <= 4000`),
+  ],
 );

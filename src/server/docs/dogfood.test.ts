@@ -163,6 +163,7 @@ const EXPECTED_TYPES: Readonly<Record<string, string>> = {
   "docs/decisions/0003-store-parsed-documents.md": "Decision",
   "docs/decisions/0004-mermaid-client-side.md": "Decision",
   "docs/github-app-setup.md": "Guide",
+  "docs/guides/comments.md": "Guide",
   "docs/guides/configuration.md": "Guide",
   "docs/guides/getting-started.md": "Guide",
   "docs/guides/okf-support.md": "Guide",
@@ -665,6 +666,7 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
       "System overview",
     ]);
     expect(titles("guides")).toEqual([
+      "Comments",
       "Configuration",
       "Getting started",
       "OKF support",
@@ -696,14 +698,14 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
     expect(facets.total).toBe(Object.keys(EXPECTED_TYPES).length);
     // By count, then by value.
     expect(facets.types).toEqual([
-      { value: "Guide", count: 6 },
+      { value: "Guide", count: 7 },
       { value: "Concept", count: 4 },
       { value: "Decision", count: 4 },
       { value: "Reference", count: 2 },
       { value: "Runbook", count: 1 },
     ]);
     expect(facets.statuses).toEqual([
-      { value: "stable", count: 12 },
+      { value: "stable", count: 13 },
       { value: "accepted", count: 4 },
       { value: "draft", count: 1 },
     ]);
@@ -721,10 +723,10 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
 
     // Selecting a type narrows the others' counts the way the UI relies on.
     const guides = await getRepoFacets(h.db, { id: ref.id }, { type: "Guide" });
-    expect(guides.total).toBe(6);
+    expect(guides.total).toBe(7);
     expect(guides.types.map((t) => t.value)).toContain("Decision");
     expect(guides.statuses).toEqual([
-      { value: "stable", count: 5 },
+      { value: "stable", count: 6 },
       { value: "draft", count: 1 },
     ]);
     const both = await getRepoFacets(h.db, { id: ref.id }, { type: "Guide", status: "draft" });

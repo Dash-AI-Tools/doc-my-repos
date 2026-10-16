@@ -267,3 +267,32 @@ describe("configSchema sync schedule", () => {
     expect(issues({ sync: null })).toEqual([expect.stringMatching(/^sync: /)]);
   });
 });
+
+describe("configSchema comments", () => {
+  it("is enabled by default, whether the key is absent or the section is empty", () => {
+    expect(configSchema.parse({}).comments).toEqual({ enabled: true });
+    expect(configSchema.parse({ comments: {} }).comments).toEqual({ enabled: true });
+  });
+
+  it("accepts an explicit true or false", () => {
+    expect(configSchema.parse({ comments: { enabled: false } }).comments).toEqual({
+      enabled: false,
+    });
+    expect(configSchema.parse({ comments: { enabled: true } }).comments.enabled).toBe(true);
+  });
+
+  it("rejects a non-boolean value, naming the field", () => {
+    for (const value of ["false", "yes", 0, 1, null]) {
+      expect(issues({ comments: { enabled: value } })).toEqual([
+        "comments.enabled: enabled must be true or false",
+      ]);
+    }
+  });
+
+  it("rejects an unknown key under comments and a non-object section", () => {
+    expect(issues({ comments: { enabled: true, moderated: true } })).toEqual([
+      "comments.moderated: unknown field",
+    ]);
+    expect(issues({ comments: null })).toEqual([expect.stringMatching(/^comments: /)]);
+  });
+});
