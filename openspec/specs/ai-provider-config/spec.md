@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets administrators decide, from the admin page, whether and with which provider and model Ask runs, keeps keys and endpoints with the operator in the environment, tells users where their questions and document excerpts go, and bounds cost and abuse without keeping any conversation content.
+Lets administrators decide, from the admin page, whether and with which provider and model Ask runs, keeps keys and endpoints encrypted in the database, entered by administrators, tells users where their questions and document excerpts go, and bounds cost and abuse without keeping any conversation content.
 
 ## Requirements
 
@@ -29,30 +29,23 @@ The system SHALL let an administrator choose, on an admin page, whether Ask is o
 - **WHEN** an administrator turns Ask on with no provider selected, no model, or a provider whose credentials are not configured in the environment
 - **THEN** the save is refused with the reason, and Ask stays off
 
-### Requirement: Credentials and endpoints stay in the environment
-The system SHALL read provider credentials and endpoints only from environment variables set by the operator: `AI_ANTHROPIC_API_KEY`, and `AI_OPENAI_BASE_URL` with an optional `AI_OPENAI_API_KEY` for the OpenAI-compatible provider. Keys SHALL be secrets that never appear in logs, errors, responses, the admin page or the database, and the admin page SHALL NOT set or reveal a key or an endpoint address.
-
-#### Scenario: No key reaches the admin
-- **WHEN** an administrator opens the page or its API response is inspected
-- **THEN** no key, and no endpoint address beyond its host name, appears
-
 ### Requirement: Endpoints must be secure
-The system SHALL require an `https` endpoint except for `http` loopback addresses, where a key MAY be omitted. The admin page SHALL show, for each provider, whether its credentials are configured and the names of the variables still missing, never their values.
+The system SHALL require an `https` endpoint except for `http` loopback addresses, where a key MAY be omitted, and SHALL refuse to save any other endpoint. The admin page SHALL show, for each provider, whether its credentials are configured, never their values.
 
 #### Scenario: Provider not available
-- **WHEN** `AI_ANTHROPIC_API_KEY` is not set
-- **THEN** the admin page shows `anthropic` as not configured and names the variable, and it cannot be turned on
+- **WHEN** no Anthropic key has been saved
+- **THEN** the admin page shows `anthropic` as not configured, and it cannot be turned on
 
 #### Scenario: Local model
-- **WHEN** `AI_OPENAI_BASE_URL=http://127.0.0.1:11434/v1` is set with no key
+- **WHEN** an administrator saves the OpenAI-compatible base URL `http://127.0.0.1:11434/v1` with no key
 - **THEN** `openai-compatible` is shown as configured and works without a key
 
 #### Scenario: Insecure remote address
-- **WHEN** `AI_OPENAI_BASE_URL=http://models.example.com` is set
-- **THEN** startup and the status page report the variable by name with the reason, and that provider is unavailable
+- **WHEN** an administrator saves the base URL `http://models.example.com`
+- **THEN** the save is refused with the reason and the previous endpoint is kept
 
 ### Requirement: Check the connection
-The system SHALL let an administrator test a provider and model from the admin page before or after saving, sending one fixed short request with the environment credentials, and SHALL report only a fixed result (`ok`, `rejected`, `not found`, `unavailable`, `timed out`) without provider error text, URLs or keys. Testing SHALL be limited in rate and SHALL NOT change the saved choice.
+The system SHALL let an administrator test a provider and model from the admin page before or after saving, sending one fixed short request with the stored credentials, and SHALL report only a fixed result (`ok`, `rejected`, `not found`, `unavailable`, `timed out`) without provider error text, URLs or keys. Testing SHALL be limited in rate and SHALL NOT change the saved choice.
 
 #### Scenario: Working
 - **WHEN** an administrator tests a valid provider and model
@@ -71,15 +64,15 @@ The system SHALL let an administrator test a provider and model from the admin p
 - **THEN** it is refused with 429
 
 ### Requirement: Off until set up
-The system SHALL keep Ask off until an administrator has turned it on with a provider and model whose credentials are configured (default off). A saved choice whose credentials later disappear, or that was invalidated, SHALL make Ask unavailable and hidden, SHALL be reported on the admin page and the status page by variable name only, and SHALL leave the rest of the portal working.
+The system SHALL keep Ask off until an administrator has turned it on with a provider and model whose credentials are configured (default off). A saved choice whose credentials are later removed or become unreadable SHALL make Ask unavailable and hidden, SHALL be reported on the admin page and the status page by setting name only, and SHALL leave the rest of the portal working.
 
 #### Scenario: Default
 - **WHEN** an administrator has never saved an Ask choice
 - **THEN** Ask is off and nothing about it is visible to users
 
 #### Scenario: Credentials removed
-- **WHEN** Ask is on and the operator removes the key and restarts
-- **THEN** Ask is hidden, `/ask` answers 404, the admin page and status page name the missing variable, and pages, search and sync work as before
+- **WHEN** Ask is on and an administrator clears the provider key
+- **THEN** Ask is hidden at once, `/ask` answers 404, the admin page and status page name the missing setting, and pages, search and sync work as before
 
 #### Scenario: Turned off
 - **WHEN** an administrator turns Ask off
@@ -159,3 +152,14 @@ The system SHALL map provider errors (network, timeout, 401, 403, 429, 5xx, malf
 #### Scenario: Oversized output
 - **WHEN** the provider streams more than the output limit
 - **THEN** reading stops and the answer ends as cut off
+
+### Requirement: Provider credentials are entered by administrators
+The system SHALL let an administrator enter and replace provider credentials and endpoints on the admin page (Anthropic key; OpenAI-compatible base URL and optional key), SHALL store keys encrypted and never return them, and SHALL NOT read provider credentials from environment variables.
+
+#### Scenario: Enter a key
+- **WHEN** an administrator saves an Anthropic key
+- **THEN** the page shows the provider as configured with no key text, and the next question uses the key
+
+#### Scenario: Variable ignored
+- **WHEN** `AI_ANTHROPIC_API_KEY` is set in the environment and no key is saved
+- **THEN** `anthropic` is shown as not configured

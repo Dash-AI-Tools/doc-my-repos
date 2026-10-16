@@ -2,28 +2,28 @@
 
 ## Purpose
 
-Defines how an operator declares which GitHub organization and repositories DocMyRepos documents, and which secrets it needs, so the app can run without user login.
+Defines how DocMyRepos is told which GitHub organization and repositories to document, through settings an administrator manages, and which startup secrets it needs from the environment.
 
 ## Requirements
 
-### Requirement: Config file narrows the repositories shown
-The system SHALL read a `docmyrepos.config.yml` file that optionally narrows the repositories the GitHub App installation can access, using either an explicit list of repositories or an exclusion list. When the file omits both, every repository the installation can access SHALL be synced and shown.
+### Requirement: Settings narrow the repositories shown
+The system SHALL read, from the workspace settings an administrator manages, an optional narrowing of the repositories the GitHub App installation can access, using either an explicit list of repositories or an exclusion list. When neither is set, every repository the installation can access SHALL be synced and shown.
 
 #### Scenario: Default is every accessible repository
-- **WHEN** the config declares neither a repository list nor exclusions
+- **WHEN** the settings declare neither a repository list nor exclusions
 - **THEN** every non-archived repository the GitHub App installation can access is synced and shown
 
 #### Scenario: Explicit repository list
-- **WHEN** the config lists repositories `api-service` and `web-app`
+- **WHEN** the settings list repositories `api-service` and `web-app`
 - **THEN** only those two repositories are synced and shown, provided the installation can access them
 
 #### Scenario: Exclusions
-- **WHEN** the config excludes `sandbox`
+- **WHEN** the settings exclude `sandbox`
 - **THEN** every accessible repository except `sandbox` is synced; archived repositories are skipped
 
 #### Scenario: Listed repository not accessible
-- **WHEN** the config lists a repository that the installation cannot access
-- **THEN** startup and sync report "not accessible by the GitHub App" for it, and the other repositories are unaffected
+- **WHEN** the settings list a repository that the installation cannot access
+- **THEN** the next sync reports "not accessible by the GitHub App" for it, and the other repositories are unaffected
 
 ### Requirement: Configurable docs folder
 The system SHALL look for a docs folder in each repository using an ordered list of candidate names (default: `docs`, `doc`, `documentation`, matched case-insensitively), and SHALL allow a per-repository override.
@@ -41,36 +41,40 @@ The system SHALL look for a docs folder in each repository using an ordered list
 - **THEN** the repository is still listed with its README and code owners and shows an empty-docs state
 
 ### Requirement: Configuration validation
-The system SHALL validate the config file and required environment variables (database URL, GitHub App id, GitHub App private key given inline or as a file path, GitHub App installation id, webhook secret, sync secret) at startup and fail with a message naming each invalid or missing item.
+The system SHALL validate the workspace settings when an administrator saves them and refuse an invalid save with a message naming each invalid field, SHALL validate the environment variables that remain (database URL, session secret, sync secret, encryption key) at startup and fail with a message naming each invalid or missing item, and SHALL NOT read GitHub App credentials, the webhook secret, provider credentials or a config file from the environment or disk.
 
 #### Scenario: Missing App credential
-- **WHEN** the GitHub App id, private key, or installation id is not set
-- **THEN** startup fails with an error that names the missing variable and does not print any secret value
+- **WHEN** the GitHub App id, private key or installation id has not been saved
+- **THEN** the admin page and status page name the missing setting, sync and webhooks report "not configured", and no secret value is printed
+
+#### Scenario: Missing environment variable
+- **WHEN** the database URL, session secret, sync secret or encryption key is not set or invalid
+- **THEN** startup fails with an error that names the variable and does not print any secret value
 
 #### Scenario: Weak shared secret
-- **WHEN** the webhook secret or the sync secret is shorter than 16 characters after trimming whitespace
-- **THEN** startup fails with an error that names the variable and does not print the value
+- **WHEN** the sync secret is shorter than 16 characters after trimming whitespace, or the webhook secret saved by an administrator is
+- **THEN** startup or the save fails with an error that names the variable or field and does not print the value
 
 #### Scenario: Unreadable private key
-- **WHEN** the private key is not a valid PEM key or the key file path cannot be read
-- **THEN** startup fails with an error that identifies the variable and never prints the key
+- **WHEN** an administrator saves a private key that is not a valid PEM key
+- **THEN** the save is refused with an error that identifies the field and never echoes the key
 
 #### Scenario: Invalid config
-- **WHEN** the config file contains a field of the wrong type or an unknown field
-- **THEN** startup fails with an error that identifies the field and file
+- **WHEN** an administrator saves a field of the wrong type or an unknown field
+- **THEN** the save is refused with an error that identifies the field
 
 #### Scenario: Conflicting narrowing
-- **WHEN** the config declares both a repository list and an exclusion list
-- **THEN** startup fails with an error that identifies the `exclude` field and says only one of `repos` or `exclude` may be set
+- **WHEN** an administrator saves both a repository list and an exclusion list
+- **THEN** the save is refused with an error that identifies the `exclude` field and says only one of `repos` or `exclude` may be set
 
 #### Scenario: Empty list
-- **WHEN** the config declares `repos` or `exclude` as an empty list, or leaves the key with no value
-- **THEN** startup fails with an error that identifies the field, so an empty list is never read as "show nothing" or "no narrowing"
+- **WHEN** an administrator saves `repos` or `exclude` as an empty list
+- **THEN** the save is refused with an error that identifies the field, so an empty list is never read as "show nothing" or "no narrowing"
 
 #### Scenario: Config file location
-- **WHEN** the `CONFIG_PATH` environment variable is set
-- **THEN** the system reads the config file from that path, and startup fails with an error naming `CONFIG_PATH` if the file cannot be read
+- **WHEN** a `docmyrepos.config.yml`, `CONFIG_PATH` or a retired `GITHUB_APP_*` variable is present
+- **THEN** it is not read, and the status page and startup log say once that the values must be entered in the admin settings
 
 #### Scenario: No config file
-- **WHEN** `CONFIG_PATH` is not set and `docmyrepos.config.yml` does not exist in the working directory
-- **THEN** the system behaves as if the file declared neither a repository list nor exclusions, so every accessible repository is shown
+- **WHEN** no repository narrowing has been saved
+- **THEN** the system behaves as if neither a repository list nor exclusions were set, so every accessible repository is shown once GitHub is configured
