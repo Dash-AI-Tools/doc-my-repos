@@ -1,15 +1,39 @@
-# DocMyRepos
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/white-logo.png">
+    <img alt="DocMyRepos" src="brand/logo.png" width="420">
+  </picture>
+</p>
 
-[![CI](https://github.com/Dash-AI-Tools/doc-my-repos/actions/workflows/ci.yml/badge.svg)](https://github.com/Dash-AI-Tools/doc-my-repos/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<h3 align="center">One searchable home for the documentation scattered across all your GitHub repositories.</h3>
 
-Search and showcase the Markdown documentation of all your GitHub repositories in one place.
+<p align="center">
+  Point DocMyRepos at your GitHub organization and every repository's <code>docs/</code> folder becomes a fast, good-looking, searchable portal. No docs site to build, no pipeline per repo, and your Markdown stays where it lives.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Dash-AI-Tools/doc-my-repos/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Dash-AI-Tools/doc-my-repos/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Self-hosted" src="https://img.shields.io/badge/self--hosted-Docker%20%2B%20Postgres-2b50e0">
+  <img alt="Read-only GitHub App" src="https://img.shields.io/badge/GitHub%20App-read--only-0b1437">
+</p>
+
+<p align="center">
+  <img alt="Org-wide full-text search" src="https://img.shields.io/badge/%F0%9F%94%8E-Org--wide%20search-2b50e0">
+  <img alt="Ask the docs, with citations" src="https://img.shields.io/badge/%E2%9C%A8-Ask%20the%20docs-2b50e0">
+  <img alt="OKF aware" src="https://img.shields.io/badge/%F0%9F%97%82-OKF%20aware-2b50e0">
+  <img alt="OpenAPI reference" src="https://img.shields.io/badge/%F0%9F%93%98-OpenAPI%20reference-2b50e0">
+  <img alt="Mermaid and Shiki" src="https://img.shields.io/badge/%F0%9F%A7%9C-Mermaid%20%2B%20Shiki-2b50e0">
+  <img alt="Comments" src="https://img.shields.io/badge/%F0%9F%92%AC-Comments-2b50e0">
+  <img alt="Your branding" src="https://img.shields.io/badge/%F0%9F%8E%A8-Your%20branding-2b50e0">
+  <img alt="Light and dark" src="https://img.shields.io/badge/%F0%9F%8C%97-Light%20%26%20dark-2b50e0">
+</p>
 
 DocMyRepos syncs the `docs/` folder of each repository you choose from your GitHub organization into Postgres, gives every repository its own space, and gives the whole organization one search box. It works with plain Markdown and has first-class support for [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/home-dark.png">
-  <img alt="The DocMyRepos home page: a search box and a grid of repository cards" src="docs-assets/screenshots/home-light.png">
+  <img alt="The DocMyRepos home page: a search box and the repository list" src="docs-assets/screenshots/home-light.png">
 </picture>
 
 ## Contents
@@ -39,54 +63,76 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - **API reference**: OpenAPI 3.0/3.1 and Swagger 2.0 files are found in each repository and shown on a read-only reference page (see [API reference](#api-reference)).
 - **Comments**: signed-in users discuss a document on its page, admins can answer as the organization and moderate. Comments are stored in the portal, not in GitHub (see [Comments](#comments)).
 - **Ask the docs**: an optional assistant answers questions in plain language from the synced documents, with references to the exact sections. Off until an admin sets it up; the operator brings the model (see [Ask the docs](#ask-the-docs)).
+- **Your branding**: admins set the organization name, page title, colors and logo from `/admin/branding` (see [Branding](#branding)).
 - **Light and dark themes**: light, dark, or follow the system, including code blocks and diagrams, without a flash on load.
 - **Fresh content**: GitHub webhooks re-sync a repository when its default branch changes, and a scheduled full sync catches missed deliveries. Syncs are incremental (tree SHA, then blob SHA), idempotent and serialized per repository; a failed sync keeps the previous content.
 - **Self-hostable**: one Next.js app plus Postgres, with a Docker image and Compose file. Behind a login with admin and user roles (see [Security](#security)).
 
 ## Screenshots
 
-Each image has a light and a dark version; GitHub shows the one that matches your theme. They are generated from seeded demo data by `pnpm screenshots`.
+Each image has a light and a dark version; GitHub shows the one that matches your theme. They were captured from a running instance synced from a real GitHub organization, with the portal branded from `/admin/branding` (purple top bar and logo). The documents shown belong to a fictitious restaurant called Fork & Flame and to this repository.
 
-**A repository: README, documentation tree and code owners**
+**A repository: README, filters and documentation tree**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/repo-dark.png">
-  <img alt="A repository page with its README, the documentation tree and the code owners panel" src="docs-assets/screenshots/repo-light.png">
+  <img alt="A repository page with its README, the OKF type, tag and status filters and the documentation tree" src="docs-assets/screenshots/repo-light.png">
 </picture>
 
-**A document with highlighted code and a Mermaid diagram**
+**A document with metadata, a Mermaid diagram and comments**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/doc-dark.png">
-  <img alt="A document page with code blocks, a table, a task list and a Mermaid diagram, next to an outline and the documentation tree" src="docs-assets/screenshots/doc-light.png">
+  <img alt="A document page with its metadata card, a Mermaid diagram, a comments section, an outline and the documentation tree" src="docs-assets/screenshots/doc-light.png">
 </picture>
 
 **Search across all repositories**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/search-dark.png">
-  <img alt="Search results for the word deployment with highlighted snippets and repository, type and tag filters" src="docs-assets/screenshots/search-light.png">
+  <img alt="Search results for the word orders with highlighted snippets and repository, type and tag filters" src="docs-assets/screenshots/search-light.png">
 </picture>
 
 **The command palette (`Ctrl/Cmd+K`)**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/palette-dark.png">
-  <img alt="The quick search palette listing documents that match deployment" src="docs-assets/screenshots/palette-light.png">
+  <img alt="The quick search palette listing documents that match orders" src="docs-assets/screenshots/palette-light.png">
 </picture>
 
 **OKF: filter by type, tag and status**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/okf-filters-dark.png">
-  <img alt="An OKF repository with the Runbook and concept types selected in the filter panel" src="docs-assets/screenshots/okf-filters-light.png">
+  <img alt="An OKF repository with the Concept and Decision types selected in the filter panel" src="docs-assets/screenshots/okf-filters-light.png">
 </picture>
 
 **OKF: the metadata of a document**
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/okf-metadata-dark.png">
-  <img alt="A document page with its OKF metadata card: type, status, tags, sources, dates and other fields" src="docs-assets/screenshots/okf-metadata-light.png">
+  <img alt="A document page with its OKF metadata card: type, status, tags, dates and other fields" src="docs-assets/screenshots/okf-metadata-light.png">
+</picture>
+
+**API reference from an OpenAPI file**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/api-reference-dark.png">
+  <img alt="The API reference page of a repository, rendered from its openapi.yaml with servers, tags and operations" src="docs-assets/screenshots/api-reference-light.png">
+</picture>
+
+**Admin: workspace configuration**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/workspace-dark.png">
+  <img alt="Workspace configuration with the GitHub connection status, the GitHub App fields and the docs folders" src="docs-assets/screenshots/workspace-light.png">
+</picture>
+
+**Sync status**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/status-dark.png">
+  <img alt="The sync status page with the last run and the state of every repository" src="docs-assets/screenshots/status-light.png">
 </picture>
 
 ## How it works
@@ -133,7 +179,13 @@ cp .env.example .env
 docker compose up -d --build --wait    # app + Postgres 17; the app applies the migrations on start
 ```
 
-Open <http://127.0.0.1:3000>. The portal is behind a login: sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, which create the first admin the first time you log in while no users exist (then remove both from `.env`). Next, you are taken to **Admin > Workspace configuration**, where a pop-up lists the steps. Enter the GitHub App ID, installation ID, private key and webhook secret (use **Test GitHub connection**), and optionally which repositories to show. Admins also add users and choose which repositories are visible under **Admin**. The background scheduler is on in the image, but its startup sync happens before you have entered the settings, so right after saving them start the first sync yourself:
+Open <http://127.0.0.1:3000>. The portal is behind a login: sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, which create the first admin the first time you log in while no users exist (then remove both from `.env`). Next, you are taken to **Admin > Workspace configuration**, where a pop-up lists the steps:
+
+1. On the **GitHub & sync** tab, enter the GitHub App ID, installation ID, private key and webhook secret, press **Save** and use **Test GitHub connection**. The connection summary shows a check mark for every value that is set.
+2. On the **Repository access** tab, choose which repositories are shown (all, only a list, or all except a list) and which of them signed-in users can see, then press **Run first sync**. The background scheduler is on in the image, but its startup sync runs before you have entered the settings, so this button is what fills the portal the first time. Progress and errors are on `/status`.
+3. Optionally, turn on [Ask the docs](#ask-the-docs) on the **Ask** tab and set the portal's name, colors and logo under **Admin > Branding**. Admins also add users under **Admin > Users**.
+
+To start a sync from a script or cron job instead, call the manual sync endpoint:
 
 ```bash
 curl -X POST -H "Authorization: Bearer <SYNC_SECRET from .env>" http://127.0.0.1:3000/api/sync
@@ -155,7 +207,7 @@ pnpm db:migrate          # applies the SQL migrations in drizzle/
 pnpm dev                 # http://localhost:3000
 ```
 
-The background scheduler is off in development, so `pnpm dev` never calls GitHub on its own. Start a sync with the `curl` command above (against `http://localhost:3000`). GitHub can only deliver webhooks to a public URL; use a tunnel such as smee.io or ngrok (see the [setup guide](docs/github-app-setup.md#8-local-development)). Until an admin enters the GitHub App at `/admin/workspace`, the app still starts and serves, the home page says nothing is synced yet, and `/status` names what is missing.
+The background scheduler is off in development, so `pnpm dev` never calls GitHub on its own. Start the first sync with **Run first sync** on the **Repository access** tab, or with the `curl` command above (against `http://localhost:3000`). GitHub can only deliver webhooks to a public URL; use a tunnel such as smee.io or ngrok (see the [setup guide](docs/github-app-setup.md#8-local-development)). Until an admin enters the GitHub App at `/admin/workspace`, the app still starts and serves, the home page says nothing is synced yet, and `/status` names what is missing.
 
 ## Configuration
 
@@ -351,7 +403,7 @@ pnpm test                # unit and database tests (Vitest)
 pnpm test:e2e            # browser tests (Playwright), needs Postgres
 pnpm build               # production build
 pnpm db:generate         # create a Drizzle migration after a schema change
-pnpm screenshots         # regenerate docs-assets/screenshots
+pnpm screenshots         # demo-data screenshots into docs-assets/screenshots (overwrites the README ones)
 openspec validate docmyrepos-mvp
 ```
 

@@ -274,6 +274,13 @@ describe("proxy: auth gate (access-control)", () => {
     }
   });
 
+  it("lets the favicon, touch icon and footer logos through without a session", async () => {
+    for (const path of ["/icon.png", "/apple-icon.png", "/logo-black.png", "/logo-white.png"]) {
+      expect((await gated(path)).headers.get("x-middleware-next"), path).toBe("1");
+    }
+    expect((await gated("/logo-black.png.bak")).status).not.toBe(200);
+  });
+
   it("lets a valid session through and rejects tampered or expired ones", async () => {
     const { signSession, newSessionPayload } = await import("./server/auth/session");
     const valid = signSession(SECRET, newSessionPayload(1, "admin", 0));
