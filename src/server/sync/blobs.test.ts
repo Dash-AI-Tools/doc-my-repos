@@ -494,4 +494,51 @@ describe("syncBlobs", () => {
       }),
     ).rejects.toMatchObject({ kind: "rate_limited", retryAfterMs: 1000 });
   });
+
+  it("diffs and fetches specs apart from documents, with their own size cap", async () => {
+    const doc = file("docs/a.md", 1);
+    const keep = file("openapi.yaml", 2, "openapi: 3.0.3");
+    const edit = file("docs/swagger.json", 3, "x".repeat(300_000));
+    const fresh = file("swagger.yaml", 4, "swagger: '2.0'");
+    const m = mockClient(serve([doc, keep, edit, fresh]));
+    const out = await syncBlobs(
+      m.client,
+      repo,
+      {
+        files: [doc],
+        stored: new Map(),
+        apiSpecs: {
+          files: [keep, edit, fresh],
+          stored: new Map([
+            [keep.path, keep.blobSha],
+            [edit.path, sha(90)],
+            ["old.yaml", sha(91)],
+          ]),
+          maxBytes: 400_000,
+        },
+      },
+      { maxFileBytes: 262_144 },
+    );
+    // The 300 KB spec is over the document cap but under the spec cap, and is fetched.
+    expect(m.calls.sort()).toEqual([doc.blobSha, edit.blobSha, fresh.blobSha].sort());
+    expect(out.fetched.map((f) => f.path)).toEqual(["docs/a.md"]);
+    expect(out.apiSpecs.fetched.map((f) => f.path)).toEqual(["docs/swagger.json", "swagger.yaml"]);
+    expect(out.apiSpecs.unchanged.map((f) => f.path)).toEqual(["openapi.yaml"]);
+    expect(out.apiSpecs.removed.map((f) => f.path)).toEqual(["old.yaml"]);
+    expect(out.apiSpecs.failed).toEqual([]);
+  });
+
+  it("reports a spec over its own cap as failed too_large without fetching it", async () => {
+    const big = file("openapi.yaml", 5, "x".repeat(2000));
+    const m = mockClient(serve([big]));
+    const out = await syncBlobs(m.client, repo, {
+      files: [],
+      stored: new Map(),
+      apiSpecs: { files: [big], stored: new Map(), maxBytes: 1000 },
+    });
+    expect(m.calls).toEqual([]);
+    expect(out.apiSpecs.failed).toEqual([
+      { path: "openapi.yaml", blobSha: big.blobSha, kind: "too_large" },
+    ]);
+  });
 });

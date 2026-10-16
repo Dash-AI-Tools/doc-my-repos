@@ -100,10 +100,14 @@ describeDb("per-repository caps through the sync engine", () => {
 
   it("reads the caps from config, with code defaults", () => {
     const fake = new FakeGitHub({ owner: OWNER, repos: [] });
-    expect(syncLimits(ctxFor(fake, {}).config)).toEqual({ maxFiles: 2000, maxFileBytes: 262144 });
+    expect(syncLimits(ctxFor(fake, {}).config)).toEqual({
+      maxFiles: 2000,
+      maxFileBytes: 262144,
+      maxSpecBytes: 2097152,
+    });
     expect(
       syncLimits(ctxFor(fake, { limits: { maxDocsPerRepo: 3, maxFileBytes: 2048 } }).config),
-    ).toEqual({ maxFiles: 3, maxFileBytes: 2048 });
+    ).toEqual({ maxFiles: 3, maxFileBytes: 2048, maxSpecBytes: 2097152 });
   });
 
   it("caps a repo over the document limit, removes earlier extra docs, warns, and clears the warning", async () => {

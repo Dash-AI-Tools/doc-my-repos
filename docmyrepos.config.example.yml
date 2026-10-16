@@ -17,6 +17,13 @@ repos:
   - name: web-app
     docsPath: user-guide
   - handbook
+# An object entry can also list `apiSpecs`: exact paths (at most 10) of OpenAPI or
+# Swagger files, which then replace the default search. Without it, files named
+# openapi or swagger (.yaml, .yml, .json) at the repository root or under the docs
+# folder are used. For example:
+#   - name: payments
+#     apiSpecs:
+#       - api/v2/spec.yaml
 
 # Docs folder candidates, tried in order and matched case-insensitively, for every
 # repository that has no `docsPath` of its own.
@@ -26,14 +33,17 @@ defaults:
     - doc
     - documentation
 
-# Per-repository sync limits. Both are optional; the values below are the
+# Per-repository sync limits. All are optional; the values below are the
 # defaults. A repository with more documentation files than `maxDocsPerRepo`
 # shows only the first ones in path order, and files larger than
 # `maxFileBytes` (at most 262144, 256 KB) are not synced. Both cases are shown
-# as a warning on the repository page and on /status.
+# as a warning on the repository page and on /status. `maxSpecBytes` is the same
+# for OpenAPI/Swagger files (at most 2097152, 2 MB); at most 10 such files are
+# synced per repository.
 limits:
   maxDocsPerRepo: 2000
   maxFileBytes: 262144
+  maxSpecBytes: 2097152
 
 # Background sync, the fallback for missed webhook deliveries. Both are
 # optional; the values below are the defaults. `intervalMinutes` is how often

@@ -33,12 +33,15 @@ repos: # optional: only these repositories
   - api-service
   - name: web-app
     docsPath: documentation # per-repository docs folder override
+  - name: payments
+    apiSpecs: [api/v2/spec.yaml] # exact OpenAPI/Swagger files (at most 10)
 exclude: [sandbox] # optional: every accessible repository except these
 defaults:
   docsPaths: [docs, doc, documentation] # first match wins, case-insensitive
 limits:
   maxDocsPerRepo: 2000
   maxFileBytes: 262144
+  maxSpecBytes: 2097152 # OpenAPI/Swagger files
 sync:
   intervalMinutes: 60
   onStartup: true
@@ -46,18 +49,20 @@ comments:
   enabled: true # false removes comments from document pages
 ```
 
-| Key                     | Type                     | Default                        | Rules                                                                                                                                   |
-| ----------------------- | ------------------------ | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `repos`                 | list of names or objects | all accessible repositories    | At least one entry. A name is a bare repository name without an owner. No duplicates, ignoring case. Cannot be combined with `exclude`. |
-| `repos[].name`          | string                   | none                           | Letters, digits, `.`, `_`, `-`, up to 100 characters.                                                                                   |
-| `repos[].docsPath`      | string                   | none                           | Relative to the repository root, no `..`, no leading `/`. Authoritative: no fallback to the defaults when it is missing from the tree.  |
-| `exclude`               | list of names            | none                           | At least one entry. Cannot be combined with `repos`.                                                                                    |
-| `defaults.docsPaths`    | list of folders          | `docs`, `doc`, `documentation` | At least one entry. Tried in order, matched case-insensitively.                                                                         |
-| `limits.maxDocsPerRepo` | integer                  | `2000`                         | 1 to 10000. More documents: the first ones in path order are synced, with a warning.                                                    |
-| `limits.maxFileBytes`   | integer                  | `262144`                       | 1024 to 262144 (256 KB). Larger files are skipped, with a warning.                                                                      |
-| `sync.intervalMinutes`  | integer                  | `60`                           | `0` (off) or 5 to 10080.                                                                                                                |
-| `sync.onStartup`        | boolean                  | `true`                         | Run one full sync shortly after the server starts.                                                                                      |
-| `comments.enabled`      | boolean                  | `true`                         | `false` removes the Comments section and the comment APIs. Stored comments are kept. See [Comments](./comments.md).                     |
+| Key                     | Type                     | Default                        | Rules                                                                                                                                                                                                                                                             |
+| ----------------------- | ------------------------ | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repos`                 | list of names or objects | all accessible repositories    | At least one entry. A name is a bare repository name without an owner. No duplicates, ignoring case. Cannot be combined with `exclude`.                                                                                                                           |
+| `repos[].name`          | string                   | none                           | Letters, digits, `.`, `_`, `-`, up to 100 characters.                                                                                                                                                                                                             |
+| `repos[].docsPath`      | string                   | none                           | Relative to the repository root, no `..`, no leading `/`. Authoritative: no fallback to the defaults when it is missing from the tree.                                                                                                                            |
+| `repos[].apiSpecs`      | list of paths            | none                           | 1 to 10 exact file paths, relative, no `..`, no duplicates. They replace the default search for `openapi`/`swagger` files (`.yaml`, `.yml`, `.json`) at the root and under the docs folder. Specs are shown on a read-only reference page and are not searchable. |
+| `exclude`               | list of names            | none                           | At least one entry. Cannot be combined with `repos`.                                                                                                                                                                                                              |
+| `defaults.docsPaths`    | list of folders          | `docs`, `doc`, `documentation` | At least one entry. Tried in order, matched case-insensitively.                                                                                                                                                                                                   |
+| `limits.maxDocsPerRepo` | integer                  | `2000`                         | 1 to 10000. More documents: the first ones in path order are synced, with a warning.                                                                                                                                                                              |
+| `limits.maxFileBytes`   | integer                  | `262144`                       | 1024 to 262144 (256 KB). Larger files are skipped, with a warning.                                                                                                                                                                                                |
+| `limits.maxSpecBytes`   | integer                  | `2097152`                      | 1024 to 2097152 (2 MB). Larger spec files are skipped, with a warning. At most 10 specs per repository.                                                                                                                                                           |
+| `sync.intervalMinutes`  | integer                  | `60`                           | `0` (off) or 5 to 10080.                                                                                                                                                                                                                                          |
+| `sync.onStartup`        | boolean                  | `true`                         | Run one full sync shortly after the server starts.                                                                                                                                                                                                                |
+| `comments.enabled`      | boolean                  | `true`                         | `false` removes the Comments section and the comment APIs. Stored comments are kept. See [Comments](./comments.md).                                                                                                                                               |
 
 The schema is strict at every level: an unknown key is an error, as is an empty list or a key with no value. The YAML is parsed as YAML 1.2 with duplicate keys rejected, at most 10 aliases and 32 levels of nesting.
 

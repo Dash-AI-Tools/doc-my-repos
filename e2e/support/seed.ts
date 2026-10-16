@@ -70,6 +70,17 @@ export function planFor(repo: SeedRepo): PersistPlan {
       repo.codeowners === undefined
         ? { state: "absent" }
         : file(".github/CODEOWNERS", repo.codeowners),
+    ...((repo.apiSpecs?.length ?? 0) > 0
+      ? {
+          apiSpecs: {
+            fetched: (repo.apiSpecs ?? []).map((d) => fetchedDoc(d.path, d.text)),
+            removed: [],
+            failed: [],
+            skipped: [],
+            missing: [],
+          },
+        }
+      : {}),
     ...(repo.selection === undefined
       ? {}
       : { selection: { skipped: repo.selection.skipped, capped: repo.selection.capped } }),

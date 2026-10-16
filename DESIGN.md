@@ -319,6 +319,12 @@ Results are ruled rows (Hairline bottom, 20px padding) with a 18px semibold link
 
 18px / 1.7 prose; `h2` carries a Hairline top rule; links are underlined; blockquote is a 2px Control Edge left rule in Quiet Ink; inline code and code blocks sit on Tint at 2px radius, highlighted by Shiki dual themes (light and dark palettes selected by the `.dark` class, no re-render), with a top-right copy button. Heading anchors (`#`) appear only on hover or focus.
 
+### API Reference Page
+
+A repository's OpenAPI or Swagger file opens on its own page under the normal site header, with a breadcrumb back to the repository, the spec title and version as the page heading, and the source file path in mono. The body is the Swagger UI widget, loaded only on this page and fed the stored spec (never a URL), read-only with no "Try it out".
+
+The widget ships a light theme only, so a stylesheet scoped to the `.api-reference` container maps its surfaces, text, borders, method labels, inputs and code blocks to the design tokens, in both light and dark, and flattens its shadows and rounding to fit the Flat Rule and the near-square shapes. Nothing leaks outside the container. An HTTP method is always readable as text, never signalled by color alone, and long paths wrap instead of scrolling the page sideways. The widget stays recognisably Swagger UI; the aim is that it sits inside the shell without a light panel in dark mode. Any new color goes into both token blocks and `CONTRAST_PAIRS`.
+
 ### Motion and State
 
 Motion is minimal: the tree chevron rotates, the docs panel slides in (200ms, none under reduced motion), and color changes on hover; nothing animates on load or scroll. Focus is a 2px Signal Blue outline with 2px offset on every `:focus-visible` element, except text fields (inputs, selects, textareas), which show focus on their own edge: the border turns Ink and its bottom edge thickens to 2px. Hover is a color shift to Ink or Signal Blue, or a Tint fill on option rows. Selected is expressed by weight and blue (tree, outline) or an underline (theme toggle), never a filled chip.

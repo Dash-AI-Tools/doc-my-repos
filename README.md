@@ -21,6 +21,7 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - [Configuration](#configuration)
 - [Self-hosting](#self-hosting)
 - [Operations](#operations)
+- [API reference](#api-reference)
 - [Comments](#comments)
 - [Reading aids](#reading-aids)
 - [Security](#security)
@@ -34,6 +35,7 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - **Good-looking Markdown**: GitHub-flavored Markdown, syntax highlighting with Shiki, and [Mermaid](https://mermaid.js.org) diagrams. Documents are untrusted: output is sanitized and `.mdx` is never executed.
 - **Search**: full-text search across every synced repository (Postgres full-text search, weighted by title, headings, description and body), with highlighted snippets, facets and a `Ctrl/Cmd+K` palette.
 - **OKF aware**: when a repository uses OKF, filter by concept `type` (plus tags and status) and see each document's metadata, notices and change log. A switch at the top of the docs column toggles between this OKF view and a **Tree** view that mirrors the repository's folders and file names. Other repositories show no OKF interface.
+- **API reference**: OpenAPI 3.0/3.1 and Swagger 2.0 files are found in each repository and shown on a read-only reference page (see [API reference](#api-reference)).
 - **Comments**: signed-in users discuss a document on its page, admins can answer as the organization and moderate. Comments are stored in the portal, not in GitHub (see [Comments](#comments)).
 - **Light and dark themes**: light, dark, or follow the system, including code blocks and diagrams, without a flash on load.
 - **Fresh content**: GitHub webhooks re-sync a repository when its default branch changes, and a scheduled full sync catches missed deliveries. Syncs are incremental (tree SHA, then blob SHA), idempotent and serialized per repository; a failed sync keeps the previous content.
@@ -167,12 +169,15 @@ repos: # optional: only these repos (bare names, must be accessible to the App)
   - api-service
   - name: web-app
     docsPath: user-guide # override the docs folder of this repo
+  - name: payments
+    apiSpecs: [api/v2/spec.yaml] # exact OpenAPI/Swagger paths (at most 10)
 exclude: [sandbox] # alternative to `repos`: everything except these (not both)
 defaults:
   docsPaths: [docs, doc, documentation] # first match wins, case-insensitive
 limits:
   maxDocsPerRepo: 2000
   maxFileBytes: 262144
+  maxSpecBytes: 2097152 # OpenAPI/Swagger files, 2 MB is also the maximum
 sync:
   intervalMinutes: 60
   onStartup: true
@@ -187,6 +192,8 @@ comments:
 | `defaults.docsPaths`    | `docs`, `doc`, `documentation` | Docs folder candidates, tried in order, matched case-insensitively. Relative paths without `..`.                                        |
 | `limits.maxDocsPerRepo` | `2000` (1 to 10000)            | More documents: only the first N in path order are synced and a warning is shown.                                                       |
 | `limits.maxFileBytes`   | `262144` (1024 to 262144)      | Larger files are skipped with a warning. 256 KB is also the maximum.                                                                    |
+| `repos[].apiSpecs`      | none                           | Exact repository paths (at most 10) of OpenAPI or Swagger files. They replace the default search. See [API reference](#api-reference).  |
+| `limits.maxSpecBytes`   | `2097152` (1024 to 2097152)    | Larger spec files are skipped with a warning. 2 MB is also the maximum: it can be lowered, not raised.                                  |
 | `sync.intervalMinutes`  | `60`                           | Period of the full sync that catches missed webhooks. `0` turns it off, otherwise `5` to `10080`.                                       |
 | `sync.onStartup`        | `true`                         | One full sync about 10 seconds after the server starts.                                                                                 |
 | `comments.enabled`      | `true`                         | `false` removes the Comments section and turns the comment APIs off. Stored comments are kept. See [Comments](#comments).               |
@@ -282,6 +289,19 @@ Admins can make the portal read as their organization's own from `/admin/brandin
 - **Reset to defaults** clears everything, including the logo.
 
 The logo is served publicly at `/api/branding/logo?v=<version>` (the sign-in page shows it), as the original bytes under a sandboxed content policy, so a script inside an SVG logo never runs. Nothing set means nothing changes. The footer always credits the project (`Powered by DocMyRepos` with a star link to the repository); it cannot be removed from the admin page.
+
+## API reference
+
+Each repository's OpenAPI 3.0/3.1 and Swagger 2.0 files are listed in an **API reference** section on the repository page. Each one opens a reference page at `/<owner>/<repo>/api-reference/<path>` that shows tags, operations and schemas with [Swagger UI](https://swagger.io/tools/swagger-ui/).
+
+- **What is detected.** Files named `openapi` or `swagger` (case-insensitive, extension `.yaml`, `.yml` or `.json`) at the repository root or under the docs folder, skipping `node_modules` and dot-folders. A repository can list exact paths with `apiSpecs` in `docmyrepos.config.yml`; the listed paths then **replace** the search, so only those files are used. A file must be valid JSON or YAML with an `openapi` 3.x or `swagger: "2.0"` marker, an `info` object and `paths` (or `components`/`webhooks` for 3.1).
+- **Limits.** Files over `limits.maxSpecBytes` (2 MB by default; it can only be lowered) are skipped, and at most 10 specs are synced per repository. A spec is also rejected for excessive nesting, too many nodes or aliases (YAML alias bombs), or more than 2,000 operations. Symlinks are skipped.
+- **Warnings.** Every skipped or rejected spec is listed as a warning on the repository page and on `/status`, with a fixed reason and the path. The rest of the repository still syncs, and a spec that fails keeps its previously stored version.
+- **Read-only and offline.** There is no "Try it out": the page never sends a request to the described API. Nothing is loaded from the address (`?url=` and `?configUrl=` are ignored), and external or relative `$ref`s are not fetched, because every request the widget would make is aborted. Descriptions are sanitized by the widget. The CSP is unchanged.
+- **Requires JavaScript.** The widget renders in the browser; without scripts the page shows a notice and a link to the source file.
+- **Not searchable.** Specs are not part of search, the docs tree, document counts or OKF detection.
+- **Storage and visibility.** The parsed spec is stored in Postgres (table `api_specs`, not in `documents`) and the page reads only from there, never from GitHub. Specs follow the repository's visibility: a blocked repository answers 404.
+- **Dependency.** [`swagger-ui-react`](https://www.npmjs.com/package/swagger-ui-react) (Apache-2.0), pinned to an exact version and loaded only on the reference page, so no other page pays for it. The dependency audit reports one moderate advisory (`sprintf-js`, a transitive dependency of the widget) that has no patched release yet; it is accepted for now and should be re-checked when `swagger-ui-react` is updated.
 
 ## Comments
 

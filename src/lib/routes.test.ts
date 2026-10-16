@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { RESERVED_OWNERS, isReservedOwner, repoUrl } from "@/lib/routes";
+import {
+  RESERVED_OWNERS,
+  apiReferenceUrl,
+  apiSpecPathFromSegments,
+  isReservedOwner,
+  repoUrl,
+} from "@/lib/routes";
 
 describe("repoUrl", () => {
   it("builds /<owner>/<repo>", () => {
@@ -27,5 +33,29 @@ describe("isReservedOwner", () => {
 
   it("holds only lower-case names (lookups lower-case the input)", () => {
     for (const name of RESERVED_OWNERS) expect(name).toBe(name.toLowerCase());
+  });
+});
+
+describe("apiReferenceUrl", () => {
+  it("builds /<owner>/<repo>/api-reference/<path> and encodes each segment", () => {
+    expect(apiReferenceUrl("acme", "svc", "api/openapi.yaml")).toBe(
+      "/acme/svc/api-reference/api/openapi.yaml",
+    );
+    expect(apiReferenceUrl("a", "b", "x y/#z.json")).toBe("/a/b/api-reference/x%20y/%23z.json");
+  });
+
+  it("refuses paths with empty, dot or dot-dot segments", () => {
+    for (const p of ["", "a//b", "../a", "a/./b", "a/.."]) {
+      expect(apiReferenceUrl("a", "b", p), p).toBeNull();
+    }
+  });
+});
+
+describe("apiSpecPathFromSegments", () => {
+  it("joins plain segments and refuses anything else", () => {
+    expect(apiSpecPathFromSegments(["api", "openapi.yaml"])).toBe("api/openapi.yaml");
+    for (const segs of [[], [""], [".."], ["a/b"], ["a\\b"], ["a\u0000"]]) {
+      expect(apiSpecPathFromSegments(segs), JSON.stringify(segs)).toBeNull();
+    }
   });
 });

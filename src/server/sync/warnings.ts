@@ -36,6 +36,19 @@ export interface RepoWarningInput {
   readonly capped?: { readonly found: number; readonly limit: number } | null;
   /** The per-file cap in bytes, for the message. */
   readonly maxFileBytes: number;
+  /** OpenAPI/Swagger spec files left out, grouped apart from documents. Absent: none. */
+  readonly apiSpecs?: {
+    /**
+     * Tree-selection reasons (`ApiSpecSkipReason`) plus `invalid` (could not be read as a spec),
+     * `write_rejected` (the database refused it) and `missing` (a configured path is not in the
+     * repository).
+     */
+    readonly skipped: readonly WarningSkip[];
+    /** The spec size cap in bytes, for the message. */
+    readonly maxSpecBytes: number;
+    /** The per-repository spec limit, for the message. */
+    readonly limit: number;
+  };
 }
 
 const ORDER: readonly RepoSyncWarning["code"][] = [
@@ -44,6 +57,11 @@ const ORDER: readonly RepoSyncWarning["code"][] = [
   "size_unknown",
   "write_rejected",
   "unsupported",
+  "api_spec_over_limit",
+  "api_spec_too_large",
+  "api_spec_invalid",
+  "api_spec_missing",
+  "api_spec_unsupported",
 ];
 
 const CODE_BY_REASON: Readonly<Record<string, RepoSyncWarning["code"]>> = {
@@ -54,6 +72,20 @@ const CODE_BY_REASON: Readonly<Record<string, RepoSyncWarning["code"]>> = {
   not_regular_file: "unsupported",
   invalid_path: "unsupported",
   invalid_entry: "unsupported",
+};
+
+const SPEC_CODE_BY_REASON: Readonly<Record<string, RepoSyncWarning["code"]>> = {
+  over_limit: "api_spec_over_limit",
+  too_large: "api_spec_too_large",
+  invalid: "api_spec_invalid",
+  write_rejected: "api_spec_invalid",
+  missing: "api_spec_missing",
+  size_unknown: "api_spec_unsupported",
+  not_regular_file: "api_spec_unsupported",
+  invalid_path: "api_spec_unsupported",
+  invalid_entry: "api_spec_unsupported",
+  hidden: "api_spec_unsupported",
+  ignored_folder: "api_spec_unsupported",
 };
 
 /** `256 KB` for whole kilobytes, else `1000 bytes`. */
@@ -82,6 +114,16 @@ function message(code: RepoSyncWarning["code"], count: number, input: RepoWarnin
       return `${files(count)} could not be stored (rejected by the database) and ${count === 1 ? "was" : "were"} not synced.`;
     case "unsupported":
       return `${files(count)} with an unsupported type or name (symlink, submodule, invalid path) ${count === 1 ? "was" : "were"} not synced.`;
+    case "api_spec_over_limit":
+      return `Only the first ${input.apiSpecs?.limit ?? 10} API spec files per repository are shown; ${files(count)} left out.`;
+    case "api_spec_too_large":
+      return `${files(count)} larger than ${formatByteLimit(input.apiSpecs?.maxSpecBytes ?? 0)} ${count === 1 ? "was" : "were"} not shown as an API reference.`;
+    case "api_spec_invalid":
+      return `${files(count)} could not be read as an OpenAPI or Swagger description and ${count === 1 ? "was" : "were"} not shown as an API reference.`;
+    case "api_spec_missing":
+      return `${files(count)} listed under apiSpecs ${count === 1 ? "was" : "were"} not found in the repository.`;
+    case "api_spec_unsupported":
+      return `${files(count)} with an unsupported type or name (symlink, submodule, hidden or ignored folder, invalid path) ${count === 1 ? "was" : "were"} not shown as an API reference.`;
   }
 }
 
@@ -95,16 +137,18 @@ function clipPath(path: string): string {
 /** The warnings to store for one content sync; empty when nothing was left out. */
 export function buildRepoSyncWarnings(input: RepoWarningInput): RepoSyncWarning[] {
   const groups = new Map<RepoSyncWarning["code"], Set<string>>();
-  for (const skip of input.skipped) {
-    const code = CODE_BY_REASON[skip.reason];
-    if (code === undefined) continue;
+  const add = (code: RepoSyncWarning["code"] | undefined, path: string) => {
+    if (code === undefined) return;
     let set = groups.get(code);
     if (set === undefined) {
       set = new Set();
       groups.set(code, set);
     }
-    set.add(skip.path);
-  }
+    set.add(path);
+  };
+  for (const skip of input.skipped) add(CODE_BY_REASON[skip.reason], skip.path);
+  for (const skip of input.apiSpecs?.skipped ?? [])
+    add(SPEC_CODE_BY_REASON[skip.reason], skip.path);
   const out: RepoSyncWarning[] = [];
   for (const code of ORDER) {
     const set = groups.get(code);

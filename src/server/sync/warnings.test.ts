@@ -108,4 +108,39 @@ describe("formatByteLimit and cappedRunWarning", () => {
       message: "document limit reached: 2345 docs files found, only the first 2000 synced",
     });
   });
+
+  it("groups API spec skips apart from documents, after them, with fixed messages", () => {
+    const warnings = buildRepoSyncWarnings({
+      skipped: [{ path: "docs/a.md", reason: "too_large" }],
+      maxFileBytes: KB256,
+      apiSpecs: {
+        maxSpecBytes: 2 * 1024 * 1024,
+        limit: 10,
+        skipped: [
+          { path: "z.yaml", reason: "over_limit" },
+          { path: "y.yaml", reason: "over_limit" },
+          { path: "big.yaml", reason: "too_large" },
+          { path: "bad.yaml", reason: "invalid" },
+          { path: "rej.yaml", reason: "write_rejected" },
+          { path: "api/none.yaml", reason: "missing" },
+          { path: "link.yaml", reason: "not_regular_file" },
+          { path: ".hidden/openapi.yaml", reason: "hidden" },
+        ],
+      },
+    });
+    expect(warnings.map((w) => [w.code, w.count, w.paths])).toEqual([
+      ["too_large", 1, ["docs/a.md"]],
+      ["api_spec_over_limit", 2, ["y.yaml", "z.yaml"]],
+      ["api_spec_too_large", 1, ["big.yaml"]],
+      ["api_spec_invalid", 2, ["bad.yaml", "rej.yaml"]],
+      ["api_spec_missing", 1, ["api/none.yaml"]],
+      ["api_spec_unsupported", 2, [".hidden/openapi.yaml", "link.yaml"]],
+    ]);
+    expect(warnings[1]?.message).toBe(
+      "Only the first 10 API spec files per repository are shown; 2 files left out.",
+    );
+    expect(warnings[2]?.message).toBe(
+      "1 file larger than 2048 KB was not shown as an API reference.",
+    );
+  });
 });

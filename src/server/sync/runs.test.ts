@@ -106,6 +106,7 @@ function persistResult(over: Partial<PersistResult> = {}): PersistResult {
     skipped: [],
     failed: [],
     warnings: [],
+    apiSpecs: { added: 0, updated: 0, identical: 0, removed: 0 },
     replacedRepos: [],
     isOkf: false,
     okfVersion: null,

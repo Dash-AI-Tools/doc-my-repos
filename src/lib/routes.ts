@@ -70,6 +70,32 @@ export function docUrl(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${DOCS_ROUTE_SEGMENT}/${tail}`;
 }
 
+/** The literal URL segment between the repository and an API spec path. */
+export const API_REFERENCE_ROUTE_SEGMENT = "api-reference";
+
+/**
+ * Root-relative URL of an API reference page: `/<owner>/<repo>/api-reference/<spec path>`, where
+ * `specPath` is the repo-relative path stored in `api_specs.path`. Case is kept and each segment
+ * is percent-encoded. Returns `null` for an empty, `.` or `..` segment.
+ */
+export function apiReferenceUrl(owner: string, repo: string, specPath: string): string | null {
+  const parts = specPath.split("/");
+  if (!plainSegments(parts)) return null;
+  const tail = parts.map(encodeURIComponent).join("/");
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${API_REFERENCE_ROUTE_SEGMENT}/${tail}`;
+}
+
+/**
+ * Inverse of `apiReferenceUrl` for a page: the already-decoded catch-all segments joined into the
+ * stored spec path, or `null` when they are not a valid route (empty, `.`, `..`, a segment with
+ * `/`, `\\` or a control character).
+ */
+export function apiSpecPathFromSegments(segments: readonly string[]): string | null {
+  if (segments.length === 0 || !plainSegments(segments)) return null;
+  if (segments.some((s) => /[/\\\u0000-\u001f\u007f]/.test(s))) return null;
+  return segments.join("/");
+}
+
 /**
  * Root-relative URL of a repository space (`/<owner>/<repo>`, task 9.2). Each segment is
  * percent-encoded with `encodeURIComponent`, so odd characters in a stored name cannot change

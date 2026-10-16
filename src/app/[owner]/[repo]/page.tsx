@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 
+import { ApiSpecList } from "@/components/api-spec-list";
 import { CodeOwnersPanel } from "@/components/code-owners-panel";
 import { DocNavBar } from "@/components/doc-nav-bar";
 import { DocReader } from "@/components/doc-reader";
@@ -31,7 +32,7 @@ import { loadRepoPage } from "@/server/repo-page";
  *
  * Layout (spec "docs-reader-layout", the same as the document page): three columns, the docs
  * table of contents (with the OKF filters) on the left, the repository header (breadcrumb, name,
- * details), the README and the code owners in the centre, the README's headings on the right. Below `xl` the headings are a dropdown
+ * details), the README, the API reference list (only when the repository has specs) and the code owners in the centre, the README's headings on the right. Below `xl` the headings are a dropdown
  * in a bar under the header and below `lg` the table of contents opens from a hamburger in that
  * bar. No `<aside>`: it would be a complementary landmark nested in `<main>`.
  *
@@ -85,7 +86,7 @@ export default async function RepoPage({
   if (data.status === "not_found") notFound();
   if (data.status === "error") return <RepoLoadError href={repoUrl(owner, name)} />;
 
-  const { repo, readme, readmeOutline, tree, toc, view, lastRun, loadedAt } = data;
+  const { repo, readme, readmeOutline, tree, toc, view, apiSpecs, lastRun, loadedAt } = data;
   if (repo.owner !== owner || repo.name !== name) {
     redirect(withFilterQuery(repoUrl(repo.owner, repo.name), filterQuery));
   }
@@ -123,6 +124,7 @@ export default async function RepoPage({
           path={repo.readme?.path ?? null}
           awaitingSync={awaitingSync}
         />
+        <ApiSpecList owner={repo.owner} repo={repo.name} specs={apiSpecs} />
         <CodeOwnersPanel rules={repo.codeOwners} awaitingSync={awaitingSync} />
       </ReaderGrid>
     </DocReader>

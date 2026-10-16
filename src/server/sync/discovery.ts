@@ -28,7 +28,7 @@ export interface DiscoveredRepo {
   description: string | null;
   htmlUrl: string;
   /** Per-repo overrides from the config entry; empty when the entry is a bare name or absent. */
-  config: { docsPath?: string };
+  config: { docsPath?: string; apiSpecs?: readonly string[] };
 }
 
 export interface SkippedRepo {
@@ -66,7 +66,10 @@ export type DiscoveryResult =
  * a plain `AppConfig` (config/schema) fits too.
  */
 export interface DiscoveryConfig {
-  readonly repos?: readonly (string | { readonly name: string; readonly docsPath?: string })[];
+  readonly repos?: readonly (
+    | string
+    | { readonly name: string; readonly docsPath?: string; readonly apiSpecs?: readonly string[] }
+  )[];
   readonly exclude?: readonly string[];
 }
 
@@ -111,7 +114,10 @@ export async function discoverRepositories(
   for (const repo of listing) if (!byId.has(repo.id)) byId.set(repo.id, repo);
   const accessible = [...byId.values()];
 
-  const wanted = new Map<string, { name: string; docsPath?: string }>();
+  const wanted = new Map<
+    string,
+    { name: string; docsPath?: string; apiSpecs?: readonly string[] }
+  >();
   for (const entry of config.repos ?? []) {
     const name = typeof entry === "string" ? entry : entry.name;
     const key = name.toLowerCase();
@@ -119,6 +125,7 @@ export async function discoverRepositories(
     wanted.set(key, {
       name,
       docsPath: typeof entry === "string" ? undefined : entry.docsPath,
+      apiSpecs: typeof entry === "string" ? undefined : entry.apiSpecs,
     });
   }
   const excluded = new Set((config.exclude ?? []).map((n) => n.toLowerCase()));
@@ -150,7 +157,10 @@ export async function discoverRepositories(
       archived: repo.archived,
       description: repo.description,
       htmlUrl: repo.htmlUrl,
-      config: entry?.docsPath === undefined ? {} : { docsPath: entry.docsPath },
+      config: {
+        ...(entry?.docsPath === undefined ? {} : { docsPath: entry.docsPath }),
+        ...(entry?.apiSpecs === undefined ? {} : { apiSpecs: entry.apiSpecs }),
+      },
     });
   }
 

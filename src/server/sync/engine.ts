@@ -3,7 +3,8 @@ import type { Pool } from "pg";
 
 import { withRepoSyncLock, type LockResult } from "../db/advisory-lock";
 import { redactWhenLogged, type Db } from "../db/client";
-import { documents, repos, type SyncRepoResult, type SyncWarning } from "../db/schema";
+import { apiSpecs, documents, repos, type SyncRepoResult, type SyncWarning } from "../db/schema";
+import { normalizeDocsPath } from "../docs/docs-folder";
 import { GitHubError, type GitHubClient } from "../github/client";
 import { errorFields, logger, type LogFields, type Logger } from "../log";
 import { syncBlobs, type FailedBlob, type RepoLevelResult } from "./blobs";
@@ -55,6 +56,7 @@ import {
 import {
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MAX_FILES,
+  DEFAULT_MAX_SPEC_BYTES,
   planTree,
   type StoredTreeState,
   type TreePlan,
@@ -100,12 +102,22 @@ export interface SyncConfig extends DiscoveryConfig {
    * Per-repository caps (task 12.3, config `limits`). Absent: the code defaults (2000 documents,
    * 256 KB per file). Both feed the selection fingerprint, so a change re-plans every repo.
    */
-  readonly limits?: { readonly maxDocsPerRepo: number; readonly maxFileBytes: number };
+  readonly limits?: {
+    readonly maxDocsPerRepo: number;
+    readonly maxFileBytes: number;
+    /** Per-spec cap for OpenAPI/Swagger files. Absent: the 2 MB default. */
+    readonly maxSpecBytes?: number;
+  };
 }
 
 /** The effective caps of a context's config. */
-export function syncLimits(config: SyncConfig): { maxFiles: number; maxFileBytes: number } {
+export function syncLimits(config: SyncConfig): {
+  maxFiles: number;
+  maxFileBytes: number;
+  maxSpecBytes: number;
+} {
   return {
+    maxSpecBytes: config.limits?.maxSpecBytes ?? DEFAULT_MAX_SPEC_BYTES,
     maxFiles: config.limits?.maxDocsPerRepo ?? DEFAULT_MAX_FILES,
     maxFileBytes: config.limits?.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
   };
@@ -171,6 +183,7 @@ export function createSyncContext(input: CreateSyncContextInput): SyncContext {
   const limits = syncLimits(input.config);
   positiveInt(limits.maxFiles, "config.limits.maxDocsPerRepo");
   positiveInt(limits.maxFileBytes, "config.limits.maxFileBytes");
+  positiveInt(limits.maxSpecBytes, "config.limits.maxSpecBytes");
   return Object.freeze(
     redactWhenLogged({
       db: input.db,
@@ -244,6 +257,8 @@ interface StoredRepoState {
   codeownersSha: string | null;
   /** Stored blob SHA per document path. */
   docs: Map<string, string>;
+  /** Stored blob SHA per API spec path. */
+  specs: Map<string, string>;
 }
 
 const NO_TREE: StoredTreeState = {
@@ -272,12 +287,23 @@ async function readStoredState(db: Db, githubId: number): Promise<StoredRepoStat
     .from(repos)
     .where(eq(repos.githubId, githubId));
   if (row === undefined) {
-    return { repoId: null, tree: NO_TREE, readmeSha: null, codeownersSha: null, docs: new Map() };
+    return {
+      repoId: null,
+      tree: NO_TREE,
+      readmeSha: null,
+      codeownersSha: null,
+      docs: new Map(),
+      specs: new Map(),
+    };
   }
   const docRows = await db
     .select({ path: documents.path, blobSha: documents.blobSha })
     .from(documents)
     .where(eq(documents.repoId, row.id));
+  const specRows = await db
+    .select({ path: apiSpecs.path, blobSha: apiSpecs.blobSha })
+    .from(apiSpecs)
+    .where(eq(apiSpecs.repoId, row.id));
   return {
     repoId: row.id,
     tree: {
@@ -289,6 +315,7 @@ async function readStoredState(db: Db, githubId: number): Promise<StoredRepoStat
     readmeSha: row.readmeSha,
     codeownersSha: row.codeownersSha,
     docs: new Map(docRows.map((d) => [d.path, d.blobSha])),
+    specs: new Map(specRows.map((d) => [d.path, d.blobSha])),
   };
 }
 
@@ -316,6 +343,24 @@ function fetchFailureWarning(path: string, kind: FailedBlob["kind"]): SyncWarnin
 
 function repoLevelWarning(result: RepoLevelResult): SyncWarning[] {
   return result.state === "failed" ? [fetchFailureWarning(result.file.path, result.kind)] : [];
+}
+
+/**
+ * Configured `apiSpecs` paths the tree has no file for (neither planned nor skipped), in path
+ * order. Empty when the default search was used.
+ */
+function missingSpecPaths(
+  configured: readonly string[] | undefined,
+  selection: {
+    files: readonly { path: string }[];
+    skipped: readonly { path: string }[];
+    configured: boolean;
+  },
+): string[] {
+  if (!selection.configured || configured === undefined) return [];
+  const seen = new Set([...selection.files, ...selection.skipped].map((f) => f.path));
+  const wanted = new Set(configured.map(normalizeDocsPath).filter((p): p is string => p !== null));
+  return [...wanted].filter((p) => !seen.has(p)).sort();
 }
 
 function persistRepoOf(repo: DiscoveredRepo): PersistRepo {
@@ -358,6 +403,7 @@ export async function syncRepo(
         docsPaths: ctx.config.defaults.docsPaths,
         maxFiles: limits.maxFiles,
         maxFileBytes: limits.maxFileBytes,
+        maxSpecBytes: limits.maxSpecBytes,
       },
     });
     if (plan.outcome === "failed") throw new RepoSyncError(plan.reason);
@@ -382,6 +428,11 @@ export async function syncRepo(
         {
           files: plan.files,
           stored: stored.docs,
+          apiSpecs: {
+            files: plan.apiSpecs.files,
+            stored: stored.specs,
+            maxBytes: limits.maxSpecBytes,
+          },
           repoLevel: {
             files: plan.repoLevelFiles,
             stored: { readmeSha: stored.readmeSha, codeownersSha: stored.codeownersSha },
@@ -394,6 +445,7 @@ export async function syncRepo(
         ...blobs.failed.map((f) => fetchFailureWarning(f.path, f.kind)),
         ...repoLevelWarning(blobs.repoLevel.readme),
         ...repoLevelWarning(blobs.repoLevel.codeowners),
+        ...blobs.apiSpecs.failed.map((f) => fetchFailureWarning(f.path, f.kind)),
       ];
       persistPlan = {
         kind: "content",
@@ -407,6 +459,13 @@ export async function syncRepo(
         failed: blobs.failed,
         readme: blobs.repoLevel.readme,
         codeowners: blobs.repoLevel.codeowners,
+        apiSpecs: {
+          fetched: blobs.apiSpecs.fetched,
+          removed: blobs.apiSpecs.removed,
+          failed: blobs.apiSpecs.failed,
+          skipped: plan.apiSpecs.skipped,
+          missing: missingSpecPaths(repo.config.apiSpecs, plan.apiSpecs),
+        },
         selection: { skipped: plan.skipped, capped: plan.capped },
         storedRepoId: stored.repoId,
       };
@@ -416,7 +475,13 @@ export async function syncRepo(
       const persist = await persistRepoSync(
         ctx.db,
         { repo: persistRepoOf(repo), plan: persistPlan },
-        { signal, listedAt, maxDocumentBytes: limits.maxFileBytes, pool: ctx.pool },
+        {
+          signal,
+          listedAt,
+          maxDocumentBytes: limits.maxFileBytes,
+          maxSpecBytes: limits.maxSpecBytes,
+          pool: ctx.pool,
+        },
       );
       return {
         persist,

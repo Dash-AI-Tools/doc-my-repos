@@ -104,6 +104,8 @@ export interface SeedRepo {
   readonly readme?: string;
   readonly codeowners?: string;
   readonly docs?: readonly SeedDoc[];
+  /** OpenAPI / Swagger files stored as API specs (openapi-reference), by repo-relative path. */
+  readonly apiSpecs?: readonly SeedDoc[];
   /** `repos.sync_error` for `state: "error"`: a text the real sync writes. */
   readonly syncError?: string;
   /** Fixed `repos.last_synced_at` (ISO 8601 UTC), so absolute times are stable. */
@@ -117,6 +119,119 @@ export interface SeedRepo {
     readonly capped: { readonly found: number; readonly limit: number } | null;
   };
 }
+
+/** A real-looking OpenAPI 3.0 spec: tags, a deprecated operation, long unbroken paths, schemas. */
+export const API_SPEC_MAIN = [
+  "openapi: 3.0.3",
+  "info:",
+  "  title: Orders API",
+  "  version: 2.4.1",
+  "  description: Place and track orders. See [the guide](https://example.com/guide).",
+  "servers:",
+  "  - url: https://api.example.com/v2",
+  "tags:",
+  "  - name: orders",
+  "    description: Everything about orders",
+  "  - name: customers",
+  "    description: Everything about customers",
+  "paths:",
+  "  /orders:",
+  "    get:",
+  "      tags: [orders]",
+  "      operationId: listOrders",
+  "      summary: List orders",
+  "      parameters:",
+  "        - name: status",
+  "          in: query",
+  "          schema: { type: string, enum: [open, shipped] }",
+  "      responses:",
+  '        "200":',
+  "          description: A page of orders",
+  "          content:",
+  "            application/json:",
+  "              schema:",
+  "                type: array",
+  "                items: { $ref: '#/components/schemas/Order' }",
+  "    post:",
+  "      tags: [orders]",
+  "      operationId: createOrder",
+  "      summary: Create an order",
+  "      requestBody:",
+  "        content:",
+  "          application/json:",
+  "            schema: { $ref: '#/components/schemas/Order' }",
+  "      responses:",
+  '        "201": { description: Created }',
+  "  /customers/{customerId}/orders/{orderId}/line-items/{lineItemId}/adjustments/{adjustmentIdentifierWithAVeryLongName}:",
+  "    parameters:",
+  "      - { name: customerId, in: path, required: true, schema: { type: string } }",
+  "      - { name: orderId, in: path, required: true, schema: { type: string } }",
+  "      - { name: lineItemId, in: path, required: true, schema: { type: string } }",
+  "      - { name: adjustmentIdentifierWithAVeryLongName, in: path, required: true, schema: { type: string } }",
+  "    delete:",
+  "      tags: [customers]",
+  "      operationId: deleteAdjustment",
+  "      summary: Remove an adjustment from a line item of a customer order",
+  "      deprecated: true",
+  "      responses:",
+  '        "204": { description: Removed }',
+  "components:",
+  "  schemas:",
+  "    Order:",
+  "      type: object",
+  "      required: [id]",
+  "      properties:",
+  "        id: { type: string }",
+  "        status: { type: string }",
+  "",
+].join("\n");
+
+const API_SPEC_LEGACY = [
+  'swagger: "2.0"',
+  "info:",
+  "  title: Legacy API",
+  '  version: "1.0"',
+  "basePath: /v1",
+  "paths:",
+  "  /users:",
+  "    get:",
+  "      tags: [users]",
+  "      produces: [application/json]",
+  "      responses:",
+  '        "200":',
+  "          description: OK",
+  "",
+].join("\n");
+
+/** Hostile spec (same as the unit-test fixture `xss.yaml`): nothing in it may run. */
+export const API_SPEC_HOSTILE = [
+  "openapi: 3.0.0",
+  "info:",
+  '  title: "<script>alert(1)</script>"',
+  '  version: "<img src=x onerror=alert(1)>"',
+  "  description: |",
+  "    # Hello",
+  "    <script>alert('desc')</script>",
+  "    [click](javascript:alert(1))",
+  '    <img src="https://evil.example/x.png" onerror="alert(1)">',
+  '  termsOfService: "javascript:alert(2)"',
+  "externalDocs:",
+  '  url: "javascript:alert(3)"',
+  "paths:",
+  "  /x:",
+  "    get:",
+  '      summary: "<svg onload=alert(4)>"',
+  '      description: "<iframe src=javascript:alert(5)></iframe>"',
+  "      responses:",
+  '        "200":',
+  "          description: OK",
+  "          content:",
+  "            application/json:",
+  "              schema:",
+  '                $ref: "https://evil.example/schema.json"',
+  '              example: "</script><script>alert(6)</script>"',
+  "",
+].join("\n");
 
 const LONG_WORD =
   "ThisIsOneVeryLongUnbrokenTokenWithoutAnySpacesToCheckThatCardsDoNotOverflow".repeat(2);
@@ -662,6 +777,21 @@ export const SEED_REPOS: readonly SeedRepo[] = [
       ],
     },
   },
+  {
+    githubId: 1016,
+    owner: "acme",
+    name: "openapi-specs",
+    description: "Stores OpenAPI and Swagger specs, one of them hostile.",
+    visibility: "public",
+    state: "synced",
+    lastSyncedAt: "2026-03-13T10:00:00.000Z",
+    readme: "# openapi-specs\n\nA repository with API specs.\n",
+    apiSpecs: [
+      { path: "openapi.yaml", text: API_SPEC_MAIN },
+      { path: "docs/api/swagger.yaml", text: API_SPEC_LEGACY },
+      { path: "docs/hostile/openapi.yaml", text: API_SPEC_HOSTILE },
+    ],
+  },
 ];
 
 /**
@@ -702,6 +832,7 @@ export const SEEDED = {
   searchLab: { owner: "acme", name: "search-lab" },
   okfShowcase: { owner: "acme", name: "okf-showcase" },
   capped: { owner: "acme", name: "capped-docs" },
+  apiReference: { owner: "acme", name: "openapi-specs" },
 } as const;
 
 /** `owner/name` of every private seeded repository. */

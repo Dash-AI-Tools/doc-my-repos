@@ -1,7 +1,15 @@
 import { getTableConfig, type PgColumn } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
-import { codeOwners, docComments, documents, repos, siteBranding, syncRuns } from "./schema";
+import {
+  apiSpecs,
+  codeOwners,
+  docComments,
+  documents,
+  repos,
+  siteBranding,
+  syncRuns,
+} from "./schema";
 
 function column(table: Parameters<typeof getTableConfig>[0], name: string): PgColumn {
   const col = getTableConfig(table).columns.find((c) => c.name === name);
@@ -85,6 +93,17 @@ describe("db schema", () => {
       expect(fks[0]?.foreignTable).toBe(repos);
       expect(getTableConfig(table).foreignKeys[0]?.onDelete).toBe("cascade");
     }
+  });
+
+  it("keeps API specs unique per (repo, path) and cascades repo deletion to them", () => {
+    expect(uniques(apiSpecs)).toContainEqual(["repo_id", "path"]);
+    const fks = getTableConfig(apiSpecs).foreignKeys;
+    expect(fks).toHaveLength(1);
+    expect(fks[0]?.reference().foreignTable).toBe(repos);
+    expect(fks[0]?.onDelete).toBe("cascade");
+    expect(column(apiSpecs, "spec").getSQLType()).toBe("jsonb");
+    expect(column(apiSpecs, "spec").notNull).toBe(true);
+    expect(column(apiSpecs, "api_version").notNull).toBe(false);
   });
 
   it("preserves code owner rule order per repo", () => {

@@ -4,6 +4,7 @@ import {
   DEFAULT_DOCS_PATHS,
   DEFAULT_MAX_DOCS_PER_REPO,
   DEFAULT_MAX_FILE_BYTES,
+  DEFAULT_MAX_SPEC_BYTES,
   DEFAULT_SYNC_INTERVAL_MINUTES,
   MAX_DOCS_PER_REPO_LIMIT,
   MAX_SYNC_INTERVAL_MINUTES,
@@ -173,6 +174,7 @@ describe("configSchema limits (task 12.3)", () => {
     expect(configSchema.parse({}).limits).toEqual({
       maxDocsPerRepo: DEFAULT_MAX_DOCS_PER_REPO,
       maxFileBytes: DEFAULT_MAX_FILE_BYTES,
+      maxSpecBytes: DEFAULT_MAX_SPEC_BYTES,
     });
     expect(DEFAULT_MAX_DOCS_PER_REPO).toBe(2000);
     expect(DEFAULT_MAX_FILE_BYTES).toBe(262144);
@@ -180,6 +182,7 @@ describe("configSchema limits (task 12.3)", () => {
     expect(configSchema.parse({ limits: { maxDocsPerRepo: 50 } }).limits).toEqual({
       maxDocsPerRepo: 50,
       maxFileBytes: 262144,
+      maxSpecBytes: 2097152,
     });
   });
 
@@ -187,12 +190,12 @@ describe("configSchema limits (task 12.3)", () => {
     expect(
       configSchema.parse({ limits: { maxDocsPerRepo: 1, maxFileBytes: MIN_FILE_BYTES_LIMIT } })
         .limits,
-    ).toEqual({ maxDocsPerRepo: 1, maxFileBytes: 1024 });
+    ).toEqual({ maxDocsPerRepo: 1, maxFileBytes: 1024, maxSpecBytes: DEFAULT_MAX_SPEC_BYTES });
     expect(
       configSchema.parse({
         limits: { maxDocsPerRepo: MAX_DOCS_PER_REPO_LIMIT, maxFileBytes: 262144 },
       }).limits,
-    ).toEqual({ maxDocsPerRepo: 10_000, maxFileBytes: 262144 });
+    ).toEqual({ maxDocsPerRepo: 10_000, maxFileBytes: 262144, maxSpecBytes: 2097152 });
   });
 
   it("rejects values outside the bounds, non-integers and unknown keys, naming the field", () => {
@@ -216,6 +219,82 @@ describe("configSchema limits (task 12.3)", () => {
     ]);
     expect(issues({ limits: { maxFiles: 5 } })).toEqual(["limits.maxFiles: unknown field"]);
     expect(issues({ limits: null })).toEqual([expect.stringMatching(/^limits: /)]);
+  });
+});
+
+describe("configSchema API specs", () => {
+  const withSpecs = (apiSpecs: unknown) => ({ repos: [{ name: "api", apiSpecs }] });
+
+  it("accepts and normalizes per-repository apiSpecs", () => {
+    const cfg = configSchema.parse(
+      withSpecs(["openapi.yaml", "./api//v2/spec.yaml", " docs/swagger.json "]),
+    );
+    expect(cfg.repos?.[0]).toEqual({
+      name: "api",
+      apiSpecs: ["openapi.yaml", "api/v2/spec.yaml", "docs/swagger.json"],
+    });
+  });
+
+  it("leaves apiSpecs unset by default and accepts exactly 10", () => {
+    expect(configSchema.parse({ repos: [{ name: "api" }] }).repos?.[0]).toEqual({ name: "api" });
+    const ten = Array.from({ length: 10 }, (_, i) => `s${i}.yaml`);
+    expect(configSchema.parse(withSpecs(ten)).repos?.[0]).toEqual({ name: "api", apiSpecs: ten });
+  });
+
+  it("rejects traversal, absolute, backslash, control, folder and empty paths", () => {
+    for (const bad of [
+      "../x.yaml",
+      "a/../../x.yaml",
+      "/etc/x.yaml",
+      "a\\b.yaml",
+      "a/\u0000.yaml",
+      "a/",
+      "",
+      "  ",
+      "./",
+      "a/\n.yaml",
+    ]) {
+      const result = configSchema.safeParse(withSpecs([bad]));
+      expect(result.success, JSON.stringify(bad)).toBe(false);
+      if (!result.success) {
+        expect(formatConfigIssues(result.error)[0]).toMatch(/^repos\.0\.apiSpecs\.0: /);
+      }
+    }
+  });
+
+  it("rejects duplicates after normalization, naming the second", () => {
+    expect(issues(withSpecs(["a.yaml", "./a.yaml"]))).toEqual([
+      "repos.0.apiSpecs.1: duplicate API spec path",
+    ]);
+  });
+
+  it("rejects more than 10 paths, an empty list and the wrong type", () => {
+    const eleven = Array.from({ length: 11 }, (_, i) => `s${i}.yaml`);
+    expect(issues(withSpecs(eleven))).toEqual([
+      "repos.0.apiSpecs: apiSpecs must list at most 10 paths",
+    ]);
+    expect(issues(withSpecs([]))).toEqual([
+      "repos.0.apiSpecs: apiSpecs must list at least one path",
+    ]);
+    expect(issues(withSpecs(7))).toEqual([expect.stringMatching(/^repos\.0\.apiSpecs: /)]);
+    expect(issues(withSpecs([3]))).toEqual([expect.stringMatching(/^repos\.0\.apiSpecs\.0: /)]);
+  });
+
+  it("limits.maxSpecBytes defaults to 2 MB, can be lowered to 1024, never raised", () => {
+    expect(DEFAULT_MAX_SPEC_BYTES).toBe(2097152);
+    expect(configSchema.parse({ limits: { maxSpecBytes: 1024 } }).limits.maxSpecBytes).toBe(1024);
+    expect(configSchema.parse({ limits: { maxSpecBytes: 2097152 } }).limits.maxSpecBytes).toBe(
+      2097152,
+    );
+    expect(issues({ limits: { maxSpecBytes: 1023 } })).toEqual([
+      "limits.maxSpecBytes: maxSpecBytes must be at least 1024",
+    ]);
+    expect(issues({ limits: { maxSpecBytes: 2097153 } })).toEqual([
+      "limits.maxSpecBytes: maxSpecBytes must be at most 2097152 (2 MB)",
+    ]);
+    expect(issues({ limits: { maxSpecBytes: 1.5 } })).toEqual([
+      "limits.maxSpecBytes: maxSpecBytes must be a whole number of bytes",
+    ]);
   });
 });
 

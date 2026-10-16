@@ -4,14 +4,21 @@ import type { Pool } from "pg";
 import { AdvisoryLockError, withRepoSyncLock } from "../db/advisory-lock";
 import type { Db } from "../db/client";
 import { describeDbError } from "../db/client";
-import { codeOwners, documents, repos, type SyncWarning } from "../db/schema";
+import { apiSpecs, codeOwners, documents, repos, type SyncWarning } from "../db/schema";
 import { parseCodeowners } from "../docs/codeowners";
 import type { FrontmatterData } from "../docs/frontmatter";
 import { detectOkf } from "../docs/okf";
+import { parseApiSpec, type ParsedApiSpec } from "../docs/openapi";
 import type { RepoLevelResult, TextWarning } from "./blobs";
-import { buildDocumentRecord, toDbOwners, toDbText, type DocumentRecord } from "./document-record";
+import {
+  buildDocumentRecord,
+  toDbJson,
+  toDbOwners,
+  toDbText,
+  type DocumentRecord,
+} from "./document-record";
 import { visibilityWrite, type DbInstant } from "./requests";
-import { DEFAULT_MAX_FILE_BYTES } from "./tree";
+import { DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_SPEC_BYTES, MAX_API_SPECS } from "./tree";
 import { buildRepoSyncWarnings, type WarningSkip } from "./warnings";
 
 /**
@@ -59,6 +66,13 @@ import { buildRepoSyncWarnings, type WarningSkip } from "./warnings";
  *   not, from the tree selection's skips and cap (`plan.selection`) plus this call's own skips
  *   (`buildRepoSyncWarnings`), and is empty when nothing was left out. An `unchanged` plan keeps
  *   it (same tree, same selection), and a failed sync never reaches persist, so it keeps it too.
+ *
+ * - API specs (`api_specs`, openapi-reference): in the same transaction. Fetched spec files are
+ *   parsed (`parseApiSpec`, untrusted input) and upserted by (repo_id, path), an identical row not
+ *   being written; a spec that does not parse, or that Postgres refuses (`write_rejected`), is NOT
+ *   stored and a stored copy of it is deleted (it would no longer match the repository), with a
+ *   fixed-reason warning and no failure. `removed` paths are deleted; `failed` paths are kept and
+ *   make the sync incomplete. A plan without `apiSpecs` (handcrafted) leaves stored specs alone.
  *
  * Completeness rule. A sync is complete when no document, README or CODEOWNERS fetch failed.
  * - Complete: `tree_sha`, `selection_fingerprint`, `head_etag` and `commit_sha` are set from the
@@ -144,6 +158,27 @@ export interface PersistFetchedDoc {
   warnings?: readonly TextWarning[];
 }
 
+export interface PersistFetchedSpec {
+  path: string;
+  blobSha: string;
+  /** Raw blob size in bytes (`api_specs.size_bytes`). */
+  size: number;
+  text: string;
+}
+
+/** The spec half of a content plan (`syncBlobs().apiSpecs` plus what the tree selection left out). */
+export interface PersistSpecs {
+  fetched: readonly PersistFetchedSpec[];
+  /** Stored specs that are no longer selected: deleted. */
+  removed: readonly { path: string }[];
+  /** Kept as stored; they make the sync incomplete. */
+  failed: readonly { path: string }[];
+  /** Tree-selection skips (`ApiSpecSkipReason`), for the repository warnings. */
+  skipped: readonly WarningSkip[];
+  /** Configured `apiSpecs` paths that are not in the repository. */
+  missing: readonly string[];
+}
+
 export type PersistPlan =
   | ({ kind: "unchanged" } & PersistHead)
   | ({
@@ -161,6 +196,7 @@ export type PersistPlan =
        * What the tree selection left out (task 12.3), for `repos.sync_warnings`. Absent: no
        * selection skips (handcrafted plans).
        */
+      apiSpecs?: PersistSpecs;
       selection?: {
         readonly skipped: readonly WarningSkip[];
         readonly capped: { readonly found: number; readonly limit: number } | null;
@@ -186,6 +222,8 @@ export interface PersistOptions {
   signal?: AbortSignal;
   /** Per-document byte cap for `buildDocumentRecord`. Default 256 KB. */
   maxDocumentBytes?: number;
+  /** Per-spec byte cap for `parseApiSpec`. Default 2 MB. */
+  maxSpecBytes?: number;
   /**
    * The database instant taken before the listing `repo` came from. When given, a `public`
    * visibility does not overwrite a stored `private` written after it (see the module comment).
@@ -217,7 +255,9 @@ export interface PersistResult {
   /** Rows deleted for `removed` paths and for skipped files that had a row. */
   removed: number;
   skipped: { path: string; reason: PersistSkipReason }[];
-  /** Paths kept as stored because their fetch failed (documents, README, CODEOWNERS). */
+  /** API spec rows written by this call. */
+  apiSpecs: { added: number; updated: number; identical: number; removed: number };
+  /** Paths kept as stored because their fetch failed (documents, README, CODEOWNERS, specs). */
   failed: string[];
   warnings: SyncWarning[];
   /** Stale rows deleted because they held this repo's new owner/name. */
@@ -315,6 +355,28 @@ function validateContent(plan: Extract<PersistPlan, { kind: "content" }>): void 
   }
   for (const doc of plan.removed) add(doc.path);
   for (const doc of plan.failed) add(doc.path);
+
+  const specs = plan.apiSpecs;
+  if (specs === undefined) return;
+  const seenSpecs = new Set<string>();
+  const addSpec = (path: unknown) => {
+    const p = requireString(path, "spec path");
+    if (seenSpecs.has(p)) throw new TypeError("a spec path appears more than once in the plan");
+    seenSpecs.add(p);
+  };
+  for (const spec of specs.fetched) {
+    addSpec(spec.path);
+    requireString(spec.blobSha, "fetched spec blobSha");
+    requireString(spec.text, "fetched spec text", true);
+    if (!Number.isSafeInteger(spec.size) || spec.size < 0) {
+      throw new TypeError("fetched spec size must be a non-negative integer");
+    }
+  }
+  for (const spec of specs.removed) addSpec(spec.path);
+  for (const spec of specs.failed) addSpec(spec.path);
+  if (specs.fetched.length + specs.failed.length > MAX_API_SPECS) {
+    throw new TypeError("a plan holds more API specs than the per-repository limit");
+  }
 }
 
 interface PreparedDoc {
@@ -350,6 +412,85 @@ function prepareDocuments(
     else out.tooLarge.push(doc.path);
   }
   return out;
+}
+
+interface PreparedSpec {
+  path: string;
+  blobSha: string;
+  size: number;
+  spec: ParsedApiSpec;
+}
+
+interface PreparedSpecs {
+  specs: PreparedSpec[];
+  /** Fetched files that are not specs (or too large): any stored row is deleted. */
+  rejected: { path: string; reason: string }[];
+}
+
+/** Parses the fetched spec files, before the transaction. Never throws on bad content. */
+function prepareSpecs(plan: Extract<PersistPlan, { kind: "content" }>, maxBytes: number) {
+  const out: PreparedSpecs = { specs: [], rejected: [] };
+  for (const file of plan.apiSpecs?.fetched ?? []) {
+    const parsed = parseApiSpec(file.text, toDbText(file.path), { maxBytes });
+    if (parsed.ok) {
+      out.specs.push({
+        path: toDbText(file.path),
+        blobSha: file.blobSha,
+        size: file.size,
+        spec: parsed,
+      });
+    } else out.rejected.push({ path: toDbText(file.path), reason: parsed.reason });
+  }
+  return out;
+}
+
+/** The api_specs columns a sync writes besides the key; the upsert compares exactly these. */
+function specSet(item: PreparedSpec) {
+  const { spec } = item;
+  return {
+    blobSha: toDbText(item.blobSha),
+    sizeBytes: item.size,
+    format: spec.format,
+    specVersion: toDbText(spec.specVersion),
+    title: toDbText(spec.title),
+    apiVersion: spec.apiVersion === null ? null : toDbText(spec.apiVersion),
+    operationCount: spec.operationCount,
+    spec: toDbJson(spec.spec) as Record<string, unknown>,
+  };
+}
+
+async function upsertSpec(
+  tx: Tx,
+  repoId: number,
+  item: PreparedSpec,
+): Promise<"added" | "updated" | "identical"> {
+  const set = specSet(item);
+  const columns = getTableColumns(apiSpecs);
+  const names = (Object.keys(set) as (keyof typeof set)[]).map((key) => columns[key].name);
+  const stored = sql.raw(names.map((n) => `"api_specs"."${n}"`).join(", "));
+  const incoming = sql.raw(names.map((n) => `excluded."${n}"`).join(", "));
+  const rows = await tx
+    .insert(apiSpecs)
+    .values({ repoId, path: item.path, ...set })
+    .onConflictDoUpdate({
+      target: [apiSpecs.repoId, apiSpecs.path],
+      set: { ...set, updatedAt: sql`now()` },
+      // An identical row is not written, so a repeated input keeps `updated_at`.
+      setWhere: sql`(${stored}) IS DISTINCT FROM (${incoming})`,
+    })
+    .returning({ inserted: sql<boolean>`(xmax = 0)` });
+  const row = rows[0];
+  if (row === undefined) return "identical";
+  return row.inserted ? "added" : "updated";
+}
+
+async function deleteSpecs(tx: Tx, repoId: number, paths: readonly string[]): Promise<number> {
+  if (paths.length === 0) return 0;
+  const rows = await tx
+    .delete(apiSpecs)
+    .where(and(eq(apiSpecs.repoId, repoId), inArray(apiSpecs.path, [...paths])))
+    .returning({ id: apiSpecs.id });
+  return rows.length;
 }
 
 /** The documents columns a sync writes besides the key; the upsert compares exactly these. */
@@ -528,6 +669,9 @@ export async function persistRepoSync(
     plan.kind === "content"
       ? prepareDocuments(plan, options.maxDocumentBytes)
       : { docs: [], tooLarge: [], warnings: [] };
+  const maxSpecBytes = options.maxSpecBytes ?? DEFAULT_MAX_SPEC_BYTES;
+  const preparedSpecs: PreparedSpecs =
+    plan.kind === "content" ? prepareSpecs(plan, maxSpecBytes) : { specs: [], rejected: [] };
 
   const metadata = {
     owner: toDbText(repo.owner),
@@ -610,6 +754,7 @@ export async function persistRepoSync(
         skipped: [],
         failed: [],
         warnings: [...prepared.warnings],
+        apiSpecs: { added: 0, updated: 0, identical: 0, removed: 0 },
         replacedRepos: [],
         isOkf: false,
         okfVersion: null,
@@ -742,8 +887,47 @@ export async function persistRepoSync(
       }
       result.removed += await deleteDocuments(tx, repoId, skippedPaths);
 
+      // API specs, same transaction. A plan without `apiSpecs` leaves the stored ones alone.
+      const specSkips: WarningSkip[] = [];
+      if (plan.apiSpecs !== undefined) {
+        const stale: string[] = plan.apiSpecs.removed.map((s) => s.path);
+        for (const rejected of preparedSpecs.rejected) {
+          // The only parser reason that is a size, so the warning says "too large".
+          specSkips.push({
+            path: rejected.path,
+            reason: rejected.reason === "too_large" ? "too_large" : "invalid",
+          });
+          result.warnings.push({
+            path: rejected.path,
+            message: `API spec not stored: ${rejected.reason}`,
+          });
+          stale.push(rejected.path);
+        }
+        for (const item of preparedSpecs.specs) {
+          checkSignal(signal);
+          try {
+            const outcome = await tx.transaction((sp) => upsertSpec(sp, repoId, item));
+            result.apiSpecs[outcome] += 1;
+          } catch (error) {
+            const code = sqlState(error);
+            if (code === undefined || !PER_DOCUMENT_SQLSTATE.test(code)) throw error;
+            specSkips.push({ path: item.path, reason: "write_rejected" });
+            result.warnings.push({
+              path: item.path,
+              message: "API spec not stored: write_rejected",
+            });
+            stale.push(item.path);
+          }
+        }
+        result.apiSpecs.removed = await deleteSpecs(tx, repoId, stale);
+        for (const missing of plan.apiSpecs.missing) {
+          specSkips.push({ path: toDbText(missing), reason: "missing" });
+        }
+      }
+
       checkSignal(signal);
       const failed = plan.failed.map((d) => d.path);
+      for (const spec of plan.apiSpecs?.failed ?? []) failed.push(spec.path);
       if (plan.readme.state === "failed") failed.push(plan.readme.file.path);
       if (plan.codeowners.state === "failed") failed.push(plan.codeowners.file.path);
       result.failed = failed.map(toDbText);
@@ -754,6 +938,14 @@ export async function persistRepoSync(
         skipped: [...(plan.selection?.skipped ?? []), ...result.skipped],
         capped: plan.selection?.capped ?? null,
         maxFileBytes: options.maxDocumentBytes ?? DEFAULT_MAX_FILE_BYTES,
+        apiSpecs: {
+          skipped: [
+            ...(plan.apiSpecs?.skipped ?? []).map((s) => ({ path: s.path, reason: s.reason })),
+            ...specSkips,
+          ],
+          maxSpecBytes,
+          limit: MAX_API_SPECS,
+        },
       });
       const okf = await detectStoredOkf(tx, repoId, plan.docsFolder);
       result.isOkf = okf.isOkf;

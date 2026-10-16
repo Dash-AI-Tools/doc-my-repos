@@ -71,6 +71,13 @@
       "when": 1792111996968,
       "tag": "0009_pale_jetstream",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792116072427,
+      "tag": "0010_plain_firelord",
+      "breakpoints": true
     }
   ]
 }

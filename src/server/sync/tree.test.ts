@@ -3,6 +3,8 @@ import { GitHubError, type TreeEntry } from "../github/client";
 import {
   DEFAULT_MAX_FILE_BYTES,
   DEFAULT_MAX_FILES,
+  DEFAULT_MAX_SPEC_BYTES,
+  MAX_API_SPECS,
   planTree,
   SELECTION_RULES_VERSION,
   selectDocFiles,
@@ -361,6 +363,7 @@ describe("selectDocFiles", () => {
 
   it("is total on an empty tree", () => {
     expect(selectDocFiles([])).toEqual({
+      apiSpecs: { files: [], skipped: [], leftOut: 0, configured: false },
       docsFolder: null,
       files: [],
       skipped: [],
@@ -473,9 +476,9 @@ describe("document cap (task 12.3)", () => {
 });
 
 describe("selectionFingerprint", () => {
-  it("carries the rules version (2: the cap truncates and warns)", () => {
-    expect(SELECTION_RULES_VERSION).toBe(2);
-    expect(selectionFingerprint()).toMatch(/^v2:[0-9a-f]{64}$/);
+  it("carries the rules version (3: API spec selection)", () => {
+    expect(SELECTION_RULES_VERSION).toBe(3);
+    expect(selectionFingerprint()).toMatch(/^v3:[0-9a-f]{64}$/);
   });
 
   it("is stable for defaults and equivalent explicit settings", () => {
@@ -491,6 +494,13 @@ describe("selectionFingerprint", () => {
     expect(selectionFingerprint({ docsPath: "./docs/" })).toBe(
       selectionFingerprint({ docsPath: "docs" }),
     );
+    expect(selectionFingerprint({ apiSpecs: [] })).toBe(selectionFingerprint());
+    expect(selectionFingerprint({ apiSpecs: ["b.yaml", "./a.yaml", "b.yaml"] })).toBe(
+      selectionFingerprint({ apiSpecs: ["a.yaml", "b.yaml"] }),
+    );
+    expect(selectionFingerprint({ maxSpecBytes: DEFAULT_MAX_SPEC_BYTES })).toBe(
+      selectionFingerprint(),
+    );
   });
 
   it("changes with every selection input", () => {
@@ -503,6 +513,9 @@ describe("selectionFingerprint", () => {
       { docsPath: "../bad" },
       { docsPaths: ["doc", "docs", "documentation"] },
       { maxFiles: 10 },
+      { apiSpecs: ["openapi.yaml"] },
+      { apiSpecs: ["openapi.yaml", "api/spec.yaml"] },
+      { maxSpecBytes: 1024 },
     ];
     const prints = variants.map((v) => selectionFingerprint(v));
     for (const p of prints) expect(p).not.toBe(base);
@@ -514,5 +527,208 @@ describe("selectionFingerprint", () => {
     expect(() => selectionFingerprint({ maxFiles: Number.NaN })).toThrow(TypeError);
     expect(() => selectionFingerprint({ extensions: ["md"] })).toThrow(TypeError);
     expect(() => selectionFingerprint({ extensions: [] })).toThrow(TypeError);
+  });
+});
+
+describe("API spec selection", () => {
+  const docs = (n: number) => Array.from({ length: n }, (_, i) => blob(`docs/d${i}.md`));
+  const paths = (entries: TreeEntry[], options = {}) =>
+    selectDocFiles(entries, options).apiSpecs.files.map((f) => f.path);
+
+  it("finds openapi/swagger files at the root, any case and extension", () => {
+    const entries = [
+      blob("openapi.yaml"),
+      blob("Swagger.JSON"),
+      blob("OpenAPI.yml"),
+      blob("api.yaml"),
+      blob("openapi.yaml.bak"),
+      blob("my-openapi.yaml"),
+      blob("openapi.md"),
+    ];
+    expect(paths(entries)).toEqual(["OpenAPI.yml", "Swagger.JSON", "openapi.yaml"]);
+  });
+
+  it("finds specs anywhere under the docs folder, not elsewhere", () => {
+    const entries = [
+      dir("docs"),
+      blob("docs/api/swagger.json"),
+      blob("docs/a/b/c/openapi.yaml"),
+      blob("docs/readme.md"),
+      blob("src/openapi.yaml"),
+      blob("docsx/openapi.yaml"),
+    ];
+    expect(paths(entries)).toEqual(["docs/a/b/c/openapi.yaml", "docs/api/swagger.json"]);
+  });
+
+  it("finds root specs when there is no docs folder, and follows a nested docs override", () => {
+    expect(paths([blob("openapi.json"), blob("pkg/openapi.json")])).toEqual(["openapi.json"]);
+    const entries = [
+      dir("pkg"),
+      dir("pkg/docs"),
+      blob("pkg/docs/x/openapi.yaml"),
+      blob("docs/openapi.yaml"),
+    ];
+    expect(paths(entries, { docsPath: "pkg/docs" })).toEqual(["pkg/docs/x/openapi.yaml"]);
+  });
+
+  it("configured paths replace the search", () => {
+    const entries = [
+      blob("openapi.yaml"),
+      dir("docs"),
+      blob("docs/swagger.json"),
+      blob("api/v2/spec.yaml"),
+      blob("other.yaml"),
+    ];
+    const sel = selectDocFiles(entries, { apiSpecs: ["./api/v2/spec.yaml", "missing.yaml"] });
+    expect(sel.apiSpecs.files.map((f) => f.path)).toEqual(["api/v2/spec.yaml"]);
+    expect(sel.apiSpecs.configured).toBe(true);
+    expect(sel.apiSpecs.skipped).toEqual([]);
+    // Any file name is allowed when configured, and docs are unaffected.
+    expect(paths(entries, { apiSpecs: ["other.yaml"] })).toEqual(["other.yaml"]);
+    expect(sel.docsFolder).toBe("docs");
+  });
+
+  it("an empty configured list means the default search", () => {
+    expect(paths([blob("openapi.yaml")], { apiSpecs: [] })).toEqual(["openapi.yaml"]);
+  });
+
+  it("skips node_modules and hidden folders in the search, silently", () => {
+    const entries = [
+      dir("docs"),
+      blob("docs/node_modules/x/openapi.yaml"),
+      blob("docs/.hidden/openapi.yaml"),
+      blob("docs/NODE_MODULES/swagger.json"),
+      blob("docs/ok/openapi.yaml"),
+      blob("node_modules/openapi.yaml"),
+    ];
+    const sel = selectDocFiles(entries);
+    expect(sel.apiSpecs.files.map((f) => f.path)).toEqual(["docs/ok/openapi.yaml"]);
+    expect(sel.apiSpecs.skipped).toEqual([]);
+  });
+
+  it("reports hidden and ignored folders for configured paths", () => {
+    const entries = [blob(".github/openapi.yaml"), blob("node_modules/pkg/openapi.yaml")];
+    const sel = selectDocFiles(entries, {
+      apiSpecs: [".github/openapi.yaml", "node_modules/pkg/openapi.yaml"],
+    });
+    expect(sel.apiSpecs.files).toEqual([]);
+    expect(sel.apiSpecs.skipped).toEqual([
+      { path: ".github/openapi.yaml", reason: "hidden" },
+      { path: "node_modules/pkg/openapi.yaml", reason: "ignored_folder" },
+    ]);
+  });
+
+  it("skips oversized, symlinked, size-unknown and bad-SHA specs with typed reasons", () => {
+    const entries = [
+      blob("openapi.yaml", { size: 2000 }),
+      blob("swagger.yaml", { size: 1000 }),
+      blob("swagger.yml", { size: null }),
+      blob("openapi.json", { mode: "120000" }),
+      blob("swagger.json", { sha: "nothex" }),
+    ];
+    const sel = selectDocFiles(entries, { maxSpecBytes: 1000 });
+    expect(sel.apiSpecs.files.map((f) => f.path)).toEqual(["swagger.yaml"]);
+    expect(sel.apiSpecs.skipped).toEqual([
+      { path: "openapi.json", reason: "not_regular_file" },
+      { path: "openapi.yaml", reason: "too_large" },
+      { path: "swagger.json", reason: "invalid_entry" },
+      { path: "swagger.yml", reason: "size_unknown" },
+    ]);
+    expect(sel.skipped).toEqual([]);
+  });
+
+  it("allows specs up to the spec limit, larger than the document limit", () => {
+    const entries = [blob("openapi.yaml", { size: DEFAULT_MAX_FILE_BYTES + 1 })];
+    expect(paths(entries)).toEqual(["openapi.yaml"]);
+    expect(selectDocFiles(entries).apiSpecs.skipped).toEqual([]);
+  });
+
+  it("keeps the first 10 in path order and counts the rest", () => {
+    const names = Array.from(
+      { length: 13 },
+      (_, i) => `docs/s${String(i).padStart(2, "0")}/openapi.yaml`,
+    );
+    const sel = selectDocFiles([dir("docs"), ...names.reverse().map((n) => blob(n))]);
+    expect(MAX_API_SPECS).toBe(10);
+    expect(sel.apiSpecs.files.map((f) => f.path)).toEqual([...names].sort().slice(0, 10));
+    expect(sel.apiSpecs.leftOut).toBe(3);
+    expect(sel.apiSpecs.skipped.map((s) => s.reason)).toEqual([
+      "over_limit",
+      "over_limit",
+      "over_limit",
+    ]);
+    expect(sel.apiSpecs.skipped.map((s) => s.path)).toEqual([...names].sort().slice(10));
+  });
+
+  it("exactly 10 specs is not over the limit", () => {
+    const names = Array.from({ length: 10 }, (_, i) => `docs/s${i}/swagger.json`);
+    const sel = selectDocFiles([dir("docs"), ...names.map((n) => blob(n))]);
+    expect(sel.apiSpecs.files).toHaveLength(10);
+    expect(sel.apiSpecs.leftOut).toBe(0);
+  });
+
+  it("never counts toward the document cap or the document list", () => {
+    const entries = [dir("docs"), ...docs(3), blob("docs/openapi.yaml"), blob("swagger.json")];
+    const sel = selectDocFiles(entries, { maxFiles: 3 });
+    expect(sel.files).toHaveLength(3);
+    expect(sel.capped).toBeNull();
+    expect(sel.skipped).toEqual([]);
+    expect(sel.apiSpecs.files.map((f) => f.path)).toEqual(["docs/openapi.yaml", "swagger.json"]);
+  });
+
+  it("is deterministic whatever the tree order", () => {
+    const entries = [
+      dir("docs"),
+      blob("docs/b/openapi.yaml"),
+      blob("docs/a/swagger.json"),
+      blob("openapi.json"),
+      blob("docs/c/openapi.yml", { size: 99_999_999 }),
+    ];
+    const a = selectDocFiles(entries);
+    const b = selectDocFiles([...entries].reverse());
+    expect(b.apiSpecs).toEqual(a.apiSpecs);
+  });
+
+  it("plans specs even without a docs folder (no_docs)", async () => {
+    const plan = await planTree(
+      mockClient({ entries: [blob("openapi.yaml")] }).client,
+      repo,
+      firstSync,
+    );
+    expect(plan.outcome).toBe("no_docs");
+    if (plan.outcome !== "no_docs") return;
+    expect(plan.apiSpecs.files.map((f) => f.path)).toEqual(["openapi.yaml"]);
+  });
+
+  it("planTree uses the repo's configured paths, and an empty repo has none", async () => {
+    const entries = [blob("openapi.yaml"), blob("api/spec.yaml")];
+    const configured = { ...repo, config: { apiSpecs: ["api/spec.yaml"] } };
+    const plan = await planTree(mockClient({ entries }).client, configured, firstSync);
+    if (plan.outcome !== "no_docs") throw new Error("expected no_docs");
+    expect(plan.apiSpecs.files.map((f) => f.path)).toEqual(["api/spec.yaml"]);
+    const empty = await planTree(mockClient().client, { ...repo, defaultBranch: "" }, firstSync);
+    if (empty.outcome !== "empty_repo") throw new Error("expected empty_repo");
+    expect(empty.apiSpecs.files).toEqual([]);
+  });
+
+  it("changing only the spec settings re-plans an otherwise unchanged repo", async () => {
+    const entries = [dir("docs"), ...docs(2), blob("openapi.yaml")];
+    const first = await planTree(mockClient({ entries }).client, repo, firstSync);
+    const stored: StoredTreeState = {
+      treeSha: first.treeSha,
+      selectionFingerprint: first.selectionFingerprint,
+    };
+    const same = await planTree(mockClient({ entries }).client, repo, stored);
+    expect(same.outcome).toBe("unchanged");
+    const withPaths = await planTree(
+      mockClient({ entries }).client,
+      { ...repo, config: { apiSpecs: ["openapi.yaml"] } },
+      stored,
+    );
+    expect(withPaths.outcome).toBe("changed");
+    const smaller = await planTree(mockClient({ entries }).client, repo, stored, {
+      selection: { maxSpecBytes: 1024 },
+    });
+    expect(smaller.outcome).toBe("changed");
   });
 });

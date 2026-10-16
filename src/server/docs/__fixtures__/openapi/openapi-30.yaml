@@ -1,0 +1,32 @@
+openapi: 3.0.3
+info:
+  title: Pet Store
+  version: 1.2.0
+paths:
+  /pets:
+    get:
+      summary: List pets
+      responses:
+        "200":
+          description: OK
+    post:
+      summary: Add a pet
+      responses:
+        "201":
+          description: Created
+  /pets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      responses:
+        "200":
+          description: OK
+components:
+  schemas:
+    Pet:
+      type: object
+      properties:
+        name: { type: string }

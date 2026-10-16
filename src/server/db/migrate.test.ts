@@ -11,7 +11,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withAdvisoryLock } from "./advisory-lock";
 import { createDb } from "./client";
 import { MIGRATION_LOCK_KEY, MigrationError, migrateDatabase, runMigrations } from "./migrate";
-import { codeOwners, docComments, documents, repos, siteBranding, syncRuns, users } from "./schema";
+import {
+  apiSpecs,
+  codeOwners,
+  docComments,
+  documents,
+  repos,
+  siteBranding,
+  syncRuns,
+  users,
+} from "./schema";
 import {
   createEmptyDatabase,
   createTestDatabase,
@@ -33,6 +42,7 @@ const tables: AnyPgTable[] = [
   users,
   siteBranding,
   docComments,
+  apiSpecs,
 ];
 
 describeDb("migrations on a real database", () => {
@@ -158,6 +168,7 @@ describeDb("migrations on a real database", () => {
        ORDER BY 1, 2`,
     );
     expect(rows).toEqual([
+      { table_name: "api_specs", column_name: "id", kind: "identity" },
       { table_name: "code_owners", column_name: "id", kind: "identity" },
       { table_name: "doc_comments", column_name: "id", kind: "identity" },
       { table_name: "documents", column_name: "id", kind: "identity" },
@@ -282,7 +293,8 @@ describeDb("the doc_comments migration onto an existing database", () => {
     const journal = JSON.parse(readFileSync(`${drizzleDir}/meta/_journal.json`, "utf8")) as {
       entries: { tag: string }[];
     };
-    const prior = journal.entries.filter((e) => !e.tag.includes("_pale_jetstream"));
+    const doc = journal.entries.findIndex((e) => e.tag.includes("_pale_jetstream"));
+    const prior = journal.entries.slice(0, doc);
     writeFileSync(
       join(dir, "meta", "_journal.json"),
       JSON.stringify({ ...journal, entries: prior }),
@@ -426,6 +438,7 @@ describeDb("parallel db:migrate runs on one empty database", () => {
          WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name`,
       );
       expect(tables.rows.map((r) => r.table_name)).toEqual([
+        "api_specs",
         "code_owners",
         "doc_comments",
         "documents",

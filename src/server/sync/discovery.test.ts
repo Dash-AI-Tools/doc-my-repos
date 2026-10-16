@@ -45,6 +45,15 @@ describe("discoverRepositories", () => {
     });
   });
 
+  it("carries a repo's apiSpecs paths next to docsPath", async () => {
+    const r = await discoverRepositories(
+      clientOf([repo(1, "a"), repo(2, "b")]),
+      cfg({ repos: [{ name: "a", apiSpecs: ["api/spec.yaml"] }, "b"] }),
+    );
+    expect(r.repos[0]?.config).toEqual({ apiSpecs: ["api/spec.yaml"] });
+    expect(r.repos[1]?.config).toEqual({});
+  });
+
   it("narrows to the explicit list and carries per-repo overrides", async () => {
     const r = await discoverRepositories(
       clientOf([repo(1, "a"), repo(2, "b"), repo(3, "c")]),

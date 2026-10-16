@@ -32,11 +32,54 @@ const docsFolder = z
     "docs path must name a folder",
   );
 
+/** Most API spec files one repository can list (and sync). */
+export const MAX_API_SPECS_PER_REPO = 10;
+
+/**
+ * Repository-relative path of one API spec file, normalized to `a/b/openapi.yaml` form (`./`
+ * segments and repeated slashes dropped). Same rules as `docsFolder`, plus control characters are
+ * refused and the path must name a file (no trailing slash).
+ */
+const apiSpecPath = z
+  .string()
+  .refine((p) => p.trim() !== "", "API spec path must not be empty")
+  .refine((p) => !p.trim().startsWith("/"), "API spec path must be relative to the repository root")
+  .refine((p) => !p.includes("\\"), "API spec path must use '/' separators")
+  .refine(
+    (p) => !/[\u0000-\u001f\u007f]/.test(p),
+    "API spec path must not contain control characters",
+  )
+  .refine((p) => !p.split("/").includes(".."), "API spec path must not contain '..'")
+  .refine((p) => !p.trim().endsWith("/"), "API spec path must name a file, not a folder")
+  .transform((p) =>
+    p
+      .trim()
+      .split("/")
+      .filter((s) => s !== "" && s !== ".")
+      .join("/"),
+  )
+  .refine((p) => p !== "", "API spec path must name a file")
+  .refine((p) => p.length <= 1024, "API spec path is too long");
+
+const apiSpecs = z
+  .array(apiSpecPath)
+  .min(1, "apiSpecs must list at least one path")
+  .max(MAX_API_SPECS_PER_REPO, `apiSpecs must list at most ${MAX_API_SPECS_PER_REPO} paths`)
+  .superRefine((paths, ctx) => {
+    const seen = new Set<string>();
+    paths.forEach((path, i) => {
+      if (seen.has(path))
+        ctx.addIssue({ code: "custom", path: [i], message: "duplicate API spec path" });
+      seen.add(path);
+    });
+  });
+
 const repoEntry = z.union([
   repoName,
   z.strictObject({
     name: repoName,
     docsPath: docsFolder.optional(),
+    apiSpecs: apiSpecs.optional(),
   }),
 ]);
 
@@ -58,6 +101,9 @@ export const DEFAULT_MAX_DOCS_PER_REPO = 2000;
 export const MAX_DOCS_PER_REPO_LIMIT = 10_000;
 export const DEFAULT_MAX_FILE_BYTES = 256 * 1024;
 export const MIN_FILE_BYTES_LIMIT = 1024;
+/** API spec files (OpenAPI/Swagger) are stored apart from documents; the limit can only go down. */
+export const DEFAULT_MAX_SPEC_BYTES = 2 * 1024 * 1024;
+export const MIN_SPEC_BYTES_LIMIT = 1024;
 
 const limits = z
   .strictObject({
@@ -74,6 +120,11 @@ const limits = z
         `maxFileBytes must be at most ${DEFAULT_MAX_FILE_BYTES} (256 KB)`,
       )
       .default(DEFAULT_MAX_FILE_BYTES),
+    maxSpecBytes: z
+      .int("maxSpecBytes must be a whole number of bytes")
+      .min(MIN_SPEC_BYTES_LIMIT, `maxSpecBytes must be at least ${MIN_SPEC_BYTES_LIMIT}`)
+      .max(DEFAULT_MAX_SPEC_BYTES, `maxSpecBytes must be at most ${DEFAULT_MAX_SPEC_BYTES} (2 MB)`)
+      .default(DEFAULT_MAX_SPEC_BYTES),
   })
   .prefault({});
 

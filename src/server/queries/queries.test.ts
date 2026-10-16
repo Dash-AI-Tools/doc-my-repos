@@ -10,6 +10,7 @@ import { docPathCandidates } from "../../lib/routes";
 import type { Db } from "../db/client";
 import * as schema from "../db/schema";
 import {
+  apiSpecs,
   codeOwners,
   docComments,
   documents,
@@ -23,6 +24,7 @@ import {
   countDocs,
   findAssetRepo,
   getAdjacentDocs,
+  getApiSpec,
   getCommentDocument,
   getCommentStates,
   getCommentTarget,
@@ -34,6 +36,7 @@ import {
   getRepoFacets,
   getRepoSyncInfo,
   getSyncStatus,
+  listApiSpecs,
   listCodeOwners,
   listCommentsForModeration,
   listDocComments,
@@ -247,6 +250,26 @@ async function seed(db: Db): Promise<Seed> {
       sourcePath: "CODEOWNERS",
     },
   ]);
+  const specRow = (repoId: number, path: string, title: string) => ({
+    repoId,
+    path,
+    blobSha: `sha-${path}`,
+    sizeBytes: 10,
+    format: "openapi" as const,
+    specVersion: "3.0.3",
+    title,
+    apiVersion: "1.0.0",
+    operationCount: 2,
+    spec: { openapi: "3.0.3", info: { title, version: "1.0.0" }, paths: {} },
+  });
+  await db
+    .insert(apiSpecs)
+    .values([
+      specRow(handbook, "docs/z.yaml", "Z API"),
+      specRow(handbook, "openapi.yaml", "Handbook API"),
+      specRow(handbook, "docs/a.yaml", "A API"),
+      specRow(secret, "openapi.yaml", "Secret API"),
+    ]);
   const [secretRoot] = await db
     .insert(docComments)
     .values({
@@ -387,6 +410,22 @@ function flipCases(s: Seed): Record<keyof typeof QUERY_FUNCTIONS, FlipCase[]> {
     listCodeOwners: [
       { label: "by id", run: (db, o) => listCodeOwners(db, byId, o), seen: nonEmpty },
       { label: "by name", run: (db, o) => listCodeOwners(db, byName, o), seen: nonEmpty },
+    ],
+    listApiSpecs: [
+      { label: "by id", run: (db, o) => listApiSpecs(db, byId, o), seen: nonEmpty },
+      { label: "by name", run: (db, o) => listApiSpecs(db, byName, o), seen: nonEmpty },
+    ],
+    getApiSpec: [
+      {
+        label: "by id",
+        run: (db, o) => getApiSpec(db, byId, "openapi.yaml", o),
+        seen: (r) => !!r,
+      },
+      {
+        label: "by name",
+        run: (db, o) => getApiSpec(db, byName, "openapi.yaml", o),
+        seen: (r) => !!r,
+      },
     ],
     getDocsTree: [
       { label: "by id", run: (db, o) => getDocsTree(db, byId, o), seen: nonEmpty },
@@ -917,6 +956,27 @@ describeDb("query layer on a real database", () => {
       expect(await countDocs(t.db, { id: s.empty })).toBe(0);
     });
 
+    it("lists API specs by path without the spec column, and reads one in full", async () => {
+      const list = await listApiSpecs(t.db, { owner: "ACME", name: "handbook" });
+      expect(list.map((x) => x.path)).toEqual(["docs/a.yaml", "docs/z.yaml", "openapi.yaml"]);
+      expect(list[2]).toMatchObject({
+        title: "Handbook API",
+        format: "openapi",
+        specVersion: "3.0.3",
+        apiVersion: "1.0.0",
+        operationCount: 2,
+      });
+      expect(list[0]).not.toHaveProperty("spec");
+      const one = await getApiSpec(t.db, { id: s.handbook }, "openapi.yaml");
+      expect(one?.spec).toMatchObject({ info: { title: "Handbook API" } });
+      expect((await getApiSpec(t.db, { id: s.handbook }, "OpenAPI.YAML"))?.path).toBe(
+        "openapi.yaml",
+      );
+      expect(await getApiSpec(t.db, { id: s.handbook }, "nope.yaml")).toBeNull();
+      expect(await getApiSpec(t.db, { id: s.empty }, "openapi.yaml")).toBeNull();
+      expect(await listApiSpecs(t.db, { id: s.empty })).toEqual([]);
+    });
+
     it("returns nothing for an unknown repository", async () => {
       const unknown = { owner: "acme", name: "nope" };
       expect(await getDocsTree(t.db, unknown)).toEqual([]);
@@ -926,6 +986,8 @@ describeDb("query layer on a real database", () => {
       expect(await getAdjacentDocs(t.db, unknown, "docs/index.md")).toBeNull();
       expect(await countDocs(t.db, unknown)).toBe(0);
       expect(await listCodeOwners(t.db, unknown)).toEqual([]);
+      expect(await listApiSpecs(t.db, unknown)).toEqual([]);
+      expect(await getApiSpec(t.db, unknown, "openapi.yaml")).toBeNull();
     });
   });
 
@@ -1148,7 +1210,7 @@ describeDb("query layer on a real database", () => {
         const readsVector = SEARCH_VECTOR_READERS.has(name as keyof typeof QUERY_FUNCTIONS);
         for (const statement of statements) {
           if (!readsVector) expect(statement, name).not.toContain("search_vector");
-          if (/"documents"|"code_owners"/.test(statement)) {
+          if (/"documents"|"code_owners"|"api_specs"/.test(statement)) {
             expect(statement, name).toContain('"repos"');
           }
         }
