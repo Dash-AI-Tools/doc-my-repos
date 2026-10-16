@@ -67,6 +67,7 @@ WORKDIR /app
 # .next/cache (both can be tmpfs). The built-in `node` user (uid 1000) runs the process.
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
+COPY --from=build /app/public ./public
 COPY --from=build /app/dist/db-migrate.mjs ./dist/db-migrate.mjs
 COPY drizzle ./drizzle
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

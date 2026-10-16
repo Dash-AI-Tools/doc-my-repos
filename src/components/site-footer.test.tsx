@@ -16,6 +16,15 @@ describe("site footer", () => {
     expect(html).toContain("<svg");
   });
 
+  it("shows the logo inside the credit link, one image per theme, from this origin", () => {
+    const html = renderToStaticMarkup(<SiteFooter />);
+    const link = /<a [^>]*data-testid="footer-credit-link"[^>]*>(.*?)<\/a>/.exec(html)?.[1] ?? "";
+    expect(link).toContain('src="/logo-black.png"');
+    expect(link).toContain('src="/logo-white.png"');
+    expect(link.match(/alt="DocMyRepos"/g)).toHaveLength(2);
+    expect(link).toContain("dark:hidden");
+  });
+
   it("keeps the Sync status link and renders the same whatever branding is set", () => {
     const html = renderToStaticMarkup(<SiteFooter />);
     expect(html).toContain('data-testid="footer-status-link"');

@@ -12,7 +12,6 @@ export interface AccountMenuUser {
 /** Admin pages offered inside the menu (starred-repos spec "Administration links"). */
 const ADMIN_LINKS = [
   { href: "/admin/users", label: "Users" },
-  { href: "/admin/repos", label: "Repository access" },
   { href: "/admin/workspace", label: "Workspace configuration" },
   { href: "/admin/branding", label: "Branding" },
 ] as const;

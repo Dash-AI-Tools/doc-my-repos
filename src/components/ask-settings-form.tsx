@@ -263,7 +263,7 @@ export function AskSettingsForm({ initial }: { readonly initial: AskSettingsView
         aria-labelledby="ask-state-heading"
         className="flex flex-col gap-2 border-t border-foreground pt-5"
       >
-        <h2 id="ask-state-heading" className="text-sm font-bold">
+        <h2 id="ask-state-heading" className="text-xl font-bold">
           Current state
         </h2>
         <p data-testid="ask-admin-state" className="text-sm">
@@ -399,7 +399,7 @@ export function AskSettingsForm({ initial }: { readonly initial: AskSettingsView
         className="flex flex-col gap-5 border-t border-foreground pt-5"
       >
         <div className="flex flex-col gap-1">
-          <h2 id="ask-credentials-heading" className="text-sm font-bold">
+          <h2 id="ask-credentials-heading" className="text-xl font-bold">
             Credentials
           </h2>
           <p className="text-sm text-muted-foreground">

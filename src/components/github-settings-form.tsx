@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type FormEvent } from "react";
 
 import {
   buildSettings,
@@ -13,6 +13,7 @@ import { fieldClass } from "@/lib/ui";
 import type { AppConfig } from "@/server/config/schema";
 
 import { SecretField } from "./secret-field";
+import { Section, TextField } from "./settings-fields";
 
 /** The names of the secrets this page edits. */
 type SecretName = "github_private_key" | "github_webhook_secret";
@@ -49,73 +50,6 @@ const MODES: readonly { value: RepoMode; label: string; hint: string }[] = [
   { value: "only", label: "Only these repositories", hint: "" },
   { value: "except", label: "All except these repositories", hint: "" },
 ];
-
-function Section({
-  title,
-  intro,
-  children,
-}: {
-  readonly title: string;
-  readonly intro?: string;
-  readonly children: ReactNode;
-}) {
-  const id = useId();
-  return (
-    <section
-      aria-labelledby={id}
-      className="mb-10 flex break-inside-avoid flex-col gap-5 border-t border-foreground pt-5"
-    >
-      <div className="flex flex-col gap-1">
-        <h2 id={id} className="text-sm font-bold">
-          {title}
-        </h2>
-        {intro ? <p className="text-sm text-muted-foreground">{intro}</p> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  hint,
-  inputMode,
-  testId,
-}: {
-  readonly label: string;
-  readonly value: string;
-  readonly onChange: (value: string) => void;
-  readonly hint?: string;
-  readonly inputMode?: "numeric";
-  readonly testId?: string;
-}) {
-  const id = useId();
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm">
-        {label}
-      </label>
-      <input
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        inputMode={inputMode}
-        autoComplete="off"
-        spellCheck={false}
-        data-testid={testId}
-        aria-describedby={hint ? `${id}-hint` : undefined}
-        className={fieldClass}
-      />
-      {hint ? (
-        <p id={`${id}-hint`} className="text-sm text-muted-foreground">
-          {hint}
-        </p>
-      ) : null}
-    </div>
-  );
-}
 
 function Toggle({
   label,
@@ -158,7 +92,7 @@ function CheckIcon({ done }: { readonly done: boolean }) {
       width="16"
       height="16"
       aria-hidden="true"
-      className="shrink-0 text-primary"
+      className="shrink-0 text-success-foreground"
     >
       <path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" strokeWidth="2" />
     </svg>
@@ -168,9 +102,9 @@ function CheckIcon({ done }: { readonly done: boolean }) {
       width="16"
       height="16"
       aria-hidden="true"
-      className="shrink-0 text-muted-foreground"
+      className="shrink-0 text-destructive"
     >
-      <path d="M4 8h8" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeWidth="2" />
     </svg>
   );
 }
@@ -193,7 +127,7 @@ function ConnectionSummary({ view }: { readonly view: SettingsView }) {
       data-testid="settings-connection"
       className="flex flex-col gap-3"
     >
-      <h2 id="settings-connection-heading" className="text-sm font-bold">
+      <h2 id="settings-connection-heading" className="text-xl font-bold">
         GitHub connection:{" "}
         <span data-testid="settings-connection-state" className={ready ? "text-primary" : ""}>
           {ready ? "ready to sync" : "not ready to sync"}
@@ -214,7 +148,7 @@ function ConnectionSummary({ view }: { readonly view: SettingsView }) {
 
 /**
  * The `/admin/workspace` form (workspace-settings design decision 7): the GitHub App, which
- * repositories are shown, docs folders, limits, sync, comments and Ask limits. Secrets are
+ * repositories are shown, docs folders, limits, sync, and comments (Ask limits live on the Ask tab). Secrets are
  * write-only: the page shows whether each is set and when it changed, never the value. Saving is
  * optimistic (it carries the version it was loaded from), so a change made by someone else in the
  * meantime is reported instead of overwritten.
@@ -532,42 +466,6 @@ export function GithubSettingsForm({ initial }: { readonly initial: SettingsView
             onChange={(c) => set("commentsEnabled", c)}
             hint="Off removes the Comments section from document pages. Stored comments can still be purged."
           />
-        </Section>
-
-        <Section
-          title="Ask limits"
-          intro="Whether Ask is on, and its provider, are set on the Ask page."
-        >
-          <div className="grid gap-5 sm:grid-cols-2">
-            <TextField
-              label="Questions per user per day"
-              value={form.questionsPerDay}
-              onChange={(v) => set("questionsPerDay", v)}
-              inputMode="numeric"
-              hint="1 to 10000."
-            />
-            <TextField
-              label="Questions per user per ten minutes"
-              value={form.questionsPerTenMinutes}
-              onChange={(v) => set("questionsPerTenMinutes", v)}
-              inputMode="numeric"
-              hint="1 to 1000."
-            />
-            <TextField
-              label="Longest answer (tokens)"
-              value={form.maxOutputTokens}
-              onChange={(v) => set("maxOutputTokens", v)}
-              inputMode="numeric"
-              hint="100 to 8000."
-            />
-            <TextField
-              label="Answers at once per server"
-              value={form.maxConcurrent}
-              onChange={(v) => set("maxConcurrent", v)}
-              inputMode="numeric"
-              hint="1 to 100."
-            />
-          </div>
         </Section>
       </div>
 

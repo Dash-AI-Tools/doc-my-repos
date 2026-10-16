@@ -1,4 +1,6 @@
 import { getDb, type Db } from "@/server/db/client";
+import { runAuthorizedSync } from "@/server/sync/manual-sync";
+import { getSyncService } from "@/server/sync/service";
 import { authErrorResponse, requireAdmin } from "@/server/auth/current-user";
 import { reorderStarredRepos, updateRepoFlags } from "@/server/admin/repos";
 import { createUser, listUsers, updateUser } from "@/server/admin/users";
@@ -372,4 +374,15 @@ export async function handleRemoveLogo(db: Db | null = null): Promise<Response> 
   } catch {
     return Response.json({ error: "Internal error" }, { status: 500 });
   }
+}
+
+/**
+ * `POST /api/admin/sync`: the admin's "first sync" button. The same sync as `POST /api/sync`
+ * (every repository, or the one the optional body names), authorized by the admin session instead
+ * of `SYNC_SECRET`, which never reaches the browser.
+ */
+export async function handleAdminSync(request: Request, db: Db | null = null): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  return runAuthorizedSync(request, { getService: getSyncService });
 }

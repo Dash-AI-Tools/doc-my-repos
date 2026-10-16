@@ -34,6 +34,12 @@ function isPublicPath(pathname: string): boolean {
     // Portal logo: shown on the sign-in page, so served without a session. Exactly this
     // path; nothing else under `/api/branding/` is public.
     pathname === "/api/branding/logo" ||
+    // Product brand files: the favicon, the touch icon and the footer credit logos, which the
+    // sign-in page needs too. Exactly these paths; they hold no data.
+    pathname === "/icon.png" ||
+    pathname === "/apple-icon.png" ||
+    pathname === "/logo-black.png" ||
+    pathname === "/logo-white.png" ||
     // Fixture pages for component tests (gated separately by E2E_FIXTURES, see e2e-fixtures.ts).
     pathname.startsWith("/e2e/")
   );

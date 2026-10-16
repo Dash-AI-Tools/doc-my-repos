@@ -6,16 +6,32 @@ export function SiteFooter() {
   return (
     <footer data-read-hide className="border-t border-border">
       <div className="site-shell mx-auto flex w-full max-w-[88rem] flex-wrap justify-between gap-2 px-5 py-8 text-sm text-muted-foreground sm:px-8 lg:px-16">
-        <span>
-          Powered by{" "}
+        <span className="inline-flex flex-wrap items-center gap-x-2">
+          Powered by
           <a
             href={REPO_URL}
             target="_blank"
             rel="noopener noreferrer"
             data-testid="footer-credit-link"
-            className="text-muted-foreground underline hover:text-foreground"
+            className="inline-flex items-center hover:opacity-80"
           >
-            DocMyRepos
+            {/* The dark logo is for light surfaces, the white one for the dark theme. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-black.png"
+              alt="DocMyRepos"
+              width={480}
+              height={135}
+              className="h-6 w-auto dark:hidden"
+            />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-white.png"
+              alt="DocMyRepos"
+              width={480}
+              height={137}
+              className="hidden h-6 w-auto dark:block"
+            />
           </a>
           {" · "}
           <a
