@@ -1,14 +1,13 @@
 import { z } from "zod";
 
-import { authErrorResponse, requireAdmin, type CurrentUser } from "../auth/current-user";
+import { requireAdmin, type CurrentUser } from "../auth/current-user";
+import { AI_PROVIDERS, type AiProvider } from "../../lib/ask/providers";
 import {
-  AI_PROVIDERS,
   providerAvailability,
   providerCredentials,
-  type AiProvider,
   type AllProviderAvailability,
-  type EnvSource,
-} from "../config/env";
+  type ProviderSettingsInput,
+} from "../ask/credentials";
 import { getDb, type Db } from "../db/client";
 import { errorFields, logger, type Logger } from "../log";
 import { AttemptWindow, testAttempts, testConnection } from "../ask/connection-test";
@@ -22,7 +21,9 @@ import {
   type AskSettings,
   type AskState,
 } from "../ask/settings";
-import { requireSameOrigin } from "../same-origin";
+import { adminOrDenied, fieldError, noStore, readJsonBody } from "./http";
+import { readSecretStatuses, readSettings as readWorkspaceSettings } from "../settings/store";
+import { getWorkspace } from "../workspace";
 
 /**
  * Admin API for Ask (ask-the-docs design decision 9): `GET /api/admin/ask`, `PUT /api/admin/ask` and
@@ -33,7 +34,8 @@ import { requireSameOrigin } from "../same-origin";
 
 export interface AskAdminDeps {
   readonly db?: Db;
-  readonly env?: EnvSource;
+  /** The provider settings. Default: the current workspace's. */
+  readonly providers?: () => Promise<ProviderSettingsInput>;
   readonly log?: Logger;
   /** Resolves the admin (default `requireAdmin`, which throws 401/403). Tests only. */
   readonly admin?: (db: Db) => Promise<CurrentUser>;
@@ -42,57 +44,54 @@ export interface AskAdminDeps {
   readonly testLimiter?: AttemptWindow;
 }
 
+/** Whether a provider key is stored and when it changed. Never the key. */
+export interface KeyStatus {
+  readonly set: boolean;
+  readonly updatedAt: Date | null;
+}
+
+/** The provider credentials the page edits: what is stored, never a key. */
+export interface AskCredentialsView {
+  /** The settings version the credentials form was loaded from (sent back when saving). */
+  readonly version: number;
+  /** The OpenAI-compatible endpoint, or null. An address, not a secret. */
+  readonly openaiBaseUrl: string | null;
+  readonly anthropicKey: KeyStatus;
+  readonly openaiKey: KeyStatus;
+}
+
 /** What the admin page shows. */
 export interface AskAdminView {
   readonly settings: AskSettings;
   readonly providers: AllProviderAvailability;
   readonly state: AskState;
+  readonly credentials: AskCredentialsView;
 }
 
 const MAX_BODY_CHARS = 4096;
 
-function fieldError(field: string, message: string): Response {
-  return Response.json(
-    { error: message, field },
-    { status: 400, headers: { "Cache-Control": "no-store" } },
-  );
+async function providerSettings(deps: AskAdminDeps): Promise<ProviderSettingsInput> {
+  return deps.providers ? deps.providers() : (await getWorkspace({ fresh: true })).providers;
 }
 
-function noStore(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
-  return Response.json(body, { status, headers: { "Cache-Control": "no-store", ...extra } });
-}
-
-async function adminOrDenied(
-  deps: AskAdminDeps,
+async function view(
   db: Db,
-): Promise<{ admin: CurrentUser } | { denied: Response }> {
-  try {
-    return { admin: await (deps.admin ?? requireAdmin)(db) };
-  } catch (error) {
-    return { denied: authErrorResponse(error) };
-  }
-}
-
-async function readJsonBody(request: Request): Promise<{ value: unknown } | { denied: Response }> {
-  const origin = requireSameOrigin(request);
-  if (!origin.ok) return { denied: noStore({ error: origin.error }, 403) };
-  let text: string;
-  try {
-    text = await request.text();
-  } catch {
-    return { denied: noStore({ error: "The request body must be valid JSON" }, 400) };
-  }
-  if (text.length > MAX_BODY_CHARS) return { denied: noStore({ error: "Request too large" }, 413) };
-  try {
-    return { value: JSON.parse(text) as unknown };
-  } catch {
-    return { denied: noStore({ error: "The request body must be valid JSON" }, 400) };
-  }
-}
-
-function view(settings: AskSettings, env: EnvSource): AskAdminView {
-  const providers = providerAvailability(env);
-  return { settings, providers, state: resolveAsk(settings, providers) };
+  settings: AskSettings,
+  input: ProviderSettingsInput,
+): Promise<AskAdminView> {
+  const providers = providerAvailability(input);
+  const [stored, statuses] = await Promise.all([readWorkspaceSettings(db), readSecretStatuses(db)]);
+  return {
+    settings,
+    providers,
+    state: resolveAsk(settings, providers),
+    credentials: {
+      version: stored.version,
+      openaiBaseUrl: stored.settings.providers.openaiBaseUrl ?? null,
+      anthropicKey: statuses.anthropic_api_key,
+      openaiKey: statuses.openai_api_key,
+    },
+  };
 }
 
 /** The admin view (settings, per-provider availability, current state) for the page and the API. */
@@ -100,7 +99,7 @@ export async function getAskAdminView(
   deps: AskAdminDeps = {},
   db: Db = deps.db ?? getDb().db,
 ): Promise<AskAdminView> {
-  return view(await readAskSettings(db), deps.env ?? process.env);
+  return view(db, await readAskSettings(db), await providerSettings(deps));
 }
 
 /** The view for the admin page (a server component). Throws 401/403 errors on denial. */
@@ -114,7 +113,7 @@ export async function getAdminAskView(deps: AskAdminDeps = {}): Promise<AskAdmin
 export async function handleGetAsk(deps: AskAdminDeps = {}): Promise<Response> {
   try {
     const db = deps.db ?? getDb().db;
-    const who = await adminOrDenied(deps, db);
+    const who = await adminOrDenied(deps.admin, db);
     if ("denied" in who) return who.denied;
     return noStore(await getAskAdminView(deps, db));
   } catch (error) {
@@ -157,9 +156,9 @@ export async function handleSaveAsk(request: Request, deps: AskAdminDeps = {}): 
   const log = deps.log ?? logger;
   try {
     const db = deps.db ?? getDb().db;
-    const who = await adminOrDenied(deps, db);
+    const who = await adminOrDenied(deps.admin, db);
     if ("denied" in who) return who.denied;
-    const body = await readJsonBody(request);
+    const body = await readJsonBody(request, MAX_BODY_CHARS);
     if ("denied" in body) return body.denied;
 
     const parsed = SaveBody.safeParse(body.value);
@@ -170,7 +169,7 @@ export async function handleSaveAsk(request: Request, deps: AskAdminDeps = {}): 
     }
     const { enabled } = parsed.data;
     const current = await readAskSettings(db);
-    const env = deps.env ?? process.env;
+    const providerInput = await providerSettings(deps);
 
     let provider: AiProvider | undefined;
     if (parsed.data.provider !== undefined) {
@@ -193,7 +192,7 @@ export async function handleSaveAsk(request: Request, deps: AskAdminDeps = {}): 
         return fieldError("provider", "Choose a provider before turning Ask on");
       if (chosenModel === null)
         return fieldError("model", "Enter a model name before turning Ask on");
-      const availability = providerAvailability(env);
+      const availability = providerAvailability(providerInput);
       if (!availability[chosenProvider].configured)
         return notConfigured(availability, chosenProvider);
     }
@@ -209,7 +208,7 @@ export async function handleSaveAsk(request: Request, deps: AskAdminDeps = {}): 
       provider: saved.provider,
       model: saved.model,
     });
-    return noStore(view(saved, env));
+    return noStore(await view(db, saved, providerInput));
   } catch (error) {
     log.error("ask.admin.failed", { action: "save", ...errorFields(error) });
     return noStore({ error: "Internal error" }, 500);
@@ -223,9 +222,9 @@ export async function handleTestAsk(request: Request, deps: AskAdminDeps = {}): 
   const log = deps.log ?? logger;
   try {
     const db = deps.db ?? getDb().db;
-    const who = await adminOrDenied(deps, db);
+    const who = await adminOrDenied(deps.admin, db);
     if ("denied" in who) return who.denied;
-    const body = await readJsonBody(request);
+    const body = await readJsonBody(request, MAX_BODY_CHARS);
     if ("denied" in body) return body.denied;
 
     const parsed = TestBody.safeParse(body.value);
@@ -237,9 +236,11 @@ export async function handleTestAsk(request: Request, deps: AskAdminDeps = {}): 
     const choice = checkChoice(parsed.data.provider, parsed.data.model);
     if (choice instanceof Response) return choice;
 
-    const env = deps.env ?? process.env;
-    const credentials = providerCredentials(env, choice.provider);
-    if (credentials === null) return notConfigured(providerAvailability(env), choice.provider);
+    const providerInput = await providerSettings(deps);
+    const credentials = providerCredentials(providerInput, choice.provider);
+    if (credentials === null) {
+      return notConfigured(providerAvailability(providerInput), choice.provider);
+    }
 
     const allowed = (deps.testLimiter ?? testAttempts).attempt();
     if (!allowed.ok) {

@@ -1,7 +1,6 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import type { EnvSource } from "../config/env";
-import { ConfigError } from "../config/load";
 import { advisoryLockKey, withAdvisoryLock } from "../db/advisory-lock";
 import { syncRuns } from "../db/schema";
 import { errorFields, logger as processLogger, type Logger } from "../log";
@@ -165,10 +164,13 @@ export async function runScheduledSync(
 // ---------------------------------------------------------------------------------------------
 // Boot
 
-/** What the boot needs from the server runtime (`src/server/runtime.ts` `getRuntime` fits). */
+/**
+ * What the boot needs from the workspace (`src/server/workspace.ts` `getWorkspace` fits): the
+ * schedule settings, and the sync context once the GitHub settings are complete (null before).
+ */
 export interface SchedulerRuntime {
-  readonly loaded: { readonly config: { readonly sync?: SyncScheduleConfig } };
-  readonly sync: SyncContext;
+  readonly config: { readonly sync?: SyncScheduleConfig };
+  readonly github: { readonly sync: SyncContext } | null;
 }
 
 type SignalName = "SIGTERM" | "SIGINT";
@@ -183,8 +185,8 @@ export interface SchedulerProcess {
 }
 
 export interface BootOptions {
-  /** Builds or returns the shared runtime; called at boot and on every tick. */
-  getRuntime: () => SchedulerRuntime;
+  /** Returns the current workspace; called at boot and on every tick. */
+  getRuntime: () => Promise<SchedulerRuntime>;
   /** Default `process.env`. */
   env?: EnvSource;
   /** Default: the process logger. */
@@ -202,29 +204,38 @@ type BootCache = { [BOOT_KEY]?: Scheduler };
 
 /**
  * Starts the background scheduler once per process, or explains why not in ONE structured line:
- * `sync.scheduler.disabled` (with the reason), `sync.scheduler.config_invalid` (config or
- * environment invalid: logged once, the server keeps serving, nothing is retried until a
- * restart), or `sync.scheduler.started` (with the settings). Never throws. Returns the running
- * scheduler or null. A second call returns the first scheduler (Next.js dev reloads).
+ * `sync.scheduler.disabled` (with the reason), `sync.scheduler.settings_unreadable` (the settings
+ * could not be loaded: logged once, the server keeps serving, nothing is retried until a restart),
+ * or `sync.scheduler.started` (with the settings). Never throws. Returns the running scheduler or
+ * null. A second call returns the first scheduler (Next.js dev reloads).
+ *
+ * The schedule itself (interval, run on startup) is read when the server starts, so a changed
+ * schedule applies after a restart. Everything a run uses (repositories, limits, credentials) is
+ * read from the current workspace on each tick, and a tick with incomplete GitHub settings is
+ * skipped, so the scheduler can start before an administrator has configured GitHub.
  *
  * On SIGTERM/SIGINT the scheduler stops (timers cleared, the run in progress aborted; its run row
  * is finished as aborted, or reaped later). When no other listener handles the signal, it is
  * re-raised so the process still exits the default way.
  */
-export function bootSyncScheduler(options: BootOptions): Scheduler | null {
+export async function bootSyncScheduler(options: BootOptions): Promise<Scheduler | null> {
   const log = options.log ?? processLogger;
   const cache = globalThis as BootCache;
   const existing = cache[BOOT_KEY];
   if (existing !== undefined && existing.active) return existing;
   try {
-    return boot(options, log, cache);
+    return await boot(options, log, cache);
   } catch (error) {
     log.error("sync.scheduler.boot_failed", errorFields(error));
     return null;
   }
 }
 
-function boot(options: BootOptions, log: Logger, cache: BootCache): Scheduler | null {
+async function boot(
+  options: BootOptions,
+  log: Logger,
+  cache: BootCache,
+): Promise<Scheduler | null> {
   const mode = schedulerMode(options.env ?? process.env);
   if (mode.invalidValue) {
     log.warn("sync.scheduler.invalid_setting", { variable: SYNC_SCHEDULER_VAR });
@@ -236,26 +247,30 @@ function boot(options: BootOptions, log: Logger, cache: BootCache): Scheduler | 
 
   let runtime: SchedulerRuntime;
   try {
-    runtime = options.getRuntime();
+    runtime = await options.getRuntime();
   } catch (error) {
-    if (error instanceof ConfigError) {
-      log.error("sync.scheduler.config_invalid", { problems: [...error.problems] });
-    } else {
-      log.error("sync.scheduler.config_invalid", errorFields(error));
-    }
+    log.error("sync.scheduler.settings_unreadable", errorFields(error));
     return null;
   }
 
-  const settings = schedulerSettings(runtime.loaded.config.sync, options.settings);
-  const current = () => options.getRuntime().sync;
+  const settings = schedulerSettings(runtime.config.sync, options.settings);
+  // Each tick reads the current workspace; without complete GitHub settings it does nothing.
+  const current = async (): Promise<SyncContext | null> =>
+    (await options.getRuntime()).github?.sync ?? null;
   const scheduler = startScheduler(settings, {
-    runFull: (trigger, signal) => runScheduledSync(current(), trigger, signal),
+    runFull: async (trigger, signal): Promise<FullRunOutcome> => {
+      const ctx = await current();
+      return ctx === null
+        ? { status: "skipped", reason: "not_configured" }
+        : runScheduledSync(ctx, trigger, signal);
+    },
     drain: async (signal) => {
-      await drainSyncRequests(current(), { trigger: "schedule", signal });
+      const ctx = await current();
+      if (ctx !== null) await drainSyncRequests(ctx, { trigger: "schedule", signal });
     },
     reap: async () => {
-      const ctx = current();
-      await reapStaleRuns(ctx.db, ctx.pool, { log: ctx.log });
+      const ctx = await current();
+      if (ctx !== null) await reapStaleRuns(ctx.db, ctx.pool, { log: ctx.log });
     },
     timers: options.timers,
     random: options.random,

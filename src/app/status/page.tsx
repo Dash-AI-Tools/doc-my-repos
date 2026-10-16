@@ -22,5 +22,7 @@ export const metadata: Metadata = {
 export default async function StatusPage() {
   const data = await loadStatusPage();
   if (data.status === "error") return <StatusLoadError />;
-  return <StatusView data={data.sync} ask={data.ask} now={data.loadedAt} />;
+  return (
+    <StatusView data={data.sync} ask={data.ask} workspace={data.workspace} now={data.loadedAt} />
+  );
 }

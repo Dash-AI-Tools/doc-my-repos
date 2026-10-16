@@ -61,13 +61,13 @@ The order matters: nothing is parsed and nothing touches the database before the
 
 ### Signature
 
-GitHub signs each delivery with HMAC-SHA256 over the exact bytes of the body, keyed with the webhook secret, and sends `X-Hub-Signature-256: sha256=<64 lowercase hex characters>`. DocMyRepos hashes the raw bytes it received and compares in constant time. Uppercase hex, a wrong length, a repeated header and the legacy `X-Hub-Signature` (SHA-1) header are all rejected. A secret shorter than 16 characters never verifies, and every delivery then gets `500`.
+GitHub signs each delivery with HMAC-SHA256 over the exact bytes of the body, keyed with the webhook secret, and sends `X-Hub-Signature-256: sha256=<64 lowercase hex characters>`. DocMyRepos hashes the raw bytes it received and compares in constant time. Uppercase hex, a wrong length, a repeated header and the legacy `X-Hub-Signature` (SHA-1) header are all rejected. The webhook secret must be at least 16 characters when you save it. With no webhook secret saved at `/admin/workspace`, nothing verifies and every delivery gets the same fixed `401` as a bad signature.
 
 To test a deployment without GitHub, sign a `ping` yourself:
 
 ```bash
 payload='{"zen":"test"}'
-sig="sha256=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$GITHUB_WEBHOOK_SECRET" -hex | sed 's/^.* //')"
+sig="sha256=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" -hex | sed 's/^.* //')"
 curl -i -X POST http://127.0.0.1:3000/api/webhooks/github \
   -H "Content-Type: application/json" \
   -H "X-GitHub-Event: ping" \

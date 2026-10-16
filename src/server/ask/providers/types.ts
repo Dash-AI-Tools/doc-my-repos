@@ -1,4 +1,4 @@
-import type { AiProvider } from "../../config/env";
+import type { AiProvider } from "../../../lib/ask/providers";
 
 /** One message sent to a model. The system prompt is passed as a `system` message. */
 export interface ProviderMessage {

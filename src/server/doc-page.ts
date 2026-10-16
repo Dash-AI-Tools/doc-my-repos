@@ -14,7 +14,7 @@ import type { NavView } from "@/lib/reading-prefs";
 import { docPathCandidates, docRouteStem, docUrl } from "@/lib/routes";
 import { parseTocFilters, type TocData, type TocFilterState } from "@/lib/toc-filters";
 
-import type { Db } from "./db/client";
+import { type Db, getDb } from "./db/client";
 import { expectedFailureKind } from "./home";
 import { rehypeHighlight } from "./markdown/highlight";
 import {
@@ -26,7 +26,6 @@ import {
 import { anchorId } from "./markdown/sanitize";
 import { getDocsTree, getDocumentByPath, getRepo, type DocumentDetail } from "./queries";
 import type { RepoDetail } from "./queries";
-import { getRuntime } from "./runtime";
 import { isRepoRoute } from "./repo-page";
 import { loadToc } from "./toc-data";
 import { logger, type LogFn } from "./log";
@@ -113,7 +112,7 @@ export type DocPageData =
   | { readonly status: "error"; readonly loadedAt: Date };
 
 export interface DocPageDeps {
-  /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
+  /** The database to read. Default: the shared handle's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
@@ -151,7 +150,7 @@ export async function loadDocPage(
   if (!isRepoRoute(owner, name) || segments.length === 0) return { status: "not_found" };
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? logger.error;
-  const db = deps.db ?? (() => getRuntime().db.db);
+  const db = deps.db ?? (() => getDb().db);
   const render = deps.render ?? renderMarkdown;
   try {
     const handle = db();

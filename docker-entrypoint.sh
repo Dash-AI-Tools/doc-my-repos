@@ -2,8 +2,9 @@
 # Container entrypoint (task 13.1): apply the database migrations, then start the server.
 #
 # - Required settings are not checked here. The migration step needs only DATABASE_URL; the app
-#   validates everything else itself (GitHub App settings, secrets, docmyrepos.config.yml) and
-#   names each problem in the page and the logs.
+#   validates everything else itself (session and sync secrets, the encryption key) and names
+#   each problem in the page and the logs. GitHub and provider settings are entered in the
+#   admin interface, not here.
 # - The migrations wait up to DB_WAIT_SECONDS (default 60) for a database that is still starting,
 #   then fail the container with a non-zero exit and a clear message. They never print the
 #   connection string. Runs are serialized by an advisory lock, so replicas may start together.

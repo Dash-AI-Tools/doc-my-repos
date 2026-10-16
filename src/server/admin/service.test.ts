@@ -1,4 +1,3 @@
-import { generateKeyPairSync } from "node:crypto";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 
 import { repos, users } from "../db/schema";
@@ -7,13 +6,18 @@ import { hashPassword } from "../auth/password";
 import { newSessionPayload, SESSION_COOKIE, signSession } from "../auth/session";
 import {
   handleCreateUser,
-  handleGithubConfig,
   handleListRepos,
   handleListUsers,
   handleReorderStarred,
   handleUpdateRepo,
   handleUpdateUser,
 } from "./service";
+import {
+  handleGetSettings,
+  handleSaveProviderCredentials,
+  handleSaveSettings,
+  handleTestGithub,
+} from "./settings";
 
 const SECRET = "admin-service-test-secret-0123456789";
 
@@ -80,21 +84,6 @@ describeDb("admin routes", () => {
     jar.cookie = signSession(SECRET, newSessionPayload(id, role, pwv));
   }
 
-  function stubFullEnv() {
-    const { privateKey } = generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      privateKeyEncoding: { type: "pkcs1", format: "pem" },
-      publicKeyEncoding: { type: "spki", format: "pem" },
-    });
-    vi.stubEnv("DATABASE_URL", "postgres://docmyrepos:db-password@127.0.0.1:5432/docmyrepos");
-    vi.stubEnv("GITHUB_APP_ID", "12345");
-    vi.stubEnv("GITHUB_APP_INSTALLATION_ID", "67890");
-    vi.stubEnv("GITHUB_APP_PRIVATE_KEY", privateKey);
-    vi.stubEnv("GITHUB_APP_PRIVATE_KEY_PATH", "");
-    vi.stubEnv("GITHUB_WEBHOOK_SECRET", "webhook-secret-0123");
-    vi.stubEnv("SYNC_SECRET", "sync-secret-0123456");
-  }
-
   it("401s without a session and 403s for viewers on every admin route", async () => {
     jar.cookie = "";
     for (const call of [
@@ -104,7 +93,13 @@ describeDb("admin routes", () => {
       () => handleListRepos(t.db),
       () => handleUpdateRepo(jsonRequest("/api/admin/repos", "PATCH", {}), t.db),
       () => handleReorderStarred(jsonRequest("/api/admin/repos/starred", "PUT", {}), t.db),
-      () => handleGithubConfig(),
+      () => handleGetSettings({ db: t.db }),
+      () => handleSaveSettings(jsonRequest("/api/admin/settings", "PUT", {}), { db: t.db }),
+      () => handleTestGithub(jsonRequest("/api/admin/settings/test", "POST", {}), { db: t.db }),
+      () =>
+        handleSaveProviderCredentials(jsonRequest("/api/admin/ask/credentials", "PUT", {}), {
+          db: t.db,
+        }),
     ]) {
       expect((await call()).status).toBe(401);
     }
@@ -116,7 +111,13 @@ describeDb("admin routes", () => {
       () => handleListRepos(t.db),
       () => handleUpdateRepo(jsonRequest("/api/admin/repos", "PATCH", {}), t.db),
       () => handleReorderStarred(jsonRequest("/api/admin/repos/starred", "PUT", {}), t.db),
-      () => handleGithubConfig(t.db),
+      () => handleGetSettings({ db: t.db }),
+      () => handleSaveSettings(jsonRequest("/api/admin/settings", "PUT", {}), { db: t.db }),
+      () => handleTestGithub(jsonRequest("/api/admin/settings/test", "POST", {}), { db: t.db }),
+      () =>
+        handleSaveProviderCredentials(jsonRequest("/api/admin/ask/credentials", "PUT", {}), {
+          db: t.db,
+        }),
     ]) {
       expect((await call()).status).toBe(403);
     }
@@ -271,15 +272,5 @@ describeDb("admin routes", () => {
     expect((await put({ repos: [] })).status).toBe(403);
     signInAs("admin");
     expect(await starred()).toEqual(["handbook", "beta", "alpha"]);
-  });
-
-  it("shows the GitHub config summary without secrets", async () => {
-    stubFullEnv();
-    signInAs("admin");
-    const response = await handleGithubConfig(t.db);
-    expect(response.status).toBe(200);
-    const text = await response.text();
-    expect(text).not.toContain("PRIVATE KEY");
-    expect(JSON.parse(text)).toHaveProperty("config");
   });
 });

@@ -16,7 +16,7 @@ export interface AskStatusLine {
   readonly detail: string;
 }
 
-/** The Ask line of the status page: off, ready, or unavailable naming variables only. */
+/** The Ask line of the status page: off, ready, or unavailable naming settings only. */
 export function askStatusLine(ask: AskStatusInput): AskStatusLine {
   switch (ask.state) {
     case "off":
@@ -29,7 +29,8 @@ export function askStatusLine(ask: AskStatusInput): AskStatusLine {
       };
     case "unavailable": {
       const parts: string[] = [];
-      if (ask.missing.length > 0) parts.push(`Set ${ask.missing.join(", ")}.`);
+      if (ask.missing.length > 0)
+        parts.push(`Enter ${ask.missing.join(", ")} on the Ask admin page.`);
       if (ask.problem) parts.push(`${ask.problem}.`);
       if (parts.length === 0) parts.push("Choose a provider and model on the Ask admin page.");
       return { tone: "bad", label: "Unavailable", detail: parts.join(" ") };

@@ -1,8 +1,9 @@
 import "server-only";
 
 import { findAssetRepo } from "../queries/assets";
-import { getRuntime } from "../runtime";
+import { getDb } from "../db/client";
 import { repoNameSelection } from "../sync/discovery";
+import { getWorkspace, requireGitHub } from "../workspace";
 import { createAssetCache, type AssetCache } from "./cache";
 import { createFetchGate, type FetchGate } from "./fetch-gate";
 import type { AssetDeps } from "./serve";
@@ -31,16 +32,17 @@ export function sharedFetchGate(): FetchGate {
 }
 
 /**
- * The proxy's dependencies over the shared runtime: the database (repository lookup through the
- * visibility filter), the current config selection, and the request-time GitHub client. Throws
- * `ConfigError` (names only, no values) when the runtime cannot be built.
+ * The proxy's dependencies over the current workspace: the database (repository lookup through the
+ * visibility filter), the current selection, and the request-time GitHub client. Throws
+ * `NotConfiguredError` (names only, no values) when the GitHub settings are incomplete.
  */
-export function getAssetDeps(): AssetDeps {
-  const runtime = getRuntime();
+export async function getAssetDeps(): Promise<AssetDeps> {
+  const github = requireGitHub(await getWorkspace());
+  const db = getDb().db;
   return {
-    findRepo: (owner, name) => findAssetRepo(runtime.db.db, owner, name),
-    isConfigured: (name) => repoNameSelection(runtime.sync.config, name) === "selected",
-    github: runtime.assets,
+    findRepo: (owner, name) => findAssetRepo(db, owner, name),
+    isConfigured: (name) => repoNameSelection(github.sync.config, name) === "selected",
+    github: github.assets,
     cache: sharedAssetCache(),
     gate: sharedFetchGate(),
   };

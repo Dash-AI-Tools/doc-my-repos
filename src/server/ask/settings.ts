@@ -2,19 +2,20 @@ import { eq } from "drizzle-orm";
 import { cache } from "react";
 
 import { isAiProvider, validateModel } from "../../lib/ask/providers";
+import type { AiProvider } from "../../lib/ask/providers";
 import {
   providerAvailability,
-  type AiProvider,
   type AllProviderAvailability,
-  type EnvSource,
-} from "../config/env";
+  type ProviderSettingsInput,
+} from "./credentials";
 import { getDb, type Db } from "../db/client";
 import { askSettings } from "../db/schema";
 import { errorFields, logger } from "../log";
+import { getWorkspace } from "../workspace";
 
 /**
  * Ask settings (ask-the-docs design decision 9): the admin's on/off switch, provider and model, in
- * one database row. Credentials never live here; they come from the environment. The pure rules
+ * one database row. Credentials never live here; they are stored encrypted with the workspace secrets. The pure rules
  * (`validateModel`, `isAiProvider`, `resolveAsk`) are the only way any consumer decides whether Ask
  * runs, so the route, the `/ask` page, the header link and the status page cannot disagree.
  */
@@ -40,15 +41,15 @@ export type AskState =
   | { readonly state: "ready"; readonly provider: AiProvider; readonly model: string }
   | {
       readonly state: "unavailable";
-      /** Names of environment variables still to be set, never values. */
+      /** Names of settings still to be entered, never values. */
       readonly missing: readonly string[];
-      /** A fixed text naming the variable whose value was refused, never the value. */
+      /** A fixed text naming the setting whose value was refused, never the value. */
       readonly problem?: string;
     };
 
 /**
  * Whether Ask runs right now. `off` unless an admin turned it on. `unavailable` when it is on but
- * the choice is incomplete or the provider's environment group is not usable. `ready` carries the
+ * the choice is incomplete or the provider's settings are not usable. `ready` carries the
  * provider and model to use; callers resolve once per request and keep the result.
  */
 export function resolveAsk(settings: AskSettings, availability: AllProviderAvailability): AskState {
@@ -116,13 +117,18 @@ export async function saveAskSettings(
 }
 
 /**
- * Where Ask stands for this request: stored choice plus the environment. Never throws: if the
- * settings cannot be read, Ask is treated as off so the rest of the portal keeps working.
+ * Where Ask stands for this request: stored choice plus the provider settings an administrator
+ * saved. Never throws: if the settings cannot be read, Ask is treated as off so the rest of the
+ * portal keeps working.
  */
 export const getAskState = cache(
-  async (env: EnvSource = process.env, db: Db | null = null): Promise<AskState> => {
+  async (db: Db | null = null, providers?: ProviderSettingsInput): Promise<AskState> => {
     try {
-      return resolveAsk(await getAskSettings(db), providerAvailability(env));
+      const [settings, saved] = await Promise.all([
+        getAskSettings(db),
+        providers ? Promise.resolve(providers) : getWorkspace().then((w) => w.providers),
+      ]);
+      return resolveAsk(settings, providerAvailability(saved));
     } catch (error) {
       logger.warn("ask.settings.read_failed", errorFields(error));
       return { state: "off" };

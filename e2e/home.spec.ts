@@ -330,8 +330,7 @@ test.describe("home page, empty database", () => {
     expect(response?.status()).toBe(200);
     const empty = page.getByTestId("empty-state");
     await expect(empty.getByRole("heading", { name: "Nothing synced yet" })).toBeVisible();
-    await expect(empty).toContainText("docmyrepos.config.yml");
-    await expect(empty).toContainText("GITHUB_APP_INSTALLATION_ID");
+    await expect(empty).toContainText("/admin/workspace");
     await expect(empty).toContainText("SYNC_SECRET");
     await expect(empty).toContainText(
       'curl -X POST -H "Authorization: Bearer $SYNC_SECRET" <your-app-url>/api/sync',

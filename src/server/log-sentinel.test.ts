@@ -9,7 +9,14 @@ import { createDb, type DbHandle } from "./db/client";
 import { createTestDatabase, describeDb, type TestDatabase } from "./db/test-db";
 import { logger } from "./log";
 import { findAssetRepo } from "./queries/assets";
-import { createRuntime, type Runtime } from "./runtime";
+import {
+  handleSaveProviderCredentials,
+  handleSaveSettings,
+  handleTestGithub,
+} from "./admin/settings";
+import { ENCRYPTION_KEY_VAR, parseEncryptionKey } from "./settings/crypto";
+import { readVersion, saveWorkspace } from "./settings/store";
+import { createWorkspace, requireGitHub, type GitHubParts } from "./workspace";
 import { repoNameSelection } from "./sync/discovery";
 import { FakeGitHub } from "./sync/fake-github";
 import { handleManualSync } from "./sync/manual-sync";
@@ -37,7 +44,9 @@ const WEBHOOK_SECRET = "hy3n.c6ub.j1ze.w5ko.g0ra";
 const SYNC_SECRET = "vb8m.x2qp.n7ld.f3zs.y6ck";
 const SESSION_SECRET = "n4qr.t7wb.e9xk.p2md.h6sa";
 const DB_PASSWORD = "kp2w.z9xq.m4tv";
-const CONFIG_FILE = "/etc/docmyrepos.yml";
+const ENCRYPTION_KEY = Buffer.from("qj4n-w8hd-r1ce-m6ux-b3vt-pa8s-zk2w-f5ol").toString("base64");
+const ANTHROPIC_KEY = "xt5k.p0ge.d7ns.u2bq.z9la";
+const WORKSPACE_CACHE = Symbol.for("docmyrepos.workspace");
 const INSTALLATION_ID = 4242;
 const HANDBOOK_ID = 101;
 const METRICS_ID = 202;
@@ -54,15 +63,12 @@ const KEY_BODY = PEM.split("\n")
 
 const ENV = {
   DATABASE_URL: `postgres://app:${DB_PASSWORD}@db.invalid:5432/docmyrepos`,
-  GITHUB_APP_ID: "12345",
-  GITHUB_APP_INSTALLATION_ID: String(INSTALLATION_ID),
-  GITHUB_APP_PRIVATE_KEY: PEM,
-  GITHUB_WEBHOOK_SECRET: WEBHOOK_SECRET,
   SYNC_SECRET,
   SESSION_SECRET,
-  CONFIG_PATH: CONFIG_FILE,
+  [ENCRYPTION_KEY_VAR]: ENCRYPTION_KEY,
   LOG_LEVEL: "debug",
 };
+const KEY = parseEncryptionKey(ENCRYPTION_KEY).key;
 
 /** Every 8-character piece of `value` (all of it when shorter). */
 function pieces(value: string, size = 8): string[] {
@@ -121,7 +127,10 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
   });
 
   beforeEach(async () => {
-    await h.db.execute(sql`TRUNCATE repos, sync_runs RESTART IDENTITY CASCADE`);
+    await h.db.execute(
+      sql`TRUNCATE repos, sync_runs, workspace_settings, workspace_secrets, settings_audit RESTART IDENTITY CASCADE`,
+    );
+    await configure();
     fake = fixture();
     jwts.length = 0;
     output = captureOutput("debug");
@@ -129,34 +138,42 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
 
   afterEach(() => {
     output.restore();
-    delete (globalThis as Record<symbol, unknown>)[Symbol.for("docmyrepos.runtime")];
+    delete (globalThis as Record<symbol, unknown>)[WORKSPACE_CACHE];
   });
 
-  /** A runtime over the shared test pool (do not close it: that would end the pool). */
-  function runtime(env: Record<string, string> = ENV): Runtime {
-    return createRuntime({
-      env,
-      readFile: readConfig,
-      fetch: fetchWithCapture,
-      createDb: () => h,
+  /** Saves the GitHub App settings and secrets, as the admin interface does. */
+  async function configure() {
+    const result = await saveWorkspace(h.db, KEY, {
+      userId: null,
+      expectedVersion: await readVersion(h.db),
+      settings: {
+        github: { appId: 12345, installationId: INSTALLATION_ID },
+        repos: ["handbook", "metrics"],
+      },
+      secrets: { github_private_key: PEM, github_webhook_secret: WEBHOOK_SECRET },
     });
+    expect(result.ok).toBe(true);
   }
 
-  function readConfig(path: string): string {
-    if (path !== CONFIG_FILE) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-    return "repos:\n  - handbook\n  - metrics\n";
+  /** GitHub parts over the shared test pool (do not close it: that would end the pool). */
+  async function github(): Promise<GitHubParts> {
+    return requireGitHub(await createWorkspace({ handle: h, env: ENV, fetch: fetchWithCapture }));
   }
+
+  const webhookSecret = async () => ({
+    webhookSecret: (await createWorkspace({ handle: h, env: ENV, fetch: fetchWithCapture }))
+      .webhookSecret,
+  });
 
   async function manualSync(
     body: string | undefined,
     authorization: string | null = `Bearer ${SYNC_SECRET}`,
-    getService = () =>
-      getSyncService({
-        env: ENV,
-        readFile: readConfig,
-        fetch: fetchWithCapture,
-        createDb: () => h,
-      }),
+    getService = () => {
+      // Each call starts from a freshly built workspace, so a failure injected for one call is
+      // not absorbed by a token cached from the previous one.
+      delete (globalThis as Record<symbol, unknown>)[WORKSPACE_CACHE];
+      return getSyncService({ env: ENV, fetch: fetchWithCapture, handle: h });
+    },
   ): Promise<string> {
     const headers: Record<string, string> = authorization === null ? {} : { authorization };
     const response = await handleManualSync(
@@ -187,7 +204,7 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
     });
   }
 
-  async function serveImage(rt: Runtime, path = "acme/handbook/docs/img/arch.png") {
+  async function serveImage(rt: GitHubParts, path = "acme/handbook/docs/img/arch.png") {
     return serveAsset({ method: "GET", headers: new Headers() }, path.split("/"), () => ({
       findRepo: (owner, name) => findAssetRepo(h.db, owner, name),
       isConfigured: (name) => repoNameSelection(rt.sync.config, name) === "selected",
@@ -205,6 +222,8 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
       ["session secret", SESSION_SECRET],
       ["database password", DB_PASSWORD],
       ["private key body", KEY_BODY],
+      ["encryption key", ENCRYPTION_KEY],
+      ["provider API key", ANTHROPIC_KEY],
       ...jwts.map((jwt, i): [string, string] => [`app JWT ${i}`, jwt]),
     ];
     for (const [label, value] of sentinels) {
@@ -229,7 +248,7 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
     expect(await manualSync(undefined)).toMatch(/^200 /);
     expect(await manualSync('{"repo":"metrics"}')).toMatch(/^200 /);
 
-    const rt = runtime();
+    const rt = await github();
     const tasks = createBackgroundTasks();
     const dispatch = createWebhookDispatch({
       sync: rt.sync,
@@ -238,7 +257,7 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
     });
     fake.setFile(HANDBOOK_ID, "docs/start.md", "# Start\n\nPushed.\n");
     const pushed = await handleWebhookRequest(webhookRequest(pushBody()), {
-      readSecret: () => readConfiguredWebhookSecret(ENV),
+      readSecret: () => readConfiguredWebhookSecret(webhookSecret),
       dispatch,
     });
     expect(pushed.status).toBe(202);
@@ -309,7 +328,7 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
     fake.installationGone = false;
 
     // An image fetch that hits a rate limit.
-    const rt = runtime();
+    const rt = await github();
     fake.fail({ path: /\/contents\//, status: 429, headers: { "retry-after": "30" }, times: 1 });
     expect((await serveImage(rt)).status).toBe(503);
 
@@ -319,20 +338,16 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
     });
     try {
       expect(
-        await manualSync(undefined, `Bearer ${SYNC_SECRET}`, () =>
-          getSyncService({
-            env: ENV,
-            readFile: readConfig,
-            fetch: fetchWithCapture,
-            createDb: () => dead,
-          }),
-        ),
+        await manualSync(undefined, `Bearer ${SYNC_SECRET}`, () => {
+          delete (globalThis as Record<symbol, unknown>)[WORKSPACE_CACHE];
+          return getSyncService({ env: ENV, fetch: fetchWithCapture, handle: dead });
+        }),
       ).toMatch(/^500 /);
     } finally {
       await dead.close();
     }
     expect(
-      await manualSync(undefined, `Bearer ${SYNC_SECRET}`, () => ({
+      await manualSync(undefined, `Bearer ${SYNC_SECRET}`, async () => ({
         syncAll: async () => {
           throw new Error(
             `connect postgres://app:${DB_PASSWORD}@db/x token ${INSTALLATION_TOKEN} key ${KEY_BODY.slice(0, 64)}`,
@@ -342,26 +357,15 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
       })),
     ).toMatch(/^500 /);
 
-    // An invalid configuration whose bad values are secrets.
-    expect(
-      await manualSync(undefined, `Bearer ${SYNC_SECRET}`, () =>
-        getSyncService({
-          env: {
-            ...ENV,
-            GITHUB_APP_PRIVATE_KEY: `not a key ${INSTALLATION_TOKEN}`,
-            LOG_LEVEL: "loud",
-          },
-          readFile: readConfig,
-          fetch: fetchWithCapture,
-          createDb: () => h,
-        }),
-      ),
-    ).toMatch(/^500 /);
+    // GitHub settings that are not (yet) complete: the answer names nothing but setting names.
+    await h.db.execute(sql`TRUNCATE workspace_settings, workspace_secrets RESTART IDENTITY`);
+    expect(await manualSync(undefined)).toMatch(/^500 /);
+    await configure();
 
     // Webhooks: a wrong secret, a signature of another body, a dispatch that throws credentials.
     const tasks = createBackgroundTasks();
     const deps = {
-      readSecret: () => readConfiguredWebhookSecret(ENV),
+      readSecret: () => readConfiguredWebhookSecret(webhookSecret),
       dispatch: createWebhookDispatch({ sync: rt.sync, installationId: INSTALLATION_ID, tasks }),
     };
     expect(
@@ -403,7 +407,7 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
       "sync.discovery.failed",
       "sync.run.finished",
       "sync_api.failed",
-      "sync_api.config_invalid",
+      "sync_api.not_configured",
       "webhook.signature",
       "webhook.dispatch_failed",
       "asset.upstream_failed",
@@ -413,6 +417,93 @@ describeDb("no credential reaches the logs (task 12.4)", () => {
     expect(output.records().filter((r) => r.event === "sync_api.auth")).toEqual(
       expect.arrayContaining([expect.objectContaining({ outcome: "unauthorized", level: "warn" })]),
     );
+  });
+
+  it("settings paths: saving, refusing, testing and replacing secrets never log a secret", async () => {
+    const admin = async () => ({ id: 0, email: "admin@example.com", role: "admin" as const });
+    const deps = {
+      db: h.db,
+      admin,
+      encryptionKey: () => KEY,
+      githubTest: { fetch: fetchWithCapture },
+      problems: async () => ({
+        missingGithub: [],
+        encryptionKey: null,
+        unreadable: [],
+        invalidStored: false,
+      }),
+    };
+    const put = (path: string, body: unknown) =>
+      new Request(`http://localhost${path}`, {
+        method: path.endsWith("test") ? "POST" : "PUT",
+        headers: { "content-type": "application/json", host: "localhost" },
+        body: JSON.stringify(body),
+      });
+    const version = () => readVersion(h.db);
+
+    // A valid save, a refused one (bad key text that holds a sentinel), a stale one, and credentials.
+    const ok = await handleSaveSettings(
+      put("/api/admin/settings", {
+        expectedVersion: await version(),
+        secrets: { github_webhook_secret: WEBHOOK_SECRET },
+      }),
+      deps,
+    );
+    expect(ok.status, JSON.stringify(output.records().filter((r) => /failed/.test(r.event)))).toBe(
+      200,
+    );
+    const refused = await handleSaveSettings(
+      put("/api/admin/settings", {
+        expectedVersion: await version(),
+        secrets: {
+          github_private_key: `not a key ${INSTALLATION_TOKEN}`,
+          anthropic_api_key: ANTHROPIC_KEY + " x",
+        },
+      }),
+      deps,
+    );
+    expect(refused.status).toBe(400);
+    expect(await refused.text()).not.toContain(INSTALLATION_TOKEN);
+    const stale = await handleSaveSettings(
+      put("/api/admin/settings", {
+        expectedVersion: 1,
+        secrets: { anthropic_api_key: ANTHROPIC_KEY },
+      }),
+      deps,
+    );
+    expect(stale.status).toBe(409);
+    const creds = await handleSaveProviderCredentials(
+      put("/api/admin/ask/credentials", {
+        expectedVersion: await version(),
+        secrets: { anthropic_api_key: ANTHROPIC_KEY },
+      }),
+      deps,
+    );
+    expect(creds.status).toBe(200);
+    expect(await creds.text()).not.toContain(ANTHROPIC_KEY);
+
+    // A GitHub test with submitted values, and with the stored ones.
+    const submitted = await handleTestGithub(
+      put("/api/admin/settings/test", {
+        appId: 12345,
+        installationId: INSTALLATION_ID,
+        privateKey: PEM,
+      }),
+      deps,
+    );
+    expect(submitted.status).toBe(200);
+    expect(await submitted.json()).toMatchObject({ result: "ok" });
+    const stored = await handleTestGithub(put("/api/admin/settings/test", {}), {
+      ...deps,
+      testLimiter: undefined,
+    });
+    expect([200, 429]).toContain(stored.status);
+
+    expectNoSentinel();
+    expect(events()).toContain("settings.changed");
+    expect(events()).toContain("settings.save_refused");
+    const changed = output.records().filter((r) => r.event === "settings.changed");
+    expect(JSON.stringify(changed)).toContain("secret:anthropic_api_key");
   });
 
   it("negative control: the check fails when a call site logs a credential under an innocent key", () => {

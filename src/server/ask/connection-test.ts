@@ -1,4 +1,4 @@
-import type { ProviderCredentials } from "../config/env";
+import type { ProviderCredentials } from "./credentials";
 import { ProviderError, createProvider, type ProviderDeps } from "./providers";
 
 /**

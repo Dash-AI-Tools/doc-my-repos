@@ -1,7 +1,7 @@
 import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ConfigError } from "../config/load";
+import { ConfigError } from "../config/errors";
 import { configSchema } from "../config/schema";
 import { withAdvisoryLock } from "../db/advisory-lock";
 import { createDb, type DbHandle } from "../db/client";
@@ -144,16 +144,16 @@ describe("fullRunOutcome", () => {
 });
 
 describe("bootSyncScheduler", () => {
-  const runtime = (): SchedulerRuntime => ({
-    loaded: { config: { sync: { intervalMinutes: 60, onStartup: true } } },
-    sync: {} as SyncContext,
+  const runtime = async (): Promise<SchedulerRuntime> => ({
+    config: { sync: { intervalMinutes: 60, onStartup: true } },
+    github: { sync: {} as SyncContext },
   });
   // Nothing fires during these tests.
   const quiet = { startupDelayMs: 3_600_000, drainIntervalMs: 0 };
 
   afterEach(async () => {
     // Stop whatever a test started so the per-process guard lets the next one boot.
-    const started = bootSyncScheduler({
+    const started = await bootSyncScheduler({
       getRuntime: runtime,
       env: { SYNC_SCHEDULER: "1" },
       process: null,
@@ -163,11 +163,11 @@ describe("bootSyncScheduler", () => {
     await started?.stop();
   });
 
-  it("logs one line and starts nothing when disabled", () => {
+  it("logs one line and starts nothing when disabled", async () => {
     const rec = recordingLogger();
     const getRuntime = vi.fn(runtime);
     expect(
-      bootSyncScheduler({
+      await bootSyncScheduler({
         getRuntime,
         env: { NODE_ENV: "development" },
         log: rec.log,
@@ -180,16 +180,13 @@ describe("bootSyncScheduler", () => {
     ]);
   });
 
-  it("logs an invalid config once and does not throw", () => {
+  it("logs unreadable settings once and does not throw", async () => {
     const rec = recordingLogger();
-    const getRuntime = vi.fn((): SchedulerRuntime => {
-      throw new ConfigError([
-        "GITHUB_APP_ID: is not set",
-        "docmyrepos.config.yml: sync.x: unknown field",
-      ]);
+    const getRuntime = vi.fn(async (): Promise<SchedulerRuntime> => {
+      throw new ConfigError(["DATABASE_URL: is not set"]);
     });
     expect(
-      bootSyncScheduler({
+      await bootSyncScheduler({
         getRuntime,
         env: { NODE_ENV: "production" },
         log: rec.log,
@@ -200,16 +197,15 @@ describe("bootSyncScheduler", () => {
     expect(rec.records).toHaveLength(1);
     expect(rec.records[0]).toMatchObject({
       level: "error",
-      event: "sync.scheduler.config_invalid",
-      problems: ["GITHUB_APP_ID: is not set", "docmyrepos.config.yml: sync.x: unknown field"],
+      event: "sync.scheduler.settings_unreadable",
     });
   });
 
-  it("logs other boot errors without throwing", () => {
+  it("logs other boot errors without throwing or leaking their text", async () => {
     const rec = recordingLogger();
     expect(
-      bootSyncScheduler({
-        getRuntime: () => {
+      await bootSyncScheduler({
+        getRuntime: async () => {
           throw new Error("database url ghs_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab");
         },
         env: { SYNC_SCHEDULER: "1" },
@@ -217,8 +213,27 @@ describe("bootSyncScheduler", () => {
         process: null,
       }),
     ).toBeNull();
-    expect(rec.events()).toEqual(["sync.scheduler.config_invalid"]);
+    expect(rec.events()).toEqual(["sync.scheduler.settings_unreadable"]);
     expect(rec.lines.join("")).not.toContain("ghs_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab");
+  });
+
+  it("starts before GitHub is configured and skips its ticks until it is", async () => {
+    const github: SchedulerRuntime["github"] = null;
+    const rec = recordingLogger();
+    const scheduler = await bootSyncScheduler({
+      getRuntime: async () => ({
+        config: { sync: { intervalMinutes: 60, onStartup: true } },
+        github,
+      }),
+      env: { SYNC_SCHEDULER: "1" },
+      log: rec.log,
+      process: null,
+      settings: { startupDelayMs: 0, drainIntervalMs: 0 },
+    });
+    expect(scheduler?.active).toBe(true);
+    await vi.waitFor(() => expect(rec.events()).toContain("sync.schedule.run"), { timeout: 5_000 });
+    expect(github).toBeNull();
+    await scheduler?.stop();
   });
 
   it("starts once per process and logs its settings", async () => {
@@ -230,9 +245,9 @@ describe("bootSyncScheduler", () => {
       process: null,
       settings: quiet,
     };
-    const first = bootSyncScheduler(options);
+    const first = await bootSyncScheduler(options);
     expect(first?.active).toBe(true);
-    expect(bootSyncScheduler(options)).toBe(first);
+    expect(await bootSyncScheduler(options)).toBe(first);
     expect(rec.records.map((r) => r.event)).toEqual([
       "sync.scheduler.invalid_setting",
       "sync.scheduler.started",
@@ -259,7 +274,7 @@ describe("bootSyncScheduler", () => {
       listenerCount: (event) => listeners.get(event)?.length ?? 0,
       kill,
     };
-    const scheduler = bootSyncScheduler({
+    const scheduler = await bootSyncScheduler({
       getRuntime: runtime,
       env: { SYNC_SCHEDULER: "1" },
       log: recordingLogger().log,
@@ -277,7 +292,7 @@ describe("bootSyncScheduler", () => {
     expect(kill).toHaveBeenCalledWith(4242, "SIGTERM");
   });
 
-  it("leaves the exit to another SIGINT handler when there is one", () => {
+  it("leaves the exit to another SIGINT handler when there is one", async () => {
     const listeners = new Map<string, (() => void)[]>([["SIGINT", [() => undefined]]]);
     const kill = vi.fn();
     const proc: SchedulerProcess = {
@@ -291,7 +306,7 @@ describe("bootSyncScheduler", () => {
       listenerCount: (event) => listeners.get(event)?.length ?? 0,
       kill,
     };
-    const scheduler = bootSyncScheduler({
+    const scheduler = await bootSyncScheduler({
       getRuntime: runtime,
       env: { SYNC_SCHEDULER: "1" },
       log: recordingLogger().log,
@@ -459,8 +474,8 @@ describeDb("scheduled full syncs against a real database", () => {
     const fake = new FakeGitHub({ repos: [repo(1, "one"), repo(2, "two")] });
     const ctx = ctxFor(fake);
     const rec = recordingLogger();
-    const scheduler = bootSyncScheduler({
-      getRuntime: () => ({ loaded: { config: configSchema.parse({}) }, sync: ctx }),
+    const scheduler = await bootSyncScheduler({
+      getRuntime: async () => ({ config: configSchema.parse({}), github: { sync: ctx } }),
       env: { SYNC_SCHEDULER: "1" },
       log: rec.log,
       process: null,

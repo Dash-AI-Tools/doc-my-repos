@@ -13,9 +13,9 @@ sources:
   - src/server/admin/ask.ts
   - src/lib/ask/answer.ts
   - src/lib/ask/sections.ts
-  - src/server/config/env.ts
+  - src/server/ask/credentials.ts
+  - src/server/settings/store.ts
   - src/server/config/schema.ts
-  - docmyrepos.config.example.yml
 generated: 2026-10-16
 verified: 2026-10-16
 stale_after: 2999-01-01
@@ -29,48 +29,35 @@ Ask is **off by default**. Nothing about it appears in the portal until an admin
 
 ## Setting it up
 
-Setting up has two parts, done by two different people, because credentials and endpoints stay with whoever runs the server.
+An **admin** does all of it on the **Ask** tab of **Admin > Workspace configuration** (`/admin/workspace?tab=ask`); nothing is set in the server environment except `SETTINGS_ENCRYPTION_KEY`, which encrypts the keys (see [Configuration](./configuration.md#secrets)).
 
-1. **The operator sets credentials in the environment** (see `.env.example`):
+1. **Enter the credentials** under _Credentials_:
 
-   | Variable               | Meaning                                                                                 |
-   | ---------------------- | --------------------------------------------------------------------------------------- |
-   | `AI_ANTHROPIC_API_KEY` | An Anthropic API key. Enables the `anthropic` provider.                                 |
-   | `AI_OPENAI_BASE_URL`   | Base URL of an OpenAI-compatible endpoint, for example `https://models.example.com/v1`. |
-   | `AI_OPENAI_API_KEY`    | The key for that endpoint. Optional only when the address is loopback.                  |
+   | Field                      | Meaning                                                                                 |
+   | -------------------------- | --------------------------------------------------------------------------------------- |
+   | Anthropic API key          | An Anthropic API key. Makes the `anthropic` provider available.                         |
+   | OpenAI-compatible base URL | Base URL of an OpenAI-compatible endpoint, for example `https://models.example.com/v1`. |
+   | OpenAI-compatible API key  | The key for that endpoint. May be left out only when the address is loopback.           |
 
-   An OpenAI-compatible endpoint covers hosted providers and local servers such as Ollama or vLLM. The base URL must be `https`; plain `http` is accepted only for loopback addresses (`localhost`, `127.x.x.x`, `::1`), where the key may be left out. A value that breaks a rule is reported by variable name on the status page and the admin page, never printed, and that provider is simply unavailable: the rest of the portal starts and works as before.
+   An OpenAI-compatible endpoint covers hosted providers and local servers such as Ollama or vLLM. The base URL must be `https`; plain `http` is accepted only for loopback addresses (`localhost`, `127.x.x.x`, `::1`), where the key may be left out. A value that breaks a rule is refused when you save it, with the field named. Keys are **write-only**: after saving, the page shows only that a key is set and when it changed, never the key.
 
-2. **An admin chooses the provider and model** on **Admin → Ask** (`/admin/ask`): turn Ask on, pick a provider among those the operator has set up, enter the model name, press **Test connection**, and **Save**. The choice is stored in the database and applies to the next question, with no restart. Turning Ask off keeps the saved provider and model.
+2. **Choose the provider and model**: turn Ask on, pick a provider whose credentials are entered, type the model name, press **Test connection**, and **Save**. It applies to the next question, with no restart. Turning Ask off keeps the saved provider, model and credentials.
 
-The page offers no field for a key or an address. An admin can only choose among what the operator provisioned, so nobody with the admin role can send the key to another host. The model name is the one thing the admin types: it is checked (1 to 100 characters, letters, digits and `. _ : / @ + -`) and only ever sent as a body field to the provider.
+The model name is checked (1 to 100 characters, letters, digits and `. _ : / @ + -`) and only ever sent as a body field to the provider. The credentials are stored encrypted, only an admin can read or change them, and each change is recorded (who and which field, never the value).
 
-The **Test connection** button sends one fixed request ("Reply with the single word OK.", at most 8 tokens) with the environment credentials and reports one of `ok`, `rejected`, `not found`, `unavailable` or `timed out`. It never shows provider text, and it does not save. It is limited to 5 per minute.
+The **Test connection** button sends one fixed request ("Reply with the single word OK.", at most 8 tokens) with the stored credentials and reports one of `ok`, `rejected`, `not found`, `unavailable` or `timed out`. It never shows provider text, and it does not save. It is limited to 5 per minute.
 
 ### Examples
 
-An Anthropic account:
+An Anthropic account: enter the key under _Anthropic API key_.
 
-```bash
-AI_ANTHROPIC_API_KEY=your-key
-```
+A hosted OpenAI-compatible provider: base URL `https://models.example.com/v1` and its key.
 
-A hosted OpenAI-compatible provider:
-
-```bash
-AI_OPENAI_BASE_URL=https://models.example.com/v1
-AI_OPENAI_API_KEY=your-key
-```
-
-A model on the same machine (Ollama), no key:
-
-```bash
-AI_OPENAI_BASE_URL=http://127.0.0.1:11434/v1
-```
+A model on the same machine (Ollama), no key: base URL `http://127.0.0.1:11434/v1`.
 
 ## What a reader sees
 
-- An **Ask** link in the header, a **Prefer an answer? Ask instead** link on the search page (the query is filled in, not sent), and **Ask about this repository** on a repository page.
+- A floating **Ask** button at the bottom right of every page, which opens the chat in a panel (the panel's full-page button opens the same chat at `/ask`); an **Ask** link in the header, a **Prefer an answer? Ask instead** link on the search page (the query is filled in, not sent), and **Ask about this repository** on a repository page.
 - The Ask page names the provider that receives the question, and the host name when it is an OpenAI-compatible endpoint.
 - The answer streams in. **Stop** keeps what was received. Every answer lists its **references**, each a link to the document at the right heading, and the answer cites them with `[1]`, `[2]`.
 - **Follow-up questions** work: the last four exchanges travel with each new question. **New conversation** clears them. Reloading the page starts empty.
@@ -98,17 +85,17 @@ This reduces prompt injection to the wording of an answer, which a reader can ch
 
 ## Limits
 
-| Limit                                 | Default          | Setting                      |
-| ------------------------------------- | ---------------- | ---------------------------- |
-| Questions per user per day            | 100              | `ask.questionsPerDay`        |
-| Questions per user in ten minutes     | 20               | `ask.questionsPerTenMinutes` |
-| Answer length (output tokens)         | 1000             | `ask.maxOutputTokens`        |
-| Answers at once in one server process | 8                | `ask.maxConcurrent`          |
-| Question length                       | 2,000 characters | fixed                        |
-| One answer at a time per user         | yes              | fixed                        |
-| Time for one answer                   | 60 seconds       | fixed                        |
+| Limit                                 | Default          | Setting                       |
+| ------------------------------------- | ---------------- | ----------------------------- |
+| Questions per user per day            | 100              | Ask limits: questions per day |
+| Questions per user in ten minutes     | 20               | Ask limits: ten minutes       |
+| Answer length (output tokens)         | 1000             | Ask limits: answer length     |
+| Answers at once in one server process | 8                | Ask limits: answers at once   |
+| Question length                       | 2,000 characters | fixed                         |
+| One answer at a time per user         | yes              | fixed                         |
+| Time for one answer                   | 60 seconds       | fixed                         |
 
-All four settings are in the `ask` block of `docmyrepos.config.yml` (see [Configuration](./configuration.md)). There is no `enabled` key there: on and off is the admin's choice. A user over a limit gets a message with the time they can ask again (`429` with `Retry-After`); a busy server answers `503`. Questions that are refused, or find no documents, do not count. The one-at-a-time rule is kept per server process, so a second instance could allow two; the daily and ten-minute limits are counted in the database and hold across instances.
+The four settings are under _Ask limits_ on **Admin > Workspace configuration** (see [Configuration](./configuration.md)). Whether Ask is on is set on the Ask page. A user over a limit gets a message with the time they can ask again (`429` with `Retry-After`); a busy server answers `503`. Questions that are refused, or find no documents, do not count. The one-at-a-time rule is kept per server process, so a second instance could allow two; the daily and ten-minute limits are counted in the database and hold across instances.
 
 ## Usage records and privacy
 
@@ -122,4 +109,4 @@ The answer streams as server-sent events from `POST /api/ask`. The response carr
 
 ## Failures
 
-A provider that is down, rejects the key, is slow or sends something unexpected gives the reader a short fixed message and a **Try again** button, never provider text, a URL or a key. If an admin's saved choice loses its credentials (the operator removes the variable), Ask hides itself and `/ask` answers 404; the admin page and `/status` say which variable is missing, and the rest of the portal keeps working.
+A provider that is down, rejects the key, is slow or sends something unexpected gives the reader a short fixed message and a **Try again** button, never provider text, a URL or a key. If an admin's saved choice loses its credentials (a key is cleared, or the encryption key changed so it cannot be read), Ask hides itself at once and `/ask` answers 404; the admin page and `/status` say which setting is missing, and the rest of the portal keeps working.

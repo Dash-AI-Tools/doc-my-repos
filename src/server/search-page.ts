@@ -12,8 +12,7 @@ import {
 import { expectedFailureKind } from "./home";
 import { anchorId, SLUG_ID } from "./markdown/sanitize";
 import { searchDocuments, searchFacets, type SearchHit } from "./queries";
-import { getRuntime } from "./runtime";
-import type { Db } from "./db/client";
+import { getDb, type Db } from "./db/client";
 import { logger, type LogFn } from "./log";
 
 /**
@@ -33,7 +32,7 @@ import { logger, type LogFn } from "./log";
  */
 
 export interface SearchPageDeps {
-  /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
+  /** The database to read. Default: the shared handle's. May throw `ConfigError`. */
   readonly db?: () => Db;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
   readonly log?: LogFn;
@@ -77,7 +76,7 @@ export async function loadSearchPage(
 ): Promise<SearchPageView> {
   if (state.q === "") return { status: "idle", state };
   const log = deps.log ?? logger.error;
-  const db = deps.db ?? (() => getRuntime().db.db);
+  const db = deps.db ?? (() => getDb().db);
   const params = {
     q: state.q,
     repo: state.repos,

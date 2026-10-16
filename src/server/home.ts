@@ -1,9 +1,8 @@
 import "server-only";
 
-import { ConfigError } from "./config/load";
-import { describeDbError, type Db } from "./db/client";
+import { ConfigError } from "./config/errors";
+import { describeDbError, type Db, getDb } from "./db/client";
 import { listRepos, type RepoSummary } from "./queries";
-import { getRuntime } from "./runtime";
 import { logger, type LogFn } from "./log";
 
 /**
@@ -35,7 +34,7 @@ export type HomeData =
   | { readonly status: "error"; readonly loadedAt: Date };
 
 export interface HomeDeps {
-  /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
+  /** The database to read. Default: the shared handle's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
@@ -57,7 +56,7 @@ export function expectedFailureKind(error: unknown): string | null {
 export async function loadHome(deps: HomeDeps = {}): Promise<HomeData> {
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? logger.error;
-  const db = deps.db ?? (() => getRuntime().db.db);
+  const db = deps.db ?? (() => getDb().db);
   try {
     // Visibility is already applied by `listRepos`, so a blocked starred repo never gets here.
     const all = await listRepos(db());

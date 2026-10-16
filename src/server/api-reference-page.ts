@@ -3,11 +3,10 @@ import "server-only";
 import { githubBlobUrl } from "@/lib/github-links";
 import { apiReferenceUrl, apiSpecPathFromSegments } from "@/lib/routes";
 
-import type { Db } from "./db/client";
+import { type Db, getDb } from "./db/client";
 import { expectedFailureKind } from "./home";
 import { getApiSpec, getRepo, type ApiSpecDetail, type RepoDetail } from "./queries";
 import { isRepoRoute } from "./repo-page";
-import { getRuntime } from "./runtime";
 import { logger, type LogFn } from "./log";
 
 /**
@@ -46,7 +45,7 @@ export type ApiReferenceData =
   | { readonly status: "error"; readonly loadedAt: Date };
 
 export interface ApiReferenceDeps {
-  /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
+  /** The database to read. Default: the shared handle's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
@@ -64,7 +63,7 @@ export async function loadApiReference(
   if (specPath === null) return { status: "not_found" };
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? logger.error;
-  const db = deps.db ?? (() => getRuntime().db.db);
+  const db = deps.db ?? (() => getDb().db);
   try {
     const handle = db();
     const repo = await getRepo(handle, owner, name);

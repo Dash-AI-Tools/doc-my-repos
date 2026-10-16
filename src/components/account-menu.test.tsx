@@ -89,8 +89,7 @@ describe("AccountMenu", () => {
       "admin@example.com",
       "Users",
       "Repository access",
-      "Ask",
-      "GitHub configuration",
+      "Workspace configuration",
       "Branding",
       "Sign out",
     ]);
@@ -101,8 +100,7 @@ describe("AccountMenu", () => {
     fireEvent.click(screen.getByTestId("account-menu-trigger"));
     expect(screen.getByRole("link", { name: "Users" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Repository access" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "GitHub configuration" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Ask" }).getAttribute("href")).toBe("/admin/ask");
+    expect(screen.getByRole("link", { name: "Workspace configuration" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Branding" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Administration" })).toBeNull();
     cleanup();

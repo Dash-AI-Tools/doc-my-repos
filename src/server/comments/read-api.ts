@@ -72,7 +72,7 @@ export async function handleListComments(
   request: Request,
   deps: CommentDeps = {},
 ): Promise<Response> {
-  const enabled = isEnabled(deps);
+  const enabled = await isEnabled(deps);
   if (typeof enabled === "object") return commentResponse(enabled);
   if (!enabled) return commentResponse(failure(404, "not_found"));
   try {

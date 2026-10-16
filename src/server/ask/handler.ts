@@ -6,13 +6,17 @@ import { encodeEvent, type AskErrorKind, type AskEvent, type AskReference } from
 import { docUrl } from "@/lib/routes";
 
 import { requireUser, type CurrentUser } from "../auth/current-user";
-import { providerAvailability, providerCredentials, type EnvSource } from "../config/env";
+import {
+  providerAvailability,
+  providerCredentials,
+  type ProviderSettingsInput,
+} from "./credentials";
 import { getDb, type Db } from "../db/client";
 import { errorFields, logger, type Logger } from "../log";
 import { anchorId, SLUG_ID } from "../markdown/sanitize";
 import type { QueryOptions } from "../queries";
 import { requireSameOrigin } from "../same-origin";
-import { getRuntime } from "../runtime";
+import { getWorkspace } from "../workspace";
 import {
   askGate,
   checkWindows,
@@ -83,9 +87,16 @@ export interface AskLimitsConfig {
   readonly maxConcurrent: number;
 }
 
+/** What the handler needs from the workspace: provider settings and the limits. */
+export interface AskWorkspace {
+  readonly providers: ProviderSettingsInput;
+  readonly config: { readonly ask: AskLimitsConfig };
+}
+
 export interface AskHandlerDeps {
   readonly db?: Db;
-  readonly env?: EnvSource;
+  /** The current workspace settings. Default `getWorkspace`. */
+  readonly workspace?: () => Promise<AskWorkspace>;
   readonly limits?: () => AskLimitsConfig;
   readonly user?: (db: Db) => Promise<CurrentUser>;
   readonly log?: Logger;
@@ -212,15 +223,17 @@ export async function handleAsk(request: Request, deps: AskHandlerDeps = {}): Pr
   // 1. Resolve availability once. Anything but `ready` is a 404, so a disabled Ask is invisible.
   let db: Db;
   let state;
+  let workspace: AskWorkspace;
   try {
     db = deps.db ?? getDb().db;
-    state = resolveAsk(await readAskSettings(db), providerAvailability(deps.env ?? process.env));
+    workspace = await (deps.workspace ?? getWorkspace)();
+    state = resolveAsk(await readAskSettings(db), providerAvailability(workspace.providers));
   } catch (error) {
     log.error("ask.request.failed", { stage: "settings", ...errorFields(error) });
     return json(503, { error: MESSAGES.unavailable, code: "unavailable" });
   }
   if (state.state !== "ready") return json(404, { error: MESSAGES.not_found, code: "not_found" });
-  const credentials = providerCredentials(deps.env ?? process.env, state.provider);
+  const credentials = providerCredentials(workspace.providers, state.provider);
   if (credentials === null) return json(404, { error: MESSAGES.not_found, code: "not_found" });
 
   // 2. Session.
@@ -253,13 +266,7 @@ export async function handleAsk(request: Request, deps: AskHandlerDeps = {}): Pr
   }
   const body = parsed.data;
 
-  let limits: AskLimitsConfig;
-  try {
-    limits = (deps.limits ?? (() => getRuntime().loaded.config.ask))();
-  } catch (error) {
-    log.error("ask.request.failed", { stage: "config", ...errorFields(error) });
-    return json(503, { error: MESSAGES.unavailable, code: "unavailable" });
-  }
+  const limits: AskLimitsConfig = deps.limits ? deps.limits() : workspace.config.ask;
 
   // 5. Concurrency: one answer per user, a cap per process.
   const slot = (deps.gate ?? askGate).tryEnter(user.id, limits.maxConcurrent);

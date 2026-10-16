@@ -1,6 +1,13 @@
 import { defineConfig, devices } from "@playwright/test";
 
-import { SKIP_DB, STACKS, fakeProviderUrl, serverEnv, stackUrl } from "./e2e/support/stack";
+import {
+  SKIP_DB,
+  STACKS,
+  fakeGithubUrl,
+  fakeProviderUrl,
+  serverEnv,
+  stackUrl,
+} from "./e2e/support/stack";
 
 /**
  * End-to-end tests (tasks 7.8 and 9.2). `pnpm test:e2e` builds the app once and serves the
@@ -13,8 +20,11 @@ import { SKIP_DB, STACKS, fakeProviderUrl, serverEnv, stackUrl } from "./e2e/sup
  *   exec next start --port 3100` (the dead `DATABASE_URL` keeps your own branding out of the run).
  * - 3101 `seeded`: a throwaway database filled from `e2e/support/seed-data.ts`.
  * - 3102 `empty`: a throwaway, migrated, empty database.
- *   (3107 `ask` is the comments data plus a fake model provider on 3190 for Ask: its server has
- *   `AI_OPENAI_BASE_URL` set, so an admin can turn Ask on there; no other server has a provider.
+ *   (3107 `ask` is the comments data plus a fake model provider on 3190 for Ask: its database has
+ *   the fake provider saved as the OpenAI-compatible endpoint, so an admin can turn Ask on there;
+ *   no other database has a provider. 3108 `settings` starts with no settings at all and talks to a
+ *   fake GitHub on 3191 (its GitHub requests are redirected by `e2e/support/redirect-github.cjs`),
+ *   for the specs that enter the GitHub App and provider settings in the admin interface.
  *   3104 `starred` is a second seeded database for specs that star and reorder repositories, so
  *   they cannot disturb the read-only specs on `seeded`. 3105 `comments` adds seeded users and
  *   comments and is acted on with the `x-e2e-user` header; 3106 `commentsoff` is the same data
@@ -61,13 +71,22 @@ export default defineConfig({
     },
     ...(SKIP_DB
       ? []
-      : (["seeded", "empty", "starred", "comments", "commentsoff", "ask"] as const).map((name) => ({
-          command: start(STACKS[name].port),
-          url: stackUrl(name),
-          reuseExistingServer: false,
-          timeout: 60_000,
-          env: serverEnv(name),
-        }))),
+      : (["seeded", "empty", "starred", "comments", "commentsoff", "ask", "settings"] as const).map(
+          (name) => ({
+            command: start(STACKS[name].port),
+            url: stackUrl(name),
+            reuseExistingServer: false,
+            timeout: 60_000,
+            env: serverEnv(name),
+          }),
+        )),
+    {
+      // The fake GitHub API of the `settings` stack (loopback only, no real GitHub).
+      command: "pnpm exec tsx e2e/support/fake-github-server.ts",
+      url: `${fakeGithubUrl}/__control/health`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
     {
       // The scripted model provider of the `ask` stack (loopback only, no real provider).
       command: "pnpm exec tsx e2e/support/fake-provider-server.ts",

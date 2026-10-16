@@ -3,11 +3,11 @@ import "server-only";
 import { providerLabel } from "@/lib/ask/providers";
 
 import { getAskState, type AskState } from "./ask/settings";
-import { providerAvailability, type EnvSource } from "./config/env";
-import type { Db } from "./db/client";
+import { providerAvailability, type ProviderSettingsInput } from "./ask/credentials";
+import { type Db, getDb } from "./db/client";
 import { errorFields, logger, type LogFn } from "./log";
 import { getRepo, listRepos } from "./queries";
-import { getRuntime } from "./runtime";
+import { getWorkspace } from "./workspace";
 
 /**
  * Data for the `/ask` page. Ask must be `ready` (on, with a usable provider); anything else is
@@ -35,7 +35,7 @@ export interface AskPageParams {
 export interface AskPageDeps {
   readonly state?: () => Promise<AskState>;
   readonly db?: () => Db;
-  readonly env?: EnvSource;
+  readonly providers?: () => Promise<ProviderSettingsInput>;
   readonly log?: LogFn;
 }
 
@@ -53,7 +53,9 @@ export async function loadAskPage(
   const state = await (deps.state ?? (() => getAskState()))();
   if (state.state !== "ready") return { status: "off" };
 
-  const availability = providerAvailability(deps.env ?? process.env);
+  const availability = providerAvailability(
+    await (deps.providers ?? (async () => (await getWorkspace()).providers))(),
+  );
   const host =
     state.provider === "openai-compatible" ? (availability[state.provider].host ?? null) : null;
   const initialQuestion = first(params.q).trim().slice(0, MAX_PREFILL_CHARS);
@@ -61,7 +63,7 @@ export async function loadAskPage(
   let scope: string | null = null;
   let repos: string[] = [];
   try {
-    const db = (deps.db ?? (() => getRuntime().db.db))();
+    const db = (deps.db ?? (() => getDb().db))();
     const match = REPO_PARAM.exec(first(params.repo).trim());
     const [found, listed] = await Promise.all([
       match ? getRepo(db, match[1]!, match[2]!) : Promise.resolve(null),

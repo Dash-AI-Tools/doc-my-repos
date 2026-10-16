@@ -67,8 +67,11 @@ export interface ManualSyncService {
 export interface ManualSyncDeps {
   /** The configured sync secret, or null when it is missing or invalid. Must not touch the DB. */
   readSecret(): string | null;
-  /** Builds the service from freshly re-read config. Throws `ConfigError` when it is invalid. */
-  getService(): ManualSyncService;
+  /**
+   * Builds the service from the current settings. Rejects with `ConfigError` when the environment
+   * is invalid, or `NotConfiguredError` when the GitHub settings are incomplete.
+   */
+  getService(): ManualSyncService | Promise<ManualSyncService>;
   now?: () => number;
   /** Structured log. Only event names, outcome words, counts and problem names are passed. */
   log?: Logger;
@@ -380,8 +383,15 @@ export async function handleManualSync(request: Request, deps: ManualSyncDeps): 
 
     let service: ManualSyncService;
     try {
-      service = deps.getService();
+      service = await deps.getService();
     } catch (error) {
+      if (error instanceof Error && error.name === "NotConfiguredError") {
+        // The names of the missing settings, never values.
+        log.warn("sync_api.not_configured", {
+          missing: "missing" in error ? [...(error.missing as string[])] : [],
+        });
+        return notConfigured();
+      }
       if (isConfigError(error)) {
         // `problems` name variables and config fields, never values.
         log.error("sync_api.config_invalid", { problems: [...error.problems] });

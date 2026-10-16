@@ -1,6 +1,5 @@
 import { getDb, type Db } from "@/server/db/client";
 import { authErrorResponse, requireAdmin } from "@/server/auth/current-user";
-import { readGithubConfigSummary } from "@/server/admin/github-config";
 import { reorderStarredRepos, updateRepoFlags } from "@/server/admin/repos";
 import { createUser, listUsers, updateUser } from "@/server/admin/users";
 import { readBrandingSettings } from "@/server/branding";
@@ -36,12 +35,6 @@ export async function getAdminRepos(db: Db | null = null) {
   await requireAdmin(db);
   const options: QueryOptions = { visibility: allowAllRepos };
   return listRepos(db ?? getDb().db, {}, options);
-}
-
-/** Read-only GitHub/sync configuration summary. Secrets are never included. */
-export async function getAdminGithubConfig(db: Db | null = null) {
-  await requireAdmin(db);
-  return readGithubConfigSummary();
 }
 
 async function bodyOf(
@@ -153,15 +146,6 @@ export async function handleReorderStarred(
     return Response.json({ repos: result.repos });
   } catch {
     return Response.json({ error: "Internal error" }, { status: 500 });
-  }
-}
-
-/** Read-only GitHub/sync configuration summary. Secrets are never included. */
-export async function handleGithubConfig(db: Db | null = null): Promise<Response> {
-  try {
-    return Response.json({ config: await getAdminGithubConfig(db) });
-  } catch (error) {
-    return authErrorResponse(error);
   }
 }
 

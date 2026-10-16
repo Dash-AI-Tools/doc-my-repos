@@ -41,24 +41,30 @@ describe("docs/github-app-setup.md", () => {
     expect(guide).toContain("/api/webhooks/github");
     expect(existsSync(resolve(ROOT, "src/app/api/webhooks/github/route.ts"))).toBe(true);
     expect(guide).toMatch(/webhook secret/i);
-    expect(guide).toContain("GITHUB_WEBHOOK_SECRET");
+    expect(guide).toContain("/admin/workspace");
   });
 
-  it("explains where to find the App id, the private key and the installation id", () => {
+  it("explains where to find the App id, the private key and the installation id, and where they go", () => {
     const env = read(".env.example");
-    for (const variable of [
+    for (const field of ["App ID", "Installation ID", "Private key", "Webhook secret"]) {
+      expect(guide, field).toContain(field);
+    }
+    expect(guide).toMatch(/\*\*App id\.\*\*/);
+    expect(guide).toMatch(/\*\*Private key\.\*\*/);
+    expect(guide).toMatch(/\*\*Installation id\.\*\*/);
+    // They are entered in the admin interface now, so the environment example no longer asks.
+    for (const retired of [
       "GITHUB_APP_ID",
       "GITHUB_APP_PRIVATE_KEY",
       "GITHUB_APP_PRIVATE_KEY_PATH",
       "GITHUB_APP_INSTALLATION_ID",
       "GITHUB_WEBHOOK_SECRET",
     ]) {
-      expect(guide, variable).toContain(variable);
-      expect(env, variable).toMatch(new RegExp(`^${variable}=`, "m"));
+      expect(guide, retired).not.toContain(retired);
+      expect(env, retired).not.toMatch(new RegExp(`^${retired}=`, "m"));
     }
-    expect(guide).toMatch(/\*\*App id\.\*\*/);
-    expect(guide).toMatch(/\*\*Private key\.\*\*/);
-    expect(guide).toMatch(/\*\*Installation id\.\*\*/);
+    expect(env).toMatch(/^SETTINGS_ENCRYPTION_KEY=/m);
+    expect(guide).toContain("SETTINGS_ENCRYPTION_KEY");
   });
 
   it("never asks for a personal access token", () => {

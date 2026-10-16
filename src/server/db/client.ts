@@ -4,7 +4,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import { parseDatabaseUrl } from "../config/env";
-import { loadConfig } from "../config/load";
+import { ConfigError } from "../config/errors";
 import * as schema from "./schema";
 
 export type Db = NodePgDatabase<typeof schema>;
@@ -103,12 +103,17 @@ const CACHE_KEY = Symbol.for("docmyrepos.db");
 type Cache = { [CACHE_KEY]?: DbHandle };
 
 /**
- * The shared database handle, created on first use from `DATABASE_URL` through the validated
- * config. Never called at import time. Cached on `globalThis` so Next.js dev reloads reuse it.
+ * The shared database handle, created on first use from `DATABASE_URL`. Never called at import
+ * time. Cached on `globalThis` so Next.js dev reloads reuse it. Throws `ConfigError` (variable name
+ * only) when `DATABASE_URL` is missing or invalid.
  */
-export function getDb(): DbHandle {
+export function getDb(env: Readonly<Record<string, string | undefined>> = process.env): DbHandle {
   const cache = globalThis as Cache;
-  cache[CACHE_KEY] ??= createDb(loadConfig().env.databaseUrl.reveal());
+  if (cache[CACHE_KEY] === undefined) {
+    const parsed = parseDatabaseUrl(env);
+    if (parsed.url === null) throw new ConfigError(parsed.problems);
+    cache[CACHE_KEY] = createDb(parsed.url.reveal());
+  }
   return cache[CACHE_KEY];
 }
 

@@ -221,34 +221,37 @@ describe("handleWebhookRequest: rejected signatures", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it("never verifies with an unconfigured secret: 500 even for an unsigned request", async () => {
+  it("never verifies with an unconfigured secret: 401 even for a signed request", async () => {
     for (const value of [null, "", "0123456789abcde"]) {
       const { handle, dispatch, log } = setup({ readSecret: vi.fn(() => value) });
-      const response = await handle(delivery({ signature: null }));
-      expect(response.status).toBe(500);
-      expect(await response.json()).toEqual({
-        error: "misconfigured",
-        message: "The server is not configured for webhooks.",
-      });
+      const response = await handle(delivery());
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
       expect(dispatch).not.toHaveBeenCalled();
       expect(log.records).toEqual([
         expect.objectContaining({
-          level: "error",
+          level: "warn",
           event: "webhook.not_configured",
-          variable: "GITHUB_WEBHOOK_SECRET",
+          setting: "github_webhook_secret",
         }),
       ]);
     }
   });
 
-  it("treats a throwing secret reader as misconfigured", async () => {
+  it("reads the secret asynchronously", async () => {
+    const { handle, dispatch } = setup({ readSecret: vi.fn(async () => SECRET) });
+    expect((await handle(delivery())).status).toBe(202);
+    expect(dispatch).toHaveBeenCalled();
+  });
+
+  it("treats a throwing secret reader as not configured", async () => {
     const { handle, dispatch } = setup({
       readSecret: vi.fn(() => {
         throw new Error(`boom ${SECRET}`);
       }),
     });
     const response = await handle(delivery());
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(401);
     expect(await response.text()).not.toContain(SECRET);
     expect(dispatch).not.toHaveBeenCalled();
   });

@@ -13,6 +13,8 @@ import {
 import { askStatusLine } from "@/lib/ask/status";
 import { fieldClass } from "@/lib/ui";
 
+import { SecretField } from "./secret-field";
+
 /** What the admin page knows, as `GET /api/admin/ask` returns it (structural, no server import). */
 export interface AskSettingsView {
   readonly settings: {
@@ -31,6 +33,13 @@ export interface AskSettingsView {
       }
     >
   >;
+  /** Stored provider credentials: whether each is set, never the value. */
+  readonly credentials: {
+    readonly version: number;
+    readonly openaiBaseUrl: string | null;
+    readonly anthropicKey: { readonly set: boolean; readonly updatedAt: string | null };
+    readonly openaiKey: { readonly set: boolean; readonly updatedAt: string | null };
+  };
   readonly state:
     | { readonly state: "off" }
     | { readonly state: "ready"; readonly provider: string; readonly model: string }
@@ -65,16 +74,16 @@ function optionLabel(view: AskSettingsView, provider: AiProvider): string {
     return `${providerLabel(provider)} (configured${group.host ? `, ${group.host}` : ""})`;
   }
   if (group.missing.length > 0) {
-    return `${providerLabel(provider)} (missing ${group.missing.join(", ")})`;
+    return `${providerLabel(provider)} (missing: ${group.missing.join(", ")})`;
   }
   return `${providerLabel(provider)} (not usable)`;
 }
 
 /**
- * The `/admin/ask` form (ask-the-docs design decision 9): an on/off switch, a provider choice among
- * the two the operator may have provisioned, a model name, and Save and Test. Credentials and
- * endpoints are never entered or shown here; the page only reports whether they are set, by
- * variable name. Results are fixed messages in a `role="status"` region.
+ * The `/admin/ask` form (ask-the-docs design decision 9, workspace-settings decision 7): an on/off
+ * switch, a provider choice, a model name, Save and Test, and the provider credentials. Keys are
+ * write-only: the page only reports whether each is set and when it changed, never the value.
+ * Results are fixed messages in a `role="status"` region.
  */
 export function AskSettingsForm({ initial }: { readonly initial: AskSettingsView }) {
   const router = useRouter();
@@ -84,7 +93,14 @@ export function AskSettingsForm({ initial }: { readonly initial: AskSettingsView
   const [model, setModel] = useState(initial.settings.model ?? "");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"save" | "test" | null>(null);
+  const [busy, setBusy] = useState<"save" | "test" | "credentials" | null>(null);
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [openaiKey, setOpenaiKey] = useState("");
+  const [openaiUrl, setOpenaiUrl] = useState(initial.credentials.openaiBaseUrl ?? "");
+  const [clearAnthropic, setClearAnthropic] = useState(false);
+  const [clearOpenai, setClearOpenai] = useState(false);
+  const [credProblems, setCredProblems] = useState<string[]>([]);
+  const [credMessage, setCredMessage] = useState<string | null>(null);
 
   const chosen = isAiProvider(provider) ? provider : null;
   const chosenGroup = chosen ? view.providers[chosen] : null;
@@ -184,6 +200,59 @@ export function AskSettingsForm({ initial }: { readonly initial: AskSettingsView
     }
   }
 
+  async function onSaveCredentials(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    setBusy("credentials");
+    setCredProblems([]);
+    setCredMessage(null);
+    const secrets: Record<string, string | null> = {};
+    if (clearAnthropic) secrets.anthropic_api_key = null;
+    else if (anthropicKey.trim() !== "") secrets.anthropic_api_key = anthropicKey;
+    if (clearOpenai) secrets.openai_api_key = null;
+    else if (openaiKey.trim() !== "") secrets.openai_api_key = openaiKey;
+    try {
+      const response = await fetch("/api/admin/ask/credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expectedVersion: view.credentials.version,
+          openaiBaseUrl: openaiUrl.trim() === "" ? null : openaiUrl.trim(),
+          secrets,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        code?: string;
+        problems?: string[];
+      };
+      if (response.status === 409) {
+        setCredMessage(data.error ?? "The settings changed. Reload the page and try again.");
+        return;
+      }
+      if (!response.ok) {
+        setCredProblems(data.problems ?? [data.error ?? "The request failed."]);
+        return;
+      }
+      // Re-read the Ask view so provider availability and the stored state are current.
+      const fresh = await fetch("/api/admin/ask", { cache: "no-store" });
+      if (fresh.ok) {
+        const next = (await fresh.json()) as AskSettingsView;
+        setView(next);
+        setOpenaiUrl(next.credentials.openaiBaseUrl ?? "");
+      }
+      setAnthropicKey("");
+      setOpenaiKey("");
+      setClearAnthropic(false);
+      setClearOpenai(false);
+      setCredMessage("Credentials saved. The next question uses them.");
+      router.refresh();
+    } catch {
+      setCredMessage("The request failed. Check your connection and try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const switchHint = canEnable
     ? "Ask uses the provider and model below."
     : "To turn Ask on, choose a configured provider and enter a model name.";
@@ -257,7 +326,7 @@ export function AskSettingsForm({ initial }: { readonly initial: AskSettingsView
             {chosenGroup && !chosenGroup.configured ? (
               <p className="text-sm text-muted-foreground">
                 {chosenGroup.problem ??
-                  `The server operator must set ${chosenGroup.missing.join(", ")} before this provider can be used.`}
+                  `Enter ${chosenGroup.missing.join(", ")} under Credentials below before this provider can be used.`}
               </p>
             ) : null}
             {errors.provider ? (
@@ -319,6 +388,91 @@ export function AskSettingsForm({ initial }: { readonly initial: AskSettingsView
             className="min-h-5 text-sm text-muted-foreground"
           >
             {message}
+          </p>
+        </div>
+      </form>
+
+      <form
+        onSubmit={onSaveCredentials}
+        noValidate
+        aria-labelledby="ask-credentials-heading"
+        className="flex flex-col gap-5 border-t border-foreground pt-5"
+      >
+        <div className="flex flex-col gap-1">
+          <h2 id="ask-credentials-heading" className="text-sm font-bold">
+            Credentials
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Keys are encrypted when saved and never shown again. Leave a key empty to keep the
+            stored one.
+          </p>
+        </div>
+        <SecretField
+          label="Anthropic API key"
+          isSet={view.credentials.anthropicKey.set}
+          updatedAt={view.credentials.anthropicKey.updatedAt}
+          value={anthropicKey}
+          onChange={setAnthropicKey}
+          clear={clearAnthropic}
+          onClearChange={setClearAnthropic}
+          testId="ask-anthropic-key"
+        />
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="ask-openai-url" className="text-sm">
+            OpenAI-compatible base URL
+          </label>
+          <input
+            id="ask-openai-url"
+            value={openaiUrl}
+            onChange={(e) => setOpenaiUrl(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+            aria-describedby="ask-openai-url-hint"
+            data-testid="ask-openai-url"
+            className={fieldClass}
+          />
+          <p id="ask-openai-url-hint" className="text-sm text-muted-foreground">
+            Must be https, or http on a local address such as http://127.0.0.1:11434/v1.
+          </p>
+        </div>
+        <SecretField
+          label="OpenAI-compatible API key"
+          isSet={view.credentials.openaiKey.set}
+          updatedAt={view.credentials.openaiKey.updatedAt}
+          value={openaiKey}
+          onChange={setOpenaiKey}
+          clear={clearOpenai}
+          onClearChange={setClearOpenai}
+          hint="Required unless the endpoint is on a local address."
+          testId="ask-openai-key"
+        />
+        {credProblems.length > 0 ? (
+          <div
+            role="alert"
+            data-testid="ask-credential-problems"
+            className="text-sm text-destructive"
+          >
+            <ul className="list-disc pl-5">
+              {credProblems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        <div className="flex flex-col gap-3">
+          <button
+            type="submit"
+            disabled={busy !== null}
+            className="min-h-6 w-fit rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground disabled:opacity-50"
+          >
+            {busy === "credentials" ? "Saving…" : "Save credentials"}
+          </button>
+          <p
+            role="status"
+            data-testid="ask-credential-result"
+            className="min-h-5 text-sm text-muted-foreground"
+          >
+            {credMessage}
           </p>
         </div>
       </form>

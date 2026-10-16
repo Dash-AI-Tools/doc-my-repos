@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { providerAvailability } from "../config/env";
+import { Secret } from "../config/secret";
+import { providerAvailability } from "./credentials";
 import { askSettings } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import {
@@ -61,8 +62,9 @@ describe("isAiProvider", () => {
 });
 
 describe("resolveAsk", () => {
-  const keyed = providerAvailability({ AI_ANTHROPIC_API_KEY: "k" });
-  const bare = providerAvailability({});
+  const noKeys = { anthropicKey: null, openaiKey: null, openaiBaseUrl: null };
+  const keyed = providerAvailability({ ...noKeys, anthropicKey: new Secret("k") });
+  const bare = providerAvailability(noKeys);
   const on: AskSettings = { enabled: true, provider: "anthropic", model: "m" };
 
   it("is off unless an admin turned it on, whatever else is set", () => {
@@ -75,23 +77,25 @@ describe("resolveAsk", () => {
     expect(resolveAsk(on, keyed)).toEqual({ state: "ready", provider: "anthropic", model: "m" });
   });
 
-  it("is unavailable, naming variables only, when the credentials are missing", () => {
+  it("is unavailable, naming settings only, when the credentials are missing", () => {
     expect(resolveAsk(on, bare)).toEqual({
       state: "unavailable",
-      missing: ["AI_ANTHROPIC_API_KEY"],
+      missing: ["Anthropic API key"],
     });
   });
 
   it("carries the problem text of an invalid group, which never contains a value", () => {
     const availability = providerAvailability({
-      AI_OPENAI_BASE_URL: "http://models.example.com/x",
+      anthropicKey: null,
+      openaiKey: null,
+      openaiBaseUrl: "http://models.example.com/x",
     });
     const state = resolveAsk(
       { enabled: true, provider: "openai-compatible", model: "m" },
       availability,
     );
     expect(state).toMatchObject({ state: "unavailable", missing: [] });
-    expect(JSON.stringify(state)).toContain("AI_OPENAI_BASE_URL");
+    expect(JSON.stringify(state)).toContain("OpenAI-compatible base URL");
     expect(JSON.stringify(state)).not.toContain("models.example.com");
   });
 
@@ -105,6 +109,9 @@ describe("resolveAsk", () => {
     });
   });
 });
+
+const noKeys = { anthropicKey: null, openaiKey: null, openaiBaseUrl: null };
+const withKey = { ...noKeys, anthropicKey: new Secret("k") };
 
 describeDb("ask settings in the database", () => {
   let t: TestDatabase;
@@ -157,7 +164,7 @@ describeDb("ask settings in the database", () => {
       .set({ provider: "evil", model: "has space" })
       .where(eq(askSettings.id, 1));
     expect(await readAskSettings(t.db)).toEqual({ enabled: true, provider: null, model: null });
-    expect(await getAskState({ AI_ANTHROPIC_API_KEY: "k" }, t.db)).toEqual({
+    expect(await getAskState(t.db, withKey)).toEqual({
       state: "unavailable",
       missing: [],
     });
@@ -165,20 +172,20 @@ describeDb("ask settings in the database", () => {
 
   it("getAskState is ready from the row plus the environment, and off when the read fails", async () => {
     await saveAskSettings(t.db, { enabled: true, provider: "anthropic", model: "m1" }, null);
-    expect(await getAskState({ AI_ANTHROPIC_API_KEY: "k" }, t.db)).toEqual({
+    expect(await getAskState(t.db, withKey)).toEqual({
       state: "ready",
       provider: "anthropic",
       model: "m1",
     });
-    expect(await getAskState({}, t.db)).toEqual({
+    expect(await getAskState(t.db, noKeys)).toEqual({
       state: "unavailable",
-      missing: ["AI_ANTHROPIC_API_KEY"],
+      missing: ["Anthropic API key"],
     });
     const broken = {
       select: () => {
         throw new Error("db down");
       },
     } as never;
-    expect(await getAskState({ AI_ANTHROPIC_API_KEY: "k" }, broken)).toEqual({ state: "off" });
+    expect(await getAskState(broken, withKey)).toEqual({ state: "off" });
   });
 });

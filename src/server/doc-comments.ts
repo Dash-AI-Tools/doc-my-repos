@@ -4,10 +4,10 @@ import { toThreadData, type DocCommentsData } from "@/lib/comments-view";
 
 import { getCurrentUser } from "./auth/current-user";
 import { DEFAULT_BRANDING, getBranding } from "./branding";
-import type { Db } from "./db/client";
+import { getDb, type Db } from "./db/client";
 import { logger } from "./log";
 import { countDocComments, listDocComments } from "./queries";
-import { getRuntime } from "./runtime";
+import { commentsEnabled } from "./workspace";
 
 /**
  * Comments data for the document page (document-comments task 4.1). Reads through the query layer
@@ -22,7 +22,7 @@ import { getRuntime } from "./runtime";
 
 export interface DocCommentsDeps {
   readonly db?: () => Db;
-  readonly enabled?: () => boolean;
+  readonly enabled?: () => boolean | Promise<boolean>;
   readonly user?: (db: Db) => Promise<{ id: number; role: "admin" | "user" } | null>;
   readonly orgName?: () => Promise<string | null>;
   readonly now?: () => Date;
@@ -37,9 +37,9 @@ export async function loadDocComments(
   deps: DocCommentsDeps = {},
 ): Promise<DocCommentsData> {
   try {
-    const enabled = (deps.enabled ?? (() => getRuntime().loaded.config.comments.enabled))();
+    const enabled = await (deps.enabled ?? commentsEnabled)();
     if (!enabled) return { status: "disabled" };
-    const db = (deps.db ?? (() => getRuntime().db.db))();
+    const db = (deps.db ?? (() => getDb().db))();
     const user = await (deps.user ?? getCurrentUser)(db);
     if (user === null) return { status: "hidden" };
     const isAdmin = user.role === "admin";

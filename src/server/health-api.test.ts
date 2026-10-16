@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 
-import { ConfigError } from "./config/load";
+import { ConfigError } from "./config/errors";
 import { repos } from "./db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "./db/test-db";
 import { handleHealthRequest } from "./health-api";

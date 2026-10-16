@@ -10,7 +10,6 @@ sources:
   - src/lib/comments.ts
   - src/server/admin/comments.ts
   - src/server/config/schema.ts
-  - docmyrepos.config.example.yml
 generated: 2026-10-15
 verified: 2026-10-15
 stale_after: 2999-01-01
@@ -94,11 +93,4 @@ Deleted and orphaned comments can be **permanently removed**, one by one or all 
 
 ## Turning comments off
 
-Comments are on by default. To turn them off, set this in `docmyrepos.config.yml` and restart:
-
-```yaml
-comments:
-  enabled: false
-```
-
-With `enabled: false` the Comments section and the count disappear from document pages and the comment APIs answer 404. Stored comments are kept, and they return when the setting is turned back on. The admin Comments page still opens, says comments are off and still allows permanent removal, which is how you clear them for good. See [Configuration](./configuration.md) for the whole file.
+Comments are on by default. To turn them off, untick **Allow comments on documents** under _Comments_ on **Admin > Workspace configuration** and save; no restart is needed. With comments off the Comments section and the count disappear from document pages and the comment APIs answer 404. Stored comments are kept, and they return when the setting is turned back on. The admin Comments page still opens, says comments are off and still allows permanent removal, which is how you clear them for good. See [Configuration](./configuration.md) for every setting.

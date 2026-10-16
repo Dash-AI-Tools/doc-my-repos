@@ -5,6 +5,8 @@ import type { HomeData } from "@/server/home";
 
 const loadHome = vi.fn<() => Promise<HomeData>>();
 vi.mock("@/server/home", () => ({ loadHome: () => loadHome() }));
+const setup = vi.hoisted(() => ({ needed: false }));
+vi.mock("@/server/onboarding", () => ({ setupNeeded: async () => setup.needed }));
 
 import HomePage, { dynamic } from "./page";
 
@@ -34,6 +36,7 @@ const repo = {
 
 beforeEach(() => {
   loadHome.mockReset();
+  setup.needed = false;
 });
 
 describe("home page", () => {
@@ -123,5 +126,14 @@ describe("home page", () => {
   it("lets an unexpected error reach the error boundary", async () => {
     loadHome.mockImplementation(() => Promise.reject(new TypeError("bug")));
     await expect(HomePage()).rejects.toThrow("bug");
+  });
+
+  it("shows the setup banner, linking to the instructions, only when setup is needed", async () => {
+    loadHome.mockResolvedValue({ status: "ok", starred: [], repos: [], loadedAt: NOW });
+    expect(await html()).not.toContain("setup-banner");
+    setup.needed = true;
+    const out = await html();
+    expect(out).toContain("setup-banner");
+    expect(out).toContain('href="/admin/workspace?setup=1"');
   });
 });

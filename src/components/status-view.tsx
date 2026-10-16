@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { askStatusLine, type AskStatusInput } from "@/lib/ask/status";
+import { workspaceStatusLine, type WorkspaceStatusInput } from "@/lib/workspace-status";
 import { repoUrl } from "@/lib/routes";
 import {
   formatDuration,
@@ -179,13 +180,41 @@ function AskStatus({ ask }: { readonly ask: AskStatusInput }) {
   );
 }
 
+function WorkspaceStatus({ workspace }: { readonly workspace: WorkspaceStatusInput }) {
+  const line = workspaceStatusLine(workspace);
+  return (
+    <section aria-labelledby="status-workspace-heading" className="flex flex-col gap-3">
+      <h2 id="status-workspace-heading" className="text-xl font-semibold">
+        Workspace settings
+      </h2>
+      <p data-testid="status-workspace" className="flex flex-wrap items-center gap-2 text-sm">
+        <Chip tone={ASK_TONE[line.tone]} label={line.label} testId="status-workspace-state" />
+        {line.details.length === 0 ? (
+          <span data-testid="status-workspace-detail">GitHub is configured.</span>
+        ) : null}
+      </p>
+      {line.details.length > 0 ? (
+        <ul data-testid="status-workspace-detail" className="list-disc pl-5 text-sm">
+          {line.details.map((detail) => (
+            <li key={detail} className="break-words [overflow-wrap:anywhere]">
+              {detail}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 export function StatusView({
   data,
   ask,
+  workspace,
   now,
 }: {
   readonly data: StatusViewData;
   readonly ask?: AskStatusInput;
+  readonly workspace?: WorkspaceStatusInput | null;
   readonly now: Date;
 }) {
   const by = data.reposByStatus;
@@ -216,6 +245,8 @@ export function StatusView({
           <LastRun run={data.lastRun} now={now} />
         )}
       </section>
+
+      {workspace ? <WorkspaceStatus workspace={workspace} /> : null}
 
       {ask ? <AskStatus ask={ask} /> : null}
 

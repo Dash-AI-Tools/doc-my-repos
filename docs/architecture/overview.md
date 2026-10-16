@@ -5,7 +5,7 @@ description: One Next.js app and one Postgres database. A sync engine copies par
 tags: [architecture, overview]
 status: stable
 sources:
-  - src/server/runtime.ts
+  - src/server/workspace.ts
   - src/server/sync/engine.ts
   - src/server/queries/visibility.ts
   - src/server/queries/enforcement.test.ts

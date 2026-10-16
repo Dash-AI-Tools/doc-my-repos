@@ -59,7 +59,7 @@ export const INSTALLATION_UNAVAILABLE_MESSAGES = {
 export type InstallationUnavailableReason = keyof typeof INSTALLATION_UNAVAILABLE_MESSAGES;
 
 export interface WebhookRouterDeps {
-  /** The configured installation id (`GITHUB_APP_INSTALLATION_ID`). */
+  /** The configured installation id (from the workspace settings). */
   installationId: number;
   /** The config narrowing for a repository name (`repoNameSelection`). */
   narrow(name: string): NameSelection;

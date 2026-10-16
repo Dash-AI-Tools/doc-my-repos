@@ -76,22 +76,22 @@ test.describe("set up", () => {
     }
   });
 
-  test("a server with no provider shows both as unavailable, by variable name, and cannot turn Ask on", async ({
+  test("a server with no provider shows both as unavailable, by setting name, and cannot turn Ask on", async ({
     browser,
   }) => {
     const s = await openSession(browser, { stack: "seeded" });
     try {
       await s.page.goto("/admin/ask");
-      await expect(s.page.getByRole("heading", { level: 1, name: "Ask" })).toBeVisible();
+      await expect(s.page.getByTestId("tab-ask")).toBeVisible();
       const options = s.page.getByLabel("Provider").locator("option");
-      await expect(options.nth(1)).toHaveText("Anthropic (missing AI_ANTHROPIC_API_KEY)");
+      await expect(options.nth(1)).toHaveText("Anthropic (missing: Anthropic API key)");
       await expect(options.nth(1)).toBeDisabled();
       await expect(options.nth(2)).toHaveText(
-        "OpenAI-compatible endpoint (missing AI_OPENAI_BASE_URL)",
+        "OpenAI-compatible endpoint (missing: OpenAI-compatible base URL)",
       );
       await expect(options.nth(2)).toBeDisabled();
       await s.page.getByRole("switch", { name: "Turn Ask on" }).check();
-      await s.page.getByRole("button", { name: "Save" }).click();
+      await s.page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(s.page.getByRole("alert").first()).toHaveText(
         "Choose a provider before turning Ask on.",
       );
@@ -133,7 +133,7 @@ test.describe("set up", () => {
     try {
       await admin.page.goto("/admin/ask");
       const options = admin.page.getByLabel("Provider").locator("option");
-      await expect(options.nth(1)).toHaveText("Anthropic (missing AI_ANTHROPIC_API_KEY)");
+      await expect(options.nth(1)).toHaveText("Anthropic (missing: Anthropic API key)");
       await expect(options.nth(1)).toBeDisabled();
       await expect(options.nth(2)).toHaveText("OpenAI-compatible endpoint (configured, 127.0.0.1)");
       await expect(admin.page.getByTestId("ask-admin-state")).toContainText("Off");
@@ -151,7 +151,7 @@ test.describe("set up", () => {
       await expect(askLink(reader.page)).toHaveCount(0);
 
       await admin.page.getByRole("switch", { name: "Turn Ask on" }).check();
-      await admin.page.getByRole("button", { name: "Save" }).click();
+      await admin.page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(admin.page.getByTestId("ask-admin-result")).toHaveText("Saved. Ask is on.");
       await expect(admin.page.getByTestId("ask-admin-state")).toContainText("Ready");
 
@@ -180,7 +180,7 @@ test.describe("set up", () => {
     try {
       await admin.page.goto("/admin/ask");
       await admin.page.getByLabel("Model name").fill("fake-model-2");
-      await admin.page.getByRole("button", { name: "Save" }).click();
+      await admin.page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(admin.page.getByTestId("ask-admin-result")).toHaveText("Saved. Ask is on.");
 
       await openAsk(admin.page);
@@ -588,7 +588,7 @@ test.describe("privacy and turning it off", () => {
     try {
       await admin.page.goto("/admin/ask");
       await admin.page.getByRole("switch", { name: "Turn Ask on" }).uncheck();
-      await admin.page.getByRole("button", { name: "Save" }).click();
+      await admin.page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(admin.page.getByTestId("ask-admin-result")).toHaveText("Saved. Ask is off.");
       await reader.page.goto("/");
       await expect(askLink(reader.page)).toHaveCount(0);
@@ -631,7 +631,7 @@ test.describe("layout and accessibility", () => {
         await expectTargets(desktop.page.locator("main"), `admin Ask ${theme}`);
         // With a result and a validation message showing.
         await desktop.page.getByLabel("Model name").fill("bad name");
-        await desktop.page.getByRole("button", { name: "Save" }).click();
+        await desktop.page.getByRole("button", { name: "Save", exact: true }).click();
         await expect(desktop.page.locator("#ask-model-error")).toBeVisible();
         await expectAxeClean(desktop.page, `admin Ask with an error ${theme}`);
       } finally {
@@ -699,7 +699,7 @@ test.describe("every user, no secrets", () => {
       await expect(s.page.getByTestId("repo-card").first()).toBeVisible();
       expect(Object.keys(COMMENT_USERS)).toContain("ana");
       const html = await s.page.content();
-      expect(html).not.toMatch(/AI_OPENAI_API_KEY|AI_ANTHROPIC_API_KEY=/);
+      expect(html).not.toMatch(/sk-[A-Za-z0-9]{10,}/);
     } finally {
       await s.close();
     }

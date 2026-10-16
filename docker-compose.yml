@@ -1,6 +1,6 @@
 # DocMyRepos: the app and its Postgres database.
 #
-#   cp .env.example .env              # then set the GITHUB_APP_* values, GITHUB_WEBHOOK_SECRET, SYNC_SECRET
+#   cp .env.example .env              # then set SETTINGS_ENCRYPTION_KEY, SESSION_SECRET, SYNC_SECRET
 #   docker compose up -d --build --wait
 #
 # The app image runs the database migrations on start, then serves on http://127.0.0.1:3000.
@@ -50,23 +50,14 @@ services:
       DATABASE_URL: ${APP_DATABASE_URL:-postgres://${POSTGRES_USER:-docmyrepos}:${POSTGRES_PASSWORD:-docmyrepos}@db:5432/${POSTGRES_DB:-docmyrepos}}
       # Set SKIP_MIGRATIONS=1 on every replica but one (see README.md) to skip the start-up migration.
       SKIP_MIGRATIONS: ${SKIP_MIGRATIONS:-}
+      # GitHub, provider and sync-scope settings are not set here: an administrator enters them in
+      # the app (/admin/github, /admin/ask) and they are stored in the database. Keep
+      # SETTINGS_ENCRYPTION_KEY (in .env) with your database backups.
     depends_on:
       db:
         condition: service_healthy
     ports:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:3000"
-    volumes:
-      # Read-only config. The default is an empty file (all repositories the App can access). Set
-      # DOCMYREPOS_CONFIG=./docmyrepos.config.yml in .env to use your own copy of
-      # docmyrepos.config.example.yml. The file must exist: compose would create a directory for a
-      # missing one.
-      - ${DOCMYREPOS_CONFIG:-./docker/docmyrepos.config.default.yml}:/app/docmyrepos.config.yml:ro
-    # Private key from a file instead of GITHUB_APP_PRIVATE_KEY in .env: uncomment this and the
-    # top-level `secrets` below, set GITHUB_APP_PRIVATE_KEY_PATH=/run/secrets/github_app_key and
-    # leave GITHUB_APP_PRIVATE_KEY empty. The container user (uid 1000) must be able to read the
-    # file: `chown 1000 github-app.private-key.pem && chmod 400 github-app.private-key.pem`.
-    # secrets:
-    #   - github_app_key
     healthcheck:
       # The test comes from the image (GET /api/status: 200 when the app and the database answer).
       interval: 10s
@@ -89,10 +80,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-# secrets:
-#   github_app_key:
-#     file: ./github-app.private-key.pem
 
 volumes:
   db-data:

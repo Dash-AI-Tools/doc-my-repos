@@ -18,16 +18,22 @@ const VIEW: AskSettingsView = {
     "openai-compatible": { configured: true, missing: [], host: "models.internal" },
   },
   state: { state: "off" },
+  credentials: {
+    version: 0,
+    openaiBaseUrl: null,
+    anthropicKey: { set: false, updatedAt: null },
+    openaiKey: { set: false, updatedAt: null },
+  },
 };
 
 const MISSING: AskSettingsView = {
   ...VIEW,
   providers: {
-    anthropic: { configured: false, missing: ["AI_ANTHROPIC_API_KEY"] },
+    anthropic: { configured: false, missing: ["Anthropic API key"] },
     "openai-compatible": {
       configured: false,
       missing: [],
-      problem: "AI_OPENAI_BASE_URL: must be an https URL",
+      problem: "OpenAI-compatible base URL must be an https URL",
     },
   },
 };
@@ -100,11 +106,11 @@ describe("AskSettingsForm", () => {
     expect(screen.getByTestId("ask-admin-state").textContent).toContain("saved-model");
   });
 
-  it("annotates a provider with missing variables and cannot choose it", () => {
+  it("annotates a provider with missing settings and cannot choose it", () => {
     render(<AskSettingsForm initial={MISSING} />);
     const options = within(provider()).getAllByRole("option") as HTMLOptionElement[];
     expect(options[1]).toMatchObject({ disabled: true });
-    expect(options[1]?.textContent).toBe("Anthropic (missing AI_ANTHROPIC_API_KEY)");
+    expect(options[1]?.textContent).toBe("Anthropic (missing: Anthropic API key)");
     expect(options[2]).toMatchObject({ disabled: true });
     expect(options[2]?.textContent).toBe("OpenAI-compatible endpoint (not usable)");
   });
@@ -121,7 +127,7 @@ describe("AskSettingsForm", () => {
     );
     expect(provider().value).toBe("anthropic");
     expect(
-      screen.getByText(/operator must set AI_ANTHROPIC_API_KEY before this provider/),
+      screen.getByText(/Enter Anthropic API key under Credentials below before this provider/),
     ).toBeDefined();
     click(toggle());
     click(screen.getByRole("button", { name: "Save" }));
@@ -135,12 +141,12 @@ describe("AskSettingsForm", () => {
         initial={{
           ...MISSING,
           settings: { enabled: true, provider: "anthropic", model: "m" },
-          state: { state: "unavailable", missing: ["AI_ANTHROPIC_API_KEY"] },
+          state: { state: "unavailable", missing: ["Anthropic API key"] },
         }}
       />,
     );
     expect(screen.getByTestId("ask-admin-state").textContent).toContain("Unavailable");
-    expect(screen.getByTestId("ask-admin-state").textContent).toContain("AI_ANTHROPIC_API_KEY");
+    expect(screen.getByTestId("ask-admin-state").textContent).toContain("Anthropic API key");
   });
 
   it("shows the endpoint host for the OpenAI-compatible provider only", async () => {
@@ -232,7 +238,7 @@ describe("AskSettingsForm", () => {
     fetchMock.mockResolvedValue(
       jsonResponse(
         {
-          error: "This provider is not configured: AI_ANTHROPIC_API_KEY not set",
+          error: "This provider is not configured: Anthropic API key not set",
           field: "provider",
         },
         400,
@@ -242,7 +248,7 @@ describe("AskSettingsForm", () => {
     choose(provider(), "anthropic");
     type(model(), "m");
     click(screen.getByRole("button", { name: "Save" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("AI_ANTHROPIC_API_KEY");
+    expect((await screen.findByRole("alert")).textContent).toContain("Anthropic API key");
   });
 
   it("tests the connection without saving, for each fixed result", async () => {
@@ -307,7 +313,17 @@ describe("AskSettingsForm", () => {
       const label = id ? container.querySelector(`label[for="${id}"]`)?.textContent : null;
       return label ?? el.closest("label")?.textContent ?? el.textContent;
     });
-    expect(order).toEqual(["Turn Ask on", "Provider", "Model name", "Save", "Test connection"]);
+    expect(order).toEqual([
+      "Turn Ask on",
+      "Provider",
+      "Model name",
+      "Save",
+      "Test connection",
+      "Anthropic API key",
+      "OpenAI-compatible base URL",
+      "OpenAI-compatible API key",
+      "Save credentials",
+    ]);
     expect(container.querySelector("[tabindex]")).toBeNull();
     expect(screen.getByRole("button", { name: "Save" }).getAttribute("type")).toBe("submit");
   });
@@ -319,10 +335,118 @@ describe("AskSettingsForm", () => {
     await waitFor(() => expect(result().textContent).toBe("Saved. Ask is off."));
   });
 
-  it("renders no credential field at all", () => {
-    render(<AskSettingsForm initial={VIEW} />);
-    expect(screen.queryByLabelText(/key|secret|token|password|url|endpoint address/i)).toBeNull();
-    expect(document.querySelectorAll('input[type="password"], input[type="url"]')).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: "Save" })); // harmless: nothing chosen, off
+  describe("credentials", () => {
+    const KEY = "sk-ant-SENTINEL-1234567890";
+    const WITH_KEYS: AskSettingsView = {
+      ...VIEW,
+      credentials: {
+        version: 3,
+        openaiBaseUrl: "https://models.example.com/v1",
+        anthropicKey: { set: true, updatedAt: "2026-10-16T09:30:00.000Z" },
+        openaiKey: { set: false, updatedAt: null },
+      },
+    };
+    const anthropic = () => screen.getByLabelText("Anthropic API key") as HTMLInputElement;
+    const credResult = () => screen.getByTestId("ask-credential-result");
+
+    it("only ever says whether a key is set and when it changed, as a masked field", () => {
+      const { container } = render(<AskSettingsForm initial={WITH_KEYS} />);
+      expect(screen.getByTestId("ask-anthropic-key-state").textContent).toContain(
+        "Set, changed 2026-10-16 09:30 UTC.",
+      );
+      expect(screen.getByTestId("ask-openai-key-state").textContent).toContain("Not set.");
+      expect(anthropic().type).toBe("password");
+      expect(anthropic().value).toBe("");
+      expect(container.innerHTML).not.toContain(KEY);
+      expect((screen.getByLabelText("OpenAI-compatible base URL") as HTMLInputElement).value).toBe(
+        "https://models.example.com/v1",
+      );
+    });
+
+    it("sends the typed key and the endpoint, then re-reads the view and clears the field", async () => {
+      fetchMock.mockImplementation(async (input) =>
+        String(input) === "/api/admin/ask"
+          ? jsonResponse({
+              ...WITH_KEYS,
+              providers: { ...WITH_KEYS.providers, anthropic: { configured: true, missing: [] } },
+              credentials: { ...WITH_KEYS.credentials, version: 4 },
+            })
+          : jsonResponse({ version: 4 }),
+      );
+      render(<AskSettingsForm initial={WITH_KEYS} />);
+      type(anthropic(), KEY);
+      click(screen.getByRole("button", { name: "Save credentials" }));
+      await waitFor(() =>
+        expect(credResult().textContent).toBe("Credentials saved. The next question uses them."),
+      );
+      const put = fetchMock.mock.calls.find(
+        ([url]) => String(url) === "/api/admin/ask/credentials",
+      );
+      expect(put?.[1]?.method).toBe("PUT");
+      expect(JSON.parse(String(put?.[1]?.body))).toEqual({
+        expectedVersion: 3,
+        openaiBaseUrl: "https://models.example.com/v1",
+        secrets: { anthropic_api_key: KEY },
+      });
+      expect(anthropic().value).toBe("");
+      expect(refresh).toHaveBeenCalled();
+    });
+
+    it("sends nothing for an empty key (keeps it) and null for Clear", async () => {
+      fetchMock.mockImplementation(async () => jsonResponse(WITH_KEYS));
+      render(<AskSettingsForm initial={WITH_KEYS} />);
+      click(screen.getByRole("button", { name: "Save credentials" }));
+      await waitFor(() => expect(credResult().textContent).toMatch(/^Credentials saved/));
+      let body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+      expect(body.secrets).toEqual({});
+
+      fetchMock.mockClear();
+      click(screen.getByLabelText("Clear this value when I save"));
+      expect(anthropic().disabled).toBe(true);
+      click(screen.getByRole("button", { name: "Save credentials" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+      expect(body.secrets).toEqual({ anthropic_api_key: null });
+    });
+
+    it("sends a cleared endpoint as null", async () => {
+      fetchMock.mockImplementation(async () => jsonResponse(WITH_KEYS));
+      render(<AskSettingsForm initial={WITH_KEYS} />);
+      type(screen.getByLabelText("OpenAI-compatible base URL"), "  ");
+      click(screen.getByRole("button", { name: "Save credentials" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).openaiBaseUrl).toBeNull();
+    });
+
+    it("lists the problems the server names, without echoing the key", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          {
+            error: "The settings are not valid",
+            problems: ["providers.openaiBaseUrl: openaiBaseUrl must be an https URL"],
+          },
+          400,
+        ),
+      );
+      render(<AskSettingsForm initial={WITH_KEYS} />);
+      type(anthropic(), KEY);
+      click(screen.getByRole("button", { name: "Save credentials" }));
+      const list = await screen.findByTestId("ask-credential-problems");
+      expect(list.textContent).toContain("must be an https URL");
+      // What the page prints is the server's problem list; the typed key stays only in its field.
+      expect(document.body.textContent).not.toContain(KEY);
+    });
+
+    it("reports a change made by someone else instead of overwriting it", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(
+          { error: "The settings changed since you opened this page.", code: "conflict" },
+          409,
+        ),
+      );
+      render(<AskSettingsForm initial={WITH_KEYS} />);
+      click(screen.getByRole("button", { name: "Save credentials" }));
+      await waitFor(() => expect(credResult().textContent).toContain("changed since you opened"));
+    });
   });
 });

@@ -12,8 +12,7 @@ import type { SearchState } from "@/lib/search-params";
 import { expectedFailureKind } from "./home";
 import { searchDocuments, type QueryOptions } from "./queries";
 import { searchResultItem } from "./search-page";
-import { getRuntime } from "./runtime";
-import type { Db } from "./db/client";
+import { getDb, type Db } from "./db/client";
 import { logger, type LogFn } from "./log";
 
 /**
@@ -51,7 +50,7 @@ import { logger, type LogFn } from "./log";
 export const MAX_IN_FLIGHT = 16;
 
 export interface SearchApiDeps {
-  /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
+  /** The database to read. Default: the shared handle's. May throw `ConfigError`. */
   readonly db?: () => Db;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
   readonly log?: LogFn;
@@ -112,7 +111,7 @@ export async function handleSearchRequest(
   }
   inFlight += 1;
   try {
-    const db = (deps.db ?? (() => getRuntime().db.db))();
+    const db = (deps.db ?? (() => getDb().db))();
     const result = await searchDocuments(
       db,
       { q: state.q, repo: state.repos, limit: state.limit, offset: 0 },

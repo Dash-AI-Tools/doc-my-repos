@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Db } from "./db/client";
 import type { AskState } from "./ask/settings";
+import { Secret } from "./config/secret";
 
 const getRepo = vi.fn();
 const listRepos = vi.fn();
@@ -13,6 +14,11 @@ vi.mock("./queries", () => ({
 import { loadAskPage } from "./ask-page";
 
 const db = (() => ({}) as Db) as () => Db;
+const providers = async () => ({
+  anthropicKey: new Secret("k"),
+  openaiBaseUrl: null,
+  openaiKey: null,
+});
 const ready = (provider: "anthropic" | "openai-compatible" = "anthropic"): AskState => ({
   state: "ready",
   provider,
@@ -35,19 +41,22 @@ describe("loadAskPage", () => {
       { state: "off" },
       { state: "unavailable", missing: ["AI_ANTHROPIC_API_KEY"] },
     ] as AskState[]) {
-      expect(await loadAskPage({}, { state: async () => state, db })).toEqual({ status: "off" });
+      expect(await loadAskPage({}, { state: async () => state, db, providers })).toEqual({
+        status: "off",
+      });
     }
     expect(listRepos).not.toHaveBeenCalled();
   });
 
   it("names the provider, and the endpoint host only for the OpenAI-compatible one", async () => {
-    const env = {
-      AI_OPENAI_BASE_URL: "https://models.example.com/v1/secret-path",
-      AI_OPENAI_API_KEY: "k",
-    };
+    const openaiProviders = async () => ({
+      anthropicKey: new Secret("k"),
+      openaiBaseUrl: "https://models.example.com/v1/secret-path",
+      openaiKey: new Secret("k"),
+    });
     const openai = await loadAskPage(
       {},
-      { state: async () => ready("openai-compatible"), db, env },
+      { state: async () => ready("openai-compatible"), db, providers: openaiProviders },
     );
     expect(openai).toMatchObject({
       status: "ready",
@@ -55,13 +64,19 @@ describe("loadAskPage", () => {
       host: "models.example.com",
     });
     expect(JSON.stringify(openai)).not.toContain("secret-path");
-    const anthropic = await loadAskPage({}, { state: async () => ready(), db, env });
+    const anthropic = await loadAskPage(
+      {},
+      { state: async () => ready(), db, providers: openaiProviders },
+    );
     expect(anthropic).toMatchObject({ providerLabel: "Anthropic", host: null });
   });
 
   it("lists the visible repositories and checks the scope through the query layer", async () => {
     getRepo.mockResolvedValue({ owner: "acme", name: "API" });
-    const view = await loadAskPage({ repo: "acme/api" }, { state: async () => ready(), db });
+    const view = await loadAskPage(
+      { repo: "acme/api" },
+      { state: async () => ready(), db, providers },
+    );
     expect(view).toMatchObject({ scope: "acme/API", repos: ["acme/api", "acme/handbook"] });
     expect(getRepo.mock.calls[0]?.slice(1, 3)).toEqual(["acme", "api"]);
   });
@@ -69,7 +84,7 @@ describe("loadAskPage", () => {
   it("ignores a scope the reader cannot see or that is malformed", async () => {
     for (const repo of ["nobody/none", "not a repo", "a/b/c", "", undefined, ["x/y", "z/w"]]) {
       getRepo.mockClear();
-      const view = await loadAskPage({ repo }, { state: async () => ready(), db });
+      const view = await loadAskPage({ repo }, { state: async () => ready(), db, providers });
       expect(view).toMatchObject({ status: "ready", scope: null });
     }
   });
@@ -77,13 +92,13 @@ describe("loadAskPage", () => {
   it("prefills the question from ?q= (trimmed, bounded) without sending anything", async () => {
     const view = await loadAskPage(
       { q: `  ${"x".repeat(2500)}  ` },
-      { state: async () => ready(), db },
+      { state: async () => ready(), db, providers },
     );
     expect(view).toMatchObject({ initialQuestion: "x".repeat(2000) });
     expect(
-      await loadAskPage({ q: ["first", "second"] }, { state: async () => ready(), db }),
+      await loadAskPage({ q: ["first", "second"] }, { state: async () => ready(), db, providers }),
     ).toMatchObject({ initialQuestion: "first" });
-    expect(await loadAskPage({}, { state: async () => ready(), db })).toMatchObject({
+    expect(await loadAskPage({}, { state: async () => ready(), db, providers })).toMatchObject({
       initialQuestion: "",
     });
   });
@@ -93,7 +108,10 @@ describe("loadAskPage", () => {
       Object.assign(new Error("connect postgres://u:sentinel@h/db"), { code: "ECONNREFUSED" }),
     );
     const log = vi.fn();
-    const view = await loadAskPage({ repo: "acme/api" }, { state: async () => ready(), db, log });
+    const view = await loadAskPage(
+      { repo: "acme/api" },
+      { state: async () => ready(), db, log, providers },
+    );
     expect(view).toMatchObject({ status: "ready", scope: null, repos: [] });
     expect(JSON.stringify(log.mock.calls)).not.toContain("sentinel");
     expect(log).toHaveBeenCalledWith("ask.page.load_failed", expect.any(Object));

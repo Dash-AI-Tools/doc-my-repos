@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { asc, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { Secret } from "../config/secret";
 import { configSchema } from "../config/schema";
 import { createDb, type DbHandle } from "../db/client";
 import { documents, repos, syncRuns } from "../db/schema";
@@ -26,15 +27,18 @@ import {
 } from "./service";
 
 describe("readConfiguredWebhookSecret", () => {
-  it("returns the trimmed secret from the environment", () => {
-    expect(readConfiguredWebhookSecret({ GITHUB_WEBHOOK_SECRET: " SENTINEL-webhook-0123 " })).toBe(
-      "SENTINEL-webhook-0123",
-    );
+  it("returns the stored secret", async () => {
+    const load = async () => ({ webhookSecret: new Secret("SENTINEL-webhook-0123") });
+    expect(await readConfiguredWebhookSecret(load)).toBe("SENTINEL-webhook-0123");
   });
 
-  it("returns null when the secret is missing or too short", () => {
-    expect(readConfiguredWebhookSecret({})).toBeNull();
-    expect(readConfiguredWebhookSecret({ GITHUB_WEBHOOK_SECRET: "short" })).toBeNull();
+  it("returns null when none is stored, and when the settings cannot be loaded", async () => {
+    expect(await readConfiguredWebhookSecret(async () => ({ webhookSecret: null }))).toBeNull();
+    expect(
+      await readConfiguredWebhookSecret(async () => {
+        throw new Error("database down");
+      }),
+    ).toBeNull();
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ConfigError } from "../config/load";
+import { ConfigError } from "../config/errors";
 import type { SyncRepoResult } from "../db/schema";
 import { captureOutput, recordingLogger } from "../test-logger";
 import type { SyncAllResult, SyncOneResult, SyncOneTarget } from "./engine";

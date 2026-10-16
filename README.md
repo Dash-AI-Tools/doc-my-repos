@@ -95,7 +95,7 @@ Each image has a light and a dark version; GitHub shows the one that matches you
 flowchart LR
   GH[GitHub org] -- push webhook --> API[Next.js app]
   App[GitHub App installation] --> Sync
-  Cfg[docmyrepos.config.yml] --> Sync
+  Cfg[Settings in Postgres] --> Sync
   API --> Sync[Sync engine]
   Sched[Scheduler] --> Sync
   Sync -- tree / blobs / CODEOWNERS --> GH
@@ -103,7 +103,7 @@ flowchart LR
   DB --> UI[Repo pages + search]
 ```
 
-The app authenticates as a **GitHub App installation** (read-only, never a personal access token), discovers the repositories the installation can access, narrows them by `docmyrepos.config.yml`, and stores parsed documents (Markdown body, frontmatter, headings, title, type, tags, status) in Postgres. Pages and search read Postgres only: **GitHub is never called while you browse**, except the image proxy `/api/asset`, which fetches repository images on demand. HTML is rendered at read time and sanitized after all transforms.
+The app authenticates as a **GitHub App installation** (read-only, never a personal access token), discovers the repositories the installation can access, narrows them by the repository settings an admin chose, and stores parsed documents (Markdown body, frontmatter, headings, title, type, tags, status) in Postgres. Pages and search read Postgres only: **GitHub is never called while you browse**, except the image proxy `/api/asset`, which fetches repository images on demand. HTML is rendered at read time and sanitized after all transforms.
 
 | Route                                  | What it serves                                                            |
 | -------------------------------------- | ------------------------------------------------------------------------- |
@@ -118,7 +118,7 @@ The app authenticates as a **GitHub App installation** (read-only, never a perso
 
 ## Quickstart
 
-You need a **GitHub App** first. Register and install it by following the [GitHub App setup guide](docs/github-app-setup.md) (read-only _Contents_ and _Metadata_, four events, a webhook URL and secret). You end with the App id, a private key and the installation id. There is also an [App manifest](docs/github-app-manifest.json).
+You need a **GitHub App** first. Register and install it by following the [GitHub App setup guide](docs/github-app-setup.md) (read-only _Contents_ and _Metadata_, four events, a webhook URL and secret). You end with the App id, a private key and the installation id, which you enter in the app after the first sign-in. There is also an [App manifest](docs/github-app-manifest.json).
 
 ### With Docker (recommended)
 
@@ -128,19 +128,18 @@ Requires Docker with Compose.
 git clone https://github.com/Dash-AI-Tools/doc-my-repos.git
 cd doc-my-repos
 cp .env.example .env
-# edit .env: set GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, GITHUB_APP_PRIVATE_KEY
-# (or GITHUB_APP_PRIVATE_KEY_PATH), GITHUB_WEBHOOK_SECRET, SYNC_SECRET and SESSION_SECRET,
-# plus ADMIN_EMAIL and ADMIN_PASSWORD for the first admin login
+# edit .env: set SETTINGS_ENCRYPTION_KEY (openssl rand -base64 32), SYNC_SECRET and
+# SESSION_SECRET, plus ADMIN_EMAIL and ADMIN_PASSWORD for the first admin login
 docker compose up -d --build --wait    # app + Postgres 17; the app applies the migrations on start
 ```
 
-Open <http://127.0.0.1:3000>. The portal is behind a login: sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, which create the first admin the first time you log in while no users exist (then remove both from `.env`). Admins add users and choose which repositories are visible under **Admin**. The first full sync starts about 10 seconds after the server does (the scheduler is on in the image). To start one yourself:
+Open <http://127.0.0.1:3000>. The portal is behind a login: sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, which create the first admin the first time you log in while no users exist (then remove both from `.env`). Next, you are taken to **Admin > Workspace configuration**, where a pop-up lists the steps. Enter the GitHub App ID, installation ID, private key and webhook secret (use **Test GitHub connection**), and optionally which repositories to show. Admins also add users and choose which repositories are visible under **Admin**. The background scheduler is on in the image, but its startup sync happens before you have entered the settings, so right after saving them start the first sync yourself:
 
 ```bash
 curl -X POST -H "Authorization: Bearer <SYNC_SECRET from .env>" http://127.0.0.1:3000/api/sync
 ```
 
-The GitHub values in `.env.example` are blank on purpose and **must be real**. With them blank the server still starts, but `/api/health` answers `503` and `docker compose up --wait` fails because the container never becomes healthy. The home page then only says that the repositories could not be loaded; the container log names the missing variables (`docker compose logs app`, event `sync.scheduler.config_invalid`). To narrow the repositories, see [Configuration](#configuration).
+`SETTINGS_ENCRYPTION_KEY` in `.env.example` is blank on purpose. Without it the server still starts and serves, but secrets cannot be saved or read until you set one (the container log names it: `docker compose logs app`, event `config.encryption_key_invalid`). **Back this key up with your database backups.** Until GitHub is configured at `/admin/workspace`, the home page says nothing is synced yet and `/status` lists what is missing. To narrow the repositories, see [Configuration](#configuration).
 
 ### On your machine (development)
 
@@ -150,101 +149,77 @@ Requires Node.js 24, [pnpm](https://pnpm.io) 11.25 (`corepack enable && corepack
 git clone https://github.com/Dash-AI-Tools/doc-my-repos.git
 cd doc-my-repos
 pnpm install
-cp .env.example .env     # set the GitHub values to sync; DATABASE_URL already matches `pnpm db:up`
+cp .env.example .env     # set SETTINGS_ENCRYPTION_KEY, SYNC_SECRET, SESSION_SECRET; DATABASE_URL already matches `pnpm db:up`
 pnpm db:up               # Postgres 17 on 127.0.0.1:5432 (docker compose, db service only)
 pnpm db:migrate          # applies the SQL migrations in drizzle/
 pnpm dev                 # http://localhost:3000
 ```
 
-The background scheduler is off in development, so `pnpm dev` never calls GitHub on its own. Start a sync with the `curl` command above (against `http://localhost:3000`). GitHub can only deliver webhooks to a public URL; use a tunnel such as smee.io or ngrok (see the [setup guide](docs/github-app-setup.md#8-local-development)). Without the GitHub values the app still starts, but the home page says the repositories could not be loaded and `/api/status` answers `503`. The dev server does not run the scheduler, so it does not log which variables are missing; compare your `.env` with the table below, or run a production build (`pnpm build && pnpm start`), whose log names them.
+The background scheduler is off in development, so `pnpm dev` never calls GitHub on its own. Start a sync with the `curl` command above (against `http://localhost:3000`). GitHub can only deliver webhooks to a public URL; use a tunnel such as smee.io or ngrok (see the [setup guide](docs/github-app-setup.md#8-local-development)). Until an admin enters the GitHub App at `/admin/workspace`, the app still starts and serves, the home page says nothing is synced yet, and `/status` names what is missing.
 
 ## Configuration
 
-Behavior is configured by an optional file and by environment variables. **Secrets come only from the environment**, never from the file.
+Behavior is configured in the app, by admins, and by a few environment variables. **The GitHub App, the repositories shown, the limits, the sync schedule and the model provider are settings stored in the database**, edited at **Admin > Workspace configuration** (`/admin/workspace`) and **Admin > Ask** (`/admin/ask`). Secrets among them (the App private key, the webhook secret, provider keys) are encrypted before they are stored with `SETTINGS_ENCRYPTION_KEY`, are write-only (the page shows only that a value is set and when it changed), and are never logged. A change applies to the next sync, webhook or question; other server instances see it within about 5 seconds. Each change is recorded with who made it and which fields changed, never the values.
 
-### `docmyrepos.config.yml`
+### Settings (admin pages)
 
-Copy [`docmyrepos.config.example.yml`](docmyrepos.config.example.yml) and edit it. The file only **narrows** what the GitHub App installation can access; it never grants access. With no file, every repository the installation can access is synced and shown. The file is validated at startup; a mistake is reported on the home page and in the logs with the path of the offending field.
+| Setting                                    | Default                             | Meaning                                                                                                                                                                      |
+| ------------------------------------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub App: App ID, installation ID        | none                                | Which App installation to sync from. Nothing is synced until these and the private key are set.                                                                              |
+| GitHub App: private key, webhook secret    | none                                | Write-only secrets. The webhook secret (16+ characters) verifies webhook signatures; without one every delivery gets 401.                                                    |
+| Repositories shown                         | all accessible repos                | All, only a list, or all except a list. The App installation is always the upper bound. A list entry is a name, optionally with `docsPath=folder` or `apiSpecs=path1,path2`. |
+| Docs folder candidates                     | `docs`, `doc`, `documentation`      | Tried in order, matched case-insensitively. Relative paths without `..`.                                                                                                     |
+| Documents per repository                   | `2000` (1 to 10000)                 | More documents: only the first N in path order are synced and a warning is shown.                                                                                            |
+| Largest document (bytes)                   | `262144` (1024 to 262144)           | Larger files are skipped with a warning. 256 KB is also the maximum.                                                                                                         |
+| Largest API spec (bytes)                   | `2097152` (1024 to 2097152)         | Larger spec files are skipped with a warning. See [API reference](#api-reference).                                                                                           |
+| Full sync every (minutes), sync on startup | `60`, on                            | Period of the full sync that catches missed webhooks (`0` turns it off, otherwise `5` to `10080`). **Read when the server starts**: a change applies after a restart.        |
+| Allow comments                             | on                                  | Off removes the Comments section and turns the comment APIs off. Stored comments are kept. See [Comments](#comments).                                                        |
+| Ask limits                                 | `100`/day, `20`/10 min, `1000`, `8` | Questions per user per day and per ten minutes, longest answer in tokens, answers at once per server process. See [Ask the docs](#ask-the-docs).                             |
+| Ask provider credentials                   | none                                | Anthropic key; OpenAI-compatible base URL (`https`, or `http` on a loopback address) and key. On the Ask page.                                                               |
 
-```yaml
-repos: # optional: only these repos (bare names, must be accessible to the App)
-  - api-service
-  - name: web-app
-    docsPath: user-guide # override the docs folder of this repo
-  - name: payments
-    apiSpecs: [api/v2/spec.yaml] # exact OpenAPI/Swagger paths (at most 10)
-exclude: [sandbox] # alternative to `repos`: everything except these (not both)
-defaults:
-  docsPaths: [docs, doc, documentation] # first match wins, case-insensitive
-limits:
-  maxDocsPerRepo: 2000
-  maxFileBytes: 262144
-  maxSpecBytes: 2097152 # OpenAPI/Swagger files, 2 MB is also the maximum
-sync:
-  intervalMinutes: 60
-  onStartup: true
-comments:
-  enabled: true # false turns comments off
-```
+Files left out by the limits are listed as a warning in the repository header and on `/status`.
 
-| Key                                                 | Default                        | Meaning                                                                                                                                   |
-| --------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `repos`                                             | all accessible repos           | Only these repositories. Entries are a name or `{ name, docsPath }`. No owner prefix, no duplicates. Cannot be combined with `exclude`.   |
-| `exclude`                                           | none                           | Skip these repositories.                                                                                                                  |
-| `defaults.docsPaths`                                | `docs`, `doc`, `documentation` | Docs folder candidates, tried in order, matched case-insensitively. Relative paths without `..`.                                          |
-| `limits.maxDocsPerRepo`                             | `2000` (1 to 10000)            | More documents: only the first N in path order are synced and a warning is shown.                                                         |
-| `limits.maxFileBytes`                               | `262144` (1024 to 262144)      | Larger files are skipped with a warning. 256 KB is also the maximum.                                                                      |
-| `repos[].apiSpecs`                                  | none                           | Exact repository paths (at most 10) of OpenAPI or Swagger files. They replace the default search. See [API reference](#api-reference).    |
-| `limits.maxSpecBytes`                               | `2097152` (1024 to 2097152)    | Larger spec files are skipped with a warning. 2 MB is also the maximum: it can be lowered, not raised.                                    |
-| `sync.intervalMinutes`                              | `60`                           | Period of the full sync that catches missed webhooks. `0` turns it off, otherwise `5` to `10080`.                                         |
-| `sync.onStartup`                                    | `true`                         | One full sync about 10 seconds after the server starts.                                                                                   |
-| `comments.enabled`                                  | `true`                         | `false` removes the Comments section and turns the comment APIs off. Stored comments are kept. See [Comments](#comments).                 |
-| `ask.questionsPerDay`, `ask.questionsPerTenMinutes` | `100`, `20`                    | Questions one user may ask per day and per ten minutes (1 to 10000, 1 to 1000). See [Ask the docs](#ask-the-docs).                        |
-| `ask.maxOutputTokens`, `ask.maxConcurrent`          | `1000`, `8`                    | Longest answer in tokens (100 to 8000) and answers at once per server process (1 to 100). Whether Ask is on is an admin choice, not here. |
+### Upgrading from the config file and environment variables
 
-Files left out by the limits are listed as a warning in the repository header and on `/status`. Changes to `sync` apply after a restart. The file path defaults to `docmyrepos.config.yml` in the working directory; set `CONFIG_PATH` to use another.
+Earlier versions read `docmyrepos.config.yml` and the variables `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET`, `AI_ANTHROPIC_API_KEY`, `AI_OPENAI_BASE_URL`, `AI_OPENAI_API_KEY` and `CONFIG_PATH`. **They are no longer read, and nothing is imported.** After upgrading:
+
+1. Set `SETTINGS_ENCRYPTION_KEY` (`openssl rand -base64 32`) and back it up with your database.
+2. Sign in as an admin and enter the values at `/admin/workspace` (the GitHub & sync and Ask tabs), copying the repository list and limits from your old file. Until then the portal keeps serving what is stored, sync, webhooks and the image proxy report "not configured", and Ask is off.
+3. Remove the old variables and the file. `/status` and the server log name any that are still present (names only).
 
 ### Environment variables
 
 [`.env.example`](.env.example) lists every variable with its comment. Real values go in `.env` (git-ignored) or the environment of your platform.
 
-| Variable                                                             | Required | Purpose                                                                                                                           |
-| -------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`                                                       | yes      | Postgres connection string (`postgres://` or `postgresql://`). Compose points the app at its `db` service itself.                 |
-| `GITHUB_APP_ID`                                                      | yes      | Numeric ID of your GitHub App.                                                                                                    |
-| `GITHUB_APP_INSTALLATION_ID`                                         | yes      | ID of the App's installation on your organization.                                                                                |
-| `GITHUB_APP_PRIVATE_KEY` or `GITHUB_APP_PRIVATE_KEY_PATH`            | one      | The App private key: PEM text (in `.env`: one line in double quotes with `\n` for line breaks) or a path to the file. Never both. |
-| `GITHUB_WEBHOOK_SECRET`                                              | yes      | Webhook secret of the App, 16+ characters. Verifies webhook signatures.                                                           |
-| `SYNC_SECRET`                                                        | yes      | Secret protecting `POST /api/sync`, 16+ characters.                                                                               |
-| `SESSION_SECRET`                                                     | yes      | Signs the login session cookie, 16+ characters. Not a placeholder.                                                                |
-| `ADMIN_EMAIL`, `ADMIN_PASSWORD`                                      | no       | Bootstrap admin, created on first login when no users exist. Password 12+ characters.                                             |
-| `AI_ANTHROPIC_API_KEY`                                               | no       | Anthropic API key for [Ask](#ask-the-docs). Enables the `anthropic` provider.                                                     |
-| `AI_OPENAI_BASE_URL`, `AI_OPENAI_API_KEY`                            | no       | Base URL (`https`, or `http` on a loopback address) and key of an OpenAI-compatible endpoint for [Ask](#ask-the-docs).            |
-| `CONFIG_PATH`                                                        | no       | Config file path. Default `docmyrepos.config.yml`.                                                                                |
-| `LOG_LEVEL`                                                          | no       | `debug`, `info` (default), `warn`, `error` or `silent`. An unknown value stops startup.                                           |
-| `SYNC_SCHEDULER`                                                     | no       | `1` or `0` forces the background sync scheduler on or off. Default: on when `NODE_ENV=production`, off otherwise.                 |
-| `SKIP_MIGRATIONS`, `DB_WAIT_SECONDS`                                 | no       | Container only: skip the start-up migrations (`1`); how long to wait for the database (default `60`).                             |
-| `APP_BIND`, `APP_PORT`, `APP_DATABASE_URL`, `DOCMYREPOS_CONFIG`      | no       | Compose only: published address and port, an external database, the config file to mount.                                         |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | no       | Compose only: credentials and port of the `db` service.                                                                           |
+| Variable                                                             | Required | Purpose                                                                                                                                                                                |
+| -------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                                       | yes      | Postgres connection string (`postgres://` or `postgresql://`). Compose points the app at its `db` service itself.                                                                      |
+| `SETTINGS_ENCRYPTION_KEY`                                            | yes      | Encrypts the secrets stored in the database. Base64 text, 32+ bytes (`openssl rand -base64 32`). Back it up; changing or losing it makes stored secrets unreadable (enter them again). |
+| `SYNC_SECRET`                                                        | yes      | Secret protecting `POST /api/sync`, 16+ characters.                                                                                                                                    |
+| `SESSION_SECRET`                                                     | yes      | Signs the login session cookie, 16+ characters. Not a placeholder.                                                                                                                     |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD`                                      | no       | Bootstrap admin, created on first login when no users exist. Password 12+ characters.                                                                                                  |
+| `LOG_LEVEL`                                                          | no       | `debug`, `info` (default), `warn`, `error` or `silent`. An unknown value stops startup.                                                                                                |
+| `SYNC_SCHEDULER`                                                     | no       | `1` or `0` forces the background sync scheduler on or off. Default: on when `NODE_ENV=production`, off otherwise.                                                                      |
+| `SKIP_MIGRATIONS`, `DB_WAIT_SECONDS`                                 | no       | Container only: skip the start-up migrations (`1`); how long to wait for the database (default `60`).                                                                                  |
+| `APP_BIND`, `APP_PORT`, `APP_DATABASE_URL`                           | no       | Compose only: published address and port, an external database.                                                                                                                        |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | no       | Compose only: credentials and port of the `db` service.                                                                                                                                |
 
-> Change `POSTGRES_PASSWORD` for anything that is not local development. `docker compose config` prints your `.env` values (secrets included) after interpolation: do not paste its output into issues or chats. The `replace-with-...` placeholders for `SYNC_SECRET` and `GITHUB_WEBHOOK_SECRET` in `.env.example` are rejected at startup until you replace them.
+> Change `POSTGRES_PASSWORD` for anything that is not local development. `docker compose config` prints your `.env` values (secrets included) after interpolation: do not paste its output into issues or chats. The `replace-with-...` placeholder for `SYNC_SECRET` in `.env.example` is rejected at startup until you replace it, and the webhook secret you save for the App may not be a placeholder either.
 > | `TEST_DATABASE_URL`, `SKIP_DB_TESTS`, `DATABASE_URL_E2E`, `E2E_SKIP_DB` | no | Tests only, see [Development](#development). |
 
 Never set `E2E_FIXTURES`: it turns the server into a database-less fixture server for the browser tests.
 
 ## Self-hosting
 
-The [`Dockerfile`](Dockerfile) builds a small production image (multi-stage, Node 24 on Alpine, runs as the non-root `node` user) and [`docker-compose.yml`](docker-compose.yml) runs it with Postgres 17. The image holds no secrets and no config: settings come from the environment and the optional config file is mounted. For a bare image:
+The [`Dockerfile`](Dockerfile) builds a small production image (multi-stage, Node 24 on Alpine, runs as the non-root `node` user) and [`docker-compose.yml`](docker-compose.yml) runs it with Postgres 17. The image holds no secrets and no config: the environment holds the few startup settings and everything else is stored in the database. For a bare image:
 
 ```bash
 docker build -t docmyrepos .
 docker run -d --init --name docmyrepos -p 127.0.0.1:3000:3000 --env-file .env \
-  -e DATABASE_URL=postgres://user:password@db.example.com:5432/docmyrepos \
-  -v "$PWD/docmyrepos.config.yml:/app/docmyrepos.config.yml:ro" docmyrepos
+  -e DATABASE_URL=postgres://user:password@db.example.com:5432/docmyrepos docmyrepos
 ```
 
-- **Config file:** compose mounts `docker/docmyrepos.config.default.yml` (empty: every repository the App can access) at `/app/docmyrepos.config.yml`. To use your own, set `DOCMYREPOS_CONFIG=./docmyrepos.config.yml` in `.env`. The file must exist before `docker compose up`, otherwise Docker creates a directory in its place.
-- **Private key from a file:** instead of `GITHUB_APP_PRIVATE_KEY`, uncomment the `secrets` blocks in `docker-compose.yml` and set `GITHUB_APP_PRIVATE_KEY_PATH=/run/secrets/github_app_key`. The container user (uid 1000) must be able to read the file: `chown 1000 github-app.private-key.pem && chmod 400 github-app.private-key.pem`. Keep the key out of the repository (`*.pem` is ignored).
+- **Settings:** the GitHub App, repositories, limits and provider keys are entered in the app and stored in the database, not mounted as files or passed as variables. Keep `SETTINGS_ENCRYPTION_KEY` with your database backups.
 - **Start-up:** the entrypoint waits up to `DB_WAIT_SECONDS` for the database, applies the migrations in `/app/drizzle` under a Postgres advisory lock (several containers may start together; one migrates, the others wait), then starts the server. If the database stays unreachable or a migration fails, the container prints why (never the connection string) and exits with status 1. Migrations are forward-only.
 - **Health:** the image has a `HEALTHCHECK` on `GET /api/health` (no login; 200: the app and its database answer; 503: they do not, or the configuration is invalid), with a 90 second start period.
 - **Stopping:** `docker stop` sends `SIGTERM`. The scheduler stops, a running sync is aborted, and Next.js exits with status 143 (128 + SIGTERM), which Docker treats as a normal stop. Run with `--init` (compose has `init: true`).
@@ -300,8 +275,8 @@ The logo is served publicly at `/api/branding/logo?v=<version>` (the sign-in pag
 
 Each repository's OpenAPI 3.0/3.1 and Swagger 2.0 files are listed in an **API reference** section on the repository page. Each one opens a reference page at `/<owner>/<repo>/api-reference/<path>` that shows tags, operations and schemas with [Swagger UI](https://swagger.io/tools/swagger-ui/).
 
-- **What is detected.** Files named `openapi` or `swagger` (case-insensitive, extension `.yaml`, `.yml` or `.json`) at the repository root or under the docs folder, skipping `node_modules` and dot-folders. A repository can list exact paths with `apiSpecs` in `docmyrepos.config.yml`; the listed paths then **replace** the search, so only those files are used. A file must be valid JSON or YAML with an `openapi` 3.x or `swagger: "2.0"` marker, an `info` object and `paths` (or `components`/`webhooks` for 3.1).
-- **Limits.** Files over `limits.maxSpecBytes` (2 MB by default; it can only be lowered) are skipped, and at most 10 specs are synced per repository. A spec is also rejected for excessive nesting, too many nodes or aliases (YAML alias bombs), or more than 2,000 operations. Symlinks are skipped.
+- **What is detected.** Files named `openapi` or `swagger` (case-insensitive, extension `.yaml`, `.yml` or `.json`) at the repository root or under the docs folder, skipping `node_modules` and dot-folders. A repository can list exact paths with `apiSpecs=path1,path2` on its line in the repository list at `/admin/workspace`; the listed paths then **replace** the search, so only those files are used. A file must be valid JSON or YAML with an `openapi` 3.x or `swagger: "2.0"` marker, an `info` object and `paths` (or `components`/`webhooks` for 3.1).
+- **Limits.** Files over the **Largest API spec** limit (2 MB by default; it can only be lowered) are skipped, and at most 10 specs are synced per repository. A spec is also rejected for excessive nesting, too many nodes or aliases (YAML alias bombs), or more than 2,000 operations. Symlinks are skipped.
 - **Warnings.** Every skipped or rejected spec is listed as a warning on the repository page and on `/status`, with a fixed reason and the path. The rest of the repository still syncs, and a spec that fails keeps its previously stored version.
 - **Read-only and offline.** There is no "Try it out": the page never sends a request to the described API. Nothing is loaded from the address (`?url=` and `?configUrl=` are ignored), and external or relative `$ref`s are not fetched, because every request the widget would make is aborted. Descriptions are sanitized by the widget. The CSP is unchanged.
 - **Requires JavaScript.** The widget renders in the browser; without scripts the page shows a notice and a link to the source file.
@@ -318,20 +293,20 @@ Every document page has a **Comments** section where signed-in users start threa
 - **Retention and orphans.** Syncs never change comments. Deleting a comment removes its text from storage; a deleted comment with replies stays as a "This comment was deleted" placeholder. When a document is deleted or moved in its repository its comments stay stored but hidden ("orphaned") and reappear if the path returns. Nothing is removed automatically: admins find orphans on `/admin/comments` and remove them permanently there.
 - **Name display.** A comment shows the part of the author's email before the `@`; admins also see the full email. The name is saved with the comment, so it survives the account's removal.
 - **Limits.** Plain text of 1 to 4,000 characters (no HTML or Markdown; `http(s)` addresses become safe links), 20 new comments per user per 10 minutes, 1,000 comments per document, and writes must be same-origin JSON requests.
-- **The switch.** `comments.enabled` in `docmyrepos.config.yml` (default `true`). With `false` the section and the `/api/comments*` routes disappear (404) and stored comments are kept; the admin Comments page still opens so they can be purged.
+- **The switch.** The **Allow comments** setting on the Workspace configuration page (default on). With `false` the section and the `/api/comments*` routes disappear (404) and stored comments are kept; the admin Comments page still opens so they can be purged.
 
 ## Ask the docs
 
 **Ask** answers a question in plain language from the synced documents and lists the sections it used as links. It is off by default and invisible until an admin turns it on. The full guide is [docs/guides/ask.md](docs/guides/ask.md).
 
-- **Setting it up.** The **operator** sets credentials in the environment: `AI_ANTHROPIC_API_KEY` for Anthropic, or `AI_OPENAI_BASE_URL` (and `AI_OPENAI_API_KEY`) for an OpenAI-compatible endpoint. An **admin** then opens `/admin/ask`, chooses the provider and model, presses **Test connection** and turns Ask on. The choice is stored in the database and applies to the next question without a restart. Keys and endpoints are never entered in the browser, stored in the database or shown, so an admin can only choose among what the operator provided.
-- **Examples.** Anthropic: `AI_ANTHROPIC_API_KEY=...`. A hosted provider: `AI_OPENAI_BASE_URL=https://models.example.com/v1` and `AI_OPENAI_API_KEY=...`. A local model with no key: `AI_OPENAI_BASE_URL=http://127.0.0.1:11434/v1` (Ollama, vLLM). The URL must be `https`, except for `localhost`, `127.x.x.x` and `::1`.
+- **Setting it up.** An **admin** opens the **Ask** tab of `/admin/workspace`, enters the credentials (an Anthropic API key, or an OpenAI-compatible base URL and key), chooses the provider and model, presses **Test connection** and turns Ask on. Everything is stored in the database and applies to the next question without a restart. Keys are encrypted at rest with `SETTINGS_ENCRYPTION_KEY`, are write-only (the page shows only that a key is set and when it changed) and are never logged.
+- **Examples.** Anthropic: an API key. A hosted provider: base URL `https://models.example.com/v1` and its key. A local model with no key: base URL `http://127.0.0.1:11434/v1` (Ollama, vLLM). The URL must be `https`, except for `localhost`, `127.x.x.x` and `::1`.
 - **What is sent to the provider.** The question (at most 2,000 characters), up to four earlier exchanges, and the selected excerpts (at most 8 sections, 12,000 characters) of documents the reader can open, labelled as data. Never the reader's identity, cookies, other documents or credentials. The Ask page names the provider before the first question. Use a local model if nothing may leave your server.
 - **Grounded and cited.** Retrieval uses the existing full-text search and its single visibility filter, with keyword queries written by the model. If nothing matches, the page says so and the model is not asked for an answer. Answers cite excerpts as `[1]`, `[2]` and link to the document at the heading.
-- **Limits and records.** Per user: `ask.questionsPerDay` (100) and `ask.questionsPerTenMinutes` (20), one answer at a time, and `ask.maxConcurrent` (8) answers per process, with `429` or `503` and `Retry-After`. Each accepted question writes one usage row (user, time, provider, token counts, outcome), kept 90 days. **No question, answer or excerpt is stored or logged**; the conversation lives in the browser tab.
+- **Limits and records.** Per user: the **Ask limits** settings, `100` questions per day and `20` per ten minutes by default, one answer at a time, and `8` answers per process by default, with `429` or `503` and `Retry-After`. Each accepted question writes one usage row (user, time, provider, token counts, outcome), kept 90 days. **No question, answer or excerpt is stored or logged**; the conversation lives in the browser tab.
 - **Reverse proxy.** The answer streams as server-sent events from `POST /api/ask`. The app sends `X-Accel-Buffering: no`; in nginx also set `proxy_buffering off;` for `/api/ask` and a `proxy_read_timeout` above 60 seconds. Rate-limit this path in the proxy too.
 - **Prompt injection and accuracy.** Documents are untrusted and may contain instructions for the model. Excerpts are passed as labelled data, the model has no tools, and the answer is rendered without images, HTML or links of its own, so an injected instruction can change the wording of an answer but cannot reach out. That is a reduction, not a guarantee: answers can be wrong or misleading, so check the references.
-- **Failures.** A provider error shows a short fixed message, never provider text or a key. If the saved choice loses its credentials, Ask hides itself, `/status` and `/admin/ask` name the missing variable, and the rest of the portal keeps working.
+- **Failures.** A provider error shows a short fixed message, never provider text or a key. If the saved choice loses its credentials, Ask hides itself, `/status` and the Ask tab name the missing setting, and the rest of the portal keeps working.
 
 ## Reading aids
 

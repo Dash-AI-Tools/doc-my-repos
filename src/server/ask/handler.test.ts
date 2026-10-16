@@ -1,3 +1,4 @@
+import { Secret } from "../config/secret";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -37,6 +38,25 @@ const EVIL_TEXT = [
 ].join("\n");
 
 const BODY = { question: QUESTION, history: [], repo: "acme/api" };
+
+/** The workspace a test describes with the old variable-style names. */
+function workspaceFrom(e: Record<string, string>) {
+  return async () => ({
+    providers: {
+      anthropicKey: e.AI_ANTHROPIC_API_KEY ? new Secret(e.AI_ANTHROPIC_API_KEY) : null,
+      openaiBaseUrl: e.AI_OPENAI_BASE_URL ?? null,
+      openaiKey: e.AI_OPENAI_API_KEY ? new Secret(e.AI_OPENAI_API_KEY) : null,
+    },
+    config: {
+      ask: {
+        questionsPerDay: 100,
+        questionsPerTenMinutes: 20,
+        maxOutputTokens: 500,
+        maxConcurrent: 8,
+      },
+    },
+  });
+}
 
 describeDb("POST /api/ask", () => {
   let t: TestDatabase;
@@ -133,7 +153,7 @@ describeDb("POST /api/ask", () => {
   function deps(over: Partial<AskHandlerDeps> = {}): AskHandlerDeps {
     return {
       db: t.db,
-      env,
+      workspace: workspaceFrom(env),
       user: asUser(userId),
       log: recorder.log,
       gate,
@@ -175,12 +195,14 @@ describeDb("POST /api/ask", () => {
       expect((await handleAsk(post(BODY), deps())).status).toBe(404);
 
       await saveAskSettings(t.db, { enabled: true }, null);
-      expect((await handleAsk(post(BODY), deps({ env: {} }))).status).toBe(404);
+      expect((await handleAsk(post(BODY), deps({ workspace: workspaceFrom({}) }))).status).toBe(
+        404,
+      );
       expect(
         (
           await handleAsk(
             post(BODY),
-            deps({ env: { AI_OPENAI_BASE_URL: "http://remote.example.com" } }),
+            deps({ workspace: workspaceFrom({ AI_OPENAI_BASE_URL: "http://remote.example.com" }) }),
           )
         ).status,
       ).toBe(404);

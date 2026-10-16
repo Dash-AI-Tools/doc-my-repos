@@ -1,6 +1,6 @@
 /**
  * Shown on the home page when no repository has been synced (spec "Nothing synced yet"): says
- * how to configure DocMyRepos and run the first sync, with the real variable and command names.
+ * how to configure DocMyRepos (the Workspace configuration page of the admin interface) and run the first sync.
  * Static text; no data. The setup guide is `docs/github-app-setup.md` in the repository (not
  * linked: the app cannot know where it is hosted).
  */
@@ -22,20 +22,13 @@ export function EmptyState() {
       </p>
       <ol className="mt-4 list-decimal space-y-3 pl-6">
         <li>
-          Create a read-only GitHub App, install it on your organization, and set{" "}
-          <code className={CODE}>DATABASE_URL</code>, <code className={CODE}>GITHUB_APP_ID</code>,{" "}
-          <code className={CODE}>GITHUB_APP_PRIVATE_KEY</code> (or{" "}
-          <code className={CODE}>GITHUB_APP_PRIVATE_KEY_PATH</code>),{" "}
-          <code className={CODE}>GITHUB_APP_INSTALLATION_ID</code>,{" "}
-          <code className={CODE}>GITHUB_WEBHOOK_SECRET</code> and{" "}
-          <code className={CODE}>SYNC_SECRET</code> in the server environment. The steps are in{" "}
+          Create a read-only GitHub App and install it on your organization. The steps are in{" "}
           <code className={CODE}>docs/github-app-setup.md</code> in the repository.
         </li>
         <li>
-          Optionally limit which repositories are shown in{" "}
-          <code className={CODE}>docmyrepos.config.yml</code> (copy{" "}
-          <code className={CODE}>docmyrepos.config.example.yml</code>). Without it, every repository
-          the App can access is synced.
+          Sign in as an administrator and open <code className={CODE}>/admin/workspace</code>. Enter
+          the App ID, installation ID, private key and webhook secret, and optionally limit which
+          repositories are shown. Without a limit, every repository the App can access is synced.
         </li>
         <li>
           Run the first sync:
@@ -44,6 +37,7 @@ export function EmptyState() {
               {'curl -X POST -H "Authorization: Bearer $SYNC_SECRET" <your-app-url>/api/sync'}
             </code>
           </pre>
+          <code className={CODE}>SYNC_SECRET</code> is set in the server environment.
         </li>
         <li>Reload this page once the sync has finished.</li>
       </ol>

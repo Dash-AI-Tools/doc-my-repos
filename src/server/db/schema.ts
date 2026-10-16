@@ -422,3 +422,60 @@ export const askUsage = pgTable(
     index("ask_usage_created_idx").on(t.createdAt),
   ],
 );
+
+/** Names of the secrets an administrator can store (workspace-settings design decision 1). */
+export const WORKSPACE_SECRET_NAMES = [
+  "github_private_key",
+  "github_webhook_secret",
+  "anthropic_api_key",
+  "openai_api_key",
+] as const;
+export type WorkspaceSecretName = (typeof WORKSPACE_SECRET_NAMES)[number];
+
+/**
+ * Workspace settings (workspace-settings design decision 1): one row (`id` fixed to 1) holding the
+ * validated, non-secret settings as JSON. `version` rises by one on every save and is how a stale
+ * save is refused and how other server instances notice a change. No secret is ever stored here.
+ */
+export const workspaceSettings = pgTable(
+  "workspace_settings",
+  {
+    id: smallint("id").primaryKey(),
+    data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+    version: integer("version").notNull().default(1),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+    updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [check("workspace_settings_single_row", sql`${t.id} = 1`)],
+);
+
+/**
+ * One row per stored secret, encrypted with AES-256-GCM (`ciphertext` holds the cipher text and
+ * the authentication tag, base64). The secret's name is the authenticated data, so a value moved
+ * to another row fails to decrypt. There is deliberately no clear-text column.
+ */
+export const workspaceSecrets = pgTable(
+  "workspace_secrets",
+  {
+    name: text("name").primaryKey(),
+    ciphertext: text("ciphertext").notNull(),
+    nonce: text("nonce").notNull(),
+    keyVersion: smallint("key_version").notNull().default(1),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+    updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    check(
+      "workspace_secrets_name",
+      sql`${t.name} in ('github_private_key', 'github_webhook_secret', 'anthropic_api_key', 'openai_api_key')`,
+    ),
+  ],
+);
+
+/** Who changed which settings and when. Field names only; there is no column for a value. */
+export const settingsAudit = pgTable("settings_audit", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamptz("created_at").notNull().defaultNow(),
+  fields: text("fields").array().notNull(),
+});
