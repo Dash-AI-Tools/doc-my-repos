@@ -22,7 +22,7 @@ import teardown from "./global-teardown";
  * 1. Requires a reachable Postgres. If it is not, it fails loudly with the command that starts it,
  *    unless `E2E_SKIP_DB=1`, in which case it only prints a warning and the database-backed specs
  *    skip themselves.
- * 2. Creates `docmyrepos_e2e_<id>_seeded` and `_empty` (random id per run), applies every
+ * 2. Creates `docmyrepos_e2e_<id>_seeded`, `_empty` and `_starred` (seeded like `_seeded`, for specs that change data) (random id per run), applies every
  *    migration to both, and seeds the first with `seed-data.ts`.
  * 3. If any step fails, it drops what it created before rethrowing (Playwright does not run the
  *    teardown of a setup that threw). `global-teardown.ts` drops them after a normal run.
@@ -39,7 +39,7 @@ async function prepare(kind: DatabaseKind): Promise<void> {
   const handle = createDb(databaseUrl(kind), { max: 2, connectTimeoutMs: 5_000 });
   try {
     await runMigrations(handle, MIGRATIONS_FOLDER);
-    if (kind === "seeded") await seedDatabase(handle.db);
+    if (kind !== "empty") await seedDatabase(handle.db);
   } finally {
     await handle.close();
   }
@@ -56,6 +56,7 @@ export default async function globalSetup(): Promise<void> {
     await assertPostgresReachable();
     await prepare("seeded");
     await prepare("empty");
+    await prepare("starred");
   } catch (error) {
     await teardown();
     throw error;

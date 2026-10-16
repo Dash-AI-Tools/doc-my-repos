@@ -1,3 +1,4 @@
+import { eq, isNull } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ConfigError } from "./config/load";
@@ -99,6 +100,7 @@ describeDb("loadHome on a real database", () => {
   it("returns ok with an empty list for an empty database", async () => {
     expect(await loadHome({ db: () => t.db, now: () => NOW })).toEqual({
       status: "ok",
+      starred: [],
       repos: [],
       loadedAt: NOW,
     });
@@ -131,6 +133,37 @@ describeDb("loadHome on a real database", () => {
       "acme/zeta:private",
     ]);
     expect(data.repos[0]?.syncStatus).toBe("pending");
+  });
+
+  it("puts starred repositories first in the admin order and keeps the rest alphabetical", async () => {
+    await t.db.update(repos).set({ starPosition: 1 }).where(eq(repos.githubId, 1)); // acme/alpha
+    await t.db.insert(repos).values(
+      [
+        { githubId: 3, owner: "acme", name: "mid", starPosition: 0 },
+        { githubId: 4, owner: "acme", name: "tie", starPosition: 1 },
+        { githubId: 5, owner: "acme", name: "hidden", starPosition: 2, isAllowed: false },
+        { githubId: 6, owner: "acme", name: "plain" },
+      ].map((r) => ({
+        defaultBranch: "main",
+        visibility: "public" as const,
+        htmlUrl: `https://github.com/${r.owner}/${r.name}`,
+        ...r,
+      })),
+    );
+    const data = await loadHome({ db: () => t.db, now: () => NOW });
+    if (data.status !== "ok") throw new Error("expected ok");
+    // Order differs from alphabetical (mid before alpha); equal places fall back to id;
+    // the blocked starred repo is absent from both sections.
+    expect(data.starred.map((r) => r.name)).toEqual(["mid", "alpha", "tie"]);
+    expect(data.repos.map((r) => r.name)).toEqual(["plain", "zeta"]);
+  });
+
+  it("returns everything as starred, and an empty rest, when every repository is starred", async () => {
+    await t.db.update(repos).set({ starPosition: 9 }).where(isNull(repos.starPosition));
+    const data = await loadHome({ db: () => t.db, now: () => NOW });
+    if (data.status !== "ok") throw new Error("expected ok");
+    expect(data.repos).toEqual([]);
+    expect(data.starred).toHaveLength(5);
   });
 
   it("reports an unreachable database as the error state", async () => {

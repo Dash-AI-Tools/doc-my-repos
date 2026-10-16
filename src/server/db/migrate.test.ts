@@ -86,6 +86,14 @@ describeDb("migrations on a real database", () => {
     });
   }
 
+  it("adds repos.star_position nullable with no default, so existing rows stay unstarred", async () => {
+    const { rows } = await t.pool.query<{ is_nullable: string; column_default: string | null }>(
+      `SELECT is_nullable, column_default FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'repos' AND column_name = 'star_position'`,
+    );
+    expect(rows).toEqual([{ is_nullable: "YES", column_default: null }]);
+  });
+
   it("has the sync_runs started_at index", async () => {
     const { rows } = await t.pool.query<{ indexdef: string }>(
       "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'sync_runs_started_at_idx'",

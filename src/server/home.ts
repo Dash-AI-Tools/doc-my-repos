@@ -25,6 +25,9 @@ import { logger, type LogFn } from "./log";
 export type HomeData =
   | {
       readonly status: "ok";
+      /** Starred repositories in the admin-set order (position, then id). */
+      readonly starred: readonly RepoSummary[];
+      /** Every other visible repository, in the order `listRepos` returns (owner, then name). */
       readonly repos: readonly RepoSummary[];
       /** When the data was read; pages format "x minutes ago" against this, not their own clock. */
       readonly loadedAt: Date;
@@ -56,8 +59,13 @@ export async function loadHome(deps: HomeDeps = {}): Promise<HomeData> {
   const log = deps.log ?? logger.error;
   const db = deps.db ?? (() => getRuntime().db.db);
   try {
-    const repos = await listRepos(db());
-    return { status: "ok", repos, loadedAt: now() };
+    // Visibility is already applied by `listRepos`, so a blocked starred repo never gets here.
+    const all = await listRepos(db());
+    const starred = all
+      .filter((r) => r.isStarred)
+      .sort((a, b) => (a.starPosition ?? 0) - (b.starPosition ?? 0) || a.id - b.id);
+    const repos = all.filter((r) => !r.isStarred);
+    return { status: "ok", starred, repos, loadedAt: now() };
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;

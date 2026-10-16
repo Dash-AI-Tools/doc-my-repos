@@ -5,15 +5,10 @@ import { useRouter } from "next/navigation";
 
 import { fieldClass } from "@/lib/ui";
 
-/** Row shape from the admin repos API. Local copy: components take data as props. */
-export interface RepoAccessRow {
-  readonly id: number;
-  readonly owner: string;
-  readonly name: string;
-  readonly visibility: "public" | "private";
-  readonly isAllowed: boolean;
-  readonly syncStatus: "pending" | "ok" | "error";
-}
+import { RepoLine, repoLabel, type RepoAccessRow } from "./repo-access-row";
+import { StarredRepoList } from "./starred-repo-list";
+
+export type { RepoAccessRow } from "./repo-access-row";
 
 type AccessFilter = "all" | "allowed" | "blocked" | "error";
 
@@ -24,19 +19,25 @@ const FILTERS: ReadonlyArray<{ value: AccessFilter; label: string }> = [
   { value: "error", label: "Sync errors" },
 ];
 
-const SYNC_LABEL: Record<RepoAccessRow["syncStatus"], string> = {
-  ok: "Synced",
-  pending: "Waiting for first sync",
-  error: "Sync failed",
-};
-
-const rowButton =
-  "text-sm underline underline-offset-4 decoration-border hover:decoration-foreground disabled:opacity-50";
-const gridCols = "md:grid-cols-[minmax(0,1fr)_6rem_11rem_5rem]";
-
 interface Notice {
   readonly tone: "ok" | "error";
   readonly text: string;
+}
+
+/** The server's error text for a failed request, or a generic one. */
+async function failureText(response: Response): Promise<string> {
+  try {
+    const data = (await response.json()) as { error?: unknown };
+    if (typeof data.error === "string") return data.error;
+  } catch {}
+  return `Request failed (${response.status})`;
+}
+
+/** Starred rows in the admin order (place, then id: the same order the server uses). */
+function starredInOrder(repos: readonly RepoAccessRow[]): RepoAccessRow[] {
+  return repos
+    .filter((r) => r.isStarred)
+    .sort((a, b) => (a.starPosition ?? 0) - (b.starPosition ?? 0) || a.id - b.id);
 }
 
 export function RepoAccessManager({ initialRepos }: { initialRepos: RepoAccessRow[] }) {
@@ -47,10 +48,15 @@ export function RepoAccessManager({ initialRepos }: { initialRepos: RepoAccessRo
   const [filter, setFilter] = useState<AccessFilter>("all");
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [reordering, setReordering] = useState(false);
 
+  // The starred group is always shown whole (it is the list being ordered); the search and filter
+  // narrow the other repositories.
+  const starred = useMemo(() => starredInOrder(repos), [repos]);
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     return repos.filter((r) => {
+      if (r.isStarred) return false;
       if (q && !`${r.owner}/${r.name}`.toLowerCase().includes(q)) return false;
       if (filter === "allowed") return r.isAllowed;
       if (filter === "blocked") return !r.isAllowed;
@@ -69,145 +75,190 @@ export function RepoAccessManager({ initialRepos }: { initialRepos: RepoAccessRo
     [repos],
   );
 
-  async function onToggle(r: RepoAccessRow) {
-    const isAllowed = !r.isAllowed;
+  /** PATCH one repo; on failure the list is left as it was and the error is shown. */
+  async function patch(
+    r: RepoAccessRow,
+    body: { isAllowed: boolean } | { isStarred: boolean },
+  ): Promise<{ isAllowed: boolean; starPosition: number | null } | null> {
     setBusyId(r.id);
     setNotice(null);
-    const response = await fetch("/api/admin/repos", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ owner: r.owner, name: r.name, isAllowed }),
-    });
-    setBusyId(null);
-    if (!response.ok) {
-      let text = `Request failed (${response.status})`;
-      try {
-        const data = (await response.json()) as { error?: unknown };
-        if (typeof data.error === "string") text = data.error;
-      } catch {}
-      setNotice({ tone: "error", text });
-      return;
+    try {
+      const response = await fetch("/api/admin/repos", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ owner: r.owner, name: r.name, ...body }),
+      });
+      if (!response.ok) {
+        setNotice({ tone: "error", text: await failureText(response) });
+        return null;
+      }
+      const data = (await response.json()) as {
+        repo: { isAllowed: boolean; starPosition: number | null };
+      };
+      return data.repo;
+    } catch {
+      setNotice({ tone: "error", text: "Could not reach the server." });
+      return null;
+    } finally {
+      setBusyId(null);
     }
-    setRepos((prev) => prev.map((p) => (p.id === r.id ? { ...p, isAllowed } : p)));
+  }
+
+  async function onToggle(r: RepoAccessRow) {
+    const saved = await patch(r, { isAllowed: !r.isAllowed });
+    if (!saved) return;
+    setRepos((prev) => prev.map((p) => (p.id === r.id ? { ...p, isAllowed: saved.isAllowed } : p)));
     setNotice({
       tone: "ok",
-      text: `${r.owner}/${r.name} is ${isAllowed ? "visible again" : "blocked"}.`,
+      text: `${repoLabel(r)} is ${saved.isAllowed ? "visible again" : "blocked"}.`,
     });
     router.refresh();
   }
 
+  async function onToggleStar(r: RepoAccessRow) {
+    const saved = await patch(r, { isStarred: !r.isStarred });
+    if (!saved) return;
+    setRepos((prev) =>
+      prev.map((p) =>
+        p.id === r.id
+          ? { ...p, starPosition: saved.starPosition, isStarred: saved.starPosition !== null }
+          : p,
+      ),
+    );
+    setNotice({
+      tone: "ok",
+      text: `${repoLabel(r)} ${saved.starPosition !== null ? "is starred" : "is no longer starred"}.`,
+    });
+    router.refresh();
+  }
+
+  /** Optimistic reorder: show the new order now, send the whole list, restore it on failure. */
+  async function onReorder(next: RepoAccessRow[]) {
+    const previous = repos;
+    const places = new Map(next.map((r, index) => [r.id, index]));
+    setRepos((prev) =>
+      prev.map((p) => (places.has(p.id) ? { ...p, starPosition: places.get(p.id) ?? null } : p)),
+    );
+    setReordering(true);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/admin/repos/starred", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repos: next.map((r) => ({ owner: r.owner, name: r.name })) }),
+      });
+      if (!response.ok) {
+        setRepos(previous);
+        setNotice({ tone: "error", text: await failureText(response) });
+        return;
+      }
+      setNotice({ tone: "ok", text: "Starred order saved." });
+      router.refresh();
+    } catch {
+      setRepos(previous);
+      setNotice({ tone: "error", text: "Could not reach the server." });
+    } finally {
+      setReordering(false);
+    }
+  }
+
   return (
-    <section className="flex flex-col gap-4" aria-labelledby={`${ids}-h`}>
-      <h2 id={`${ids}-h`} className="text-xl font-bold tracking-tight">
-        Repositories{" "}
-        <span className="font-normal text-muted-foreground tabular-nums">{repos.length}</span>
-      </h2>
-      <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
-        <div role="group" aria-label="Filter by access" className="flex flex-wrap gap-4 text-sm">
-          {FILTERS.map((f) => (
-            <button
-              key={f.value}
-              type="button"
-              aria-pressed={filter === f.value}
-              onClick={() => setFilter(f.value)}
-              className={
-                filter === f.value
-                  ? "border-b-2 border-primary pb-0.5 font-medium text-foreground"
-                  : "border-b-2 border-transparent pb-0.5 text-muted-foreground hover:text-foreground"
-              }
-            >
-              {f.label}{" "}
-              <span className="tabular-nums text-muted-foreground">{counts[f.value]}</span>
-            </button>
-          ))}
-        </div>
-        <div className="w-full sm:w-64">
-          <label htmlFor={`${ids}-search`} className="sr-only">
-            Search repositories
-          </label>
-          <input
-            id={`${ids}-search`}
-            type="search"
-            placeholder="Search owner/name"
-            autoComplete="off"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className={fieldClass}
-          />
-        </div>
-      </div>
-
-      <div role="status" aria-live="polite" className="min-h-5 text-sm">
-        {notice ? (
-          <p className={notice.tone === "error" ? "text-destructive" : "text-foreground"}>
-            {notice.text}
+    <div className="flex flex-col gap-10">
+      {starred.length > 0 ? (
+        <section className="flex flex-col gap-2" aria-labelledby={`${ids}-starred`}>
+          <h2 id={`${ids}-starred`} className="text-xl font-bold tracking-tight">
+            Starred{" "}
+            <span className="font-normal text-muted-foreground tabular-nums">{starred.length}</span>
+          </h2>
+          <p className="max-w-prose text-sm text-muted-foreground">
+            Starred repositories lead the home page in this order. Drag a row by its handle, or use
+            Up and Down.
           </p>
-        ) : null}
-      </div>
+          <div className="border-t border-border">
+            <StarredRepoList
+              repos={starred}
+              busyId={busyId}
+              reordering={reordering}
+              onReorder={(next) => void onReorder(next)}
+              onToggleStar={(r) => void onToggleStar(r)}
+              onToggleAllowed={(r) => void onToggle(r)}
+            />
+          </div>
+        </section>
+      ) : null}
 
-      <div>
-        <div
-          aria-hidden="true"
-          className={`hidden gap-4 border-b border-border pb-2 text-xs text-muted-foreground md:grid ${gridCols}`}
-        >
-          <span>Repository</span>
-          <span>Access</span>
-          <span>Sync</span>
-          <span className="text-right">Actions</span>
+      <section className="flex flex-col gap-4" aria-labelledby={`${ids}-h`}>
+        <h2 id={`${ids}-h`} className="text-xl font-bold tracking-tight">
+          Repositories{" "}
+          <span className="font-normal text-muted-foreground tabular-nums">{repos.length}</span>
+        </h2>
+        <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+          <div role="group" aria-label="Filter by access" className="flex flex-wrap gap-4 text-sm">
+            {FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                aria-pressed={filter === f.value}
+                onClick={() => setFilter(f.value)}
+                className={
+                  filter === f.value
+                    ? "border-b-2 border-primary pb-0.5 font-medium text-foreground"
+                    : "border-b-2 border-transparent pb-0.5 text-muted-foreground hover:text-foreground"
+                }
+              >
+                {f.label}{" "}
+                <span className="tabular-nums text-muted-foreground">{counts[f.value]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="w-full sm:w-64">
+            <label htmlFor={`${ids}-search`} className="sr-only">
+              Search repositories
+            </label>
+            <input
+              id={`${ids}-search`}
+              type="search"
+              placeholder="Search owner/name"
+              autoComplete="off"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className={fieldClass}
+            />
+          </div>
         </div>
-        <ul>
-          {visible.map((r) => {
-            const busy = busyId === r.id;
-            return (
+
+        <div role="status" aria-live="polite" className="min-h-5 text-sm">
+          {notice ? (
+            <p className={notice.tone === "error" ? "text-destructive" : "text-foreground"}>
+              {notice.text}
+            </p>
+          ) : null}
+        </div>
+
+        <div>
+          <ul>
+            {visible.map((r) => (
               <li key={r.id} className="border-b border-border py-3">
-                <div className={`grid items-center gap-x-4 gap-y-1 ${gridCols}`}>
-                  <div className="min-w-0">
-                    <span
-                      className={`break-all font-medium ${r.isAllowed ? "" : "text-muted-foreground"}`}
-                    >
-                      <span className="font-normal text-muted-foreground">{r.owner}/</span>
-                      {r.name}
-                    </span>
-                    {r.visibility === "private" ? (
-                      <span className="ml-2 text-xs text-muted-foreground">private</span>
-                    ) : null}
-                  </div>
-                  <div className="text-sm">
-                    {r.isAllowed ? (
-                      <span className="text-muted-foreground">Visible</span>
-                    ) : (
-                      <span className="text-destructive">Blocked</span>
-                    )}
-                  </div>
-                  <div
-                    className={`text-sm ${r.syncStatus === "error" ? "text-destructive" : "text-muted-foreground"}`}
-                  >
-                    {SYNC_LABEL[r.syncStatus]}
-                  </div>
-                  <div className="md:text-right">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      aria-label={`${r.isAllowed ? "Block" : "Allow"} ${r.owner}/${r.name}`}
-                      onClick={() => void onToggle(r)}
-                      className={rowButton}
-                    >
-                      {r.isAllowed ? "Block" : "Allow"}
-                    </button>
-                  </div>
-                </div>
+                <RepoLine
+                  repo={r}
+                  busy={busyId === r.id}
+                  onToggleStar={(row) => void onToggleStar(row)}
+                  onToggleAllowed={(row) => void onToggle(row)}
+                />
               </li>
-            );
-          })}
-        </ul>
-        {visible.length === 0 ? (
-          <p className="py-8 text-sm text-muted-foreground">
-            {repos.length === 0
-              ? "Nothing synced yet. Repositories appear after the first sync."
-              : "No repository matches. Clear the search or pick another filter."}
-          </p>
-        ) : null}
-      </div>
-    </section>
+            ))}
+          </ul>
+          {visible.length === 0 ? (
+            <p className="py-8 text-sm text-muted-foreground">
+              {repos.length === 0
+                ? "Nothing synced yet. Repositories appear after the first sync."
+                : repos.every((r) => r.isStarred)
+                  ? "Every repository is starred."
+                  : "No repository matches. Clear the search or pick another filter."}
+            </p>
+          ) : null}
+        </div>
+      </section>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import { getDb, type Db } from "@/server/db/client";
 import { authErrorResponse, requireAdmin } from "@/server/auth/current-user";
 import { readGithubConfigSummary } from "@/server/admin/github-config";
-import { setRepoAllowed } from "@/server/admin/repos";
+import { reorderStarredRepos, updateRepoFlags } from "@/server/admin/repos";
 import { createUser, listUsers, updateUser } from "@/server/admin/users";
 import { readBrandingSettings } from "@/server/branding";
 import { siteBranding } from "@/server/db/schema";
@@ -120,7 +120,26 @@ export async function handleListRepos(db: Db | null = null): Promise<Response> {
   }
 }
 
-export async function handleSetRepoAllowed(
+/** `PATCH /api/admin/repos`: `{owner, name}` plus `isAllowed` and/or `isStarred` (booleans). */
+export async function handleUpdateRepo(request: Request, db: Db | null = null): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  const parsed = await bodyOf(request);
+  if ("error" in parsed) return parsed.error;
+  try {
+    const result = await updateRepoFlags(db ?? getDb().db, parsed.body.owner, parsed.body.name, {
+      isAllowed: parsed.body.isAllowed,
+      isStarred: parsed.body.isStarred,
+    });
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    return Response.json({ repo: { ...result, ok: undefined } });
+  } catch {
+    return Response.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+/** `PUT /api/admin/repos/starred`: `{repos: [{owner, name}, ...]}`, the whole starred list in order. */
+export async function handleReorderStarred(
   request: Request,
   db: Db | null = null,
 ): Promise<Response> {
@@ -129,14 +148,9 @@ export async function handleSetRepoAllowed(
   const parsed = await bodyOf(request);
   if ("error" in parsed) return parsed.error;
   try {
-    const result = await setRepoAllowed(
-      db ?? getDb().db,
-      parsed.body.owner,
-      parsed.body.name,
-      parsed.body.isAllowed,
-    );
+    const result = await reorderStarredRepos(db ?? getDb().db, parsed.body?.repos);
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
-    return Response.json({ repo: result });
+    return Response.json({ repos: result.repos });
   } catch {
     return Response.json({ error: "Internal error" }, { status: 500 });
   }

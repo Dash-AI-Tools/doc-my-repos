@@ -59,4 +59,46 @@ describe("RepoGrid", () => {
     render(<RepoGrid now={NOW} repos={[repo("a"), repo("b")]} />);
     expect(screen.getAllByRole("heading").map((h) => h.tagName)).toEqual(["H2", "H3", "H3"]);
   });
+
+  describe("Starred section", () => {
+    it("lists starred repositories above Repositories, in the order given, with the same cards", () => {
+      render(
+        <RepoGrid
+          now={NOW}
+          starred={[repo("zed", { visibility: "private" }), repo("alpha")]}
+          repos={[repo("rest")]}
+        />,
+      );
+      expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
+        "Starred (2)",
+        "Repositories (1)",
+      ]);
+      const [starred, rest] = screen.getAllByRole("region");
+      const names = (el: HTMLElement | undefined) =>
+        within(el as HTMLElement)
+          .getAllByRole("listitem")
+          .map((li) => within(li).getByRole("link").textContent);
+      expect(names(starred)).toEqual(["acme/zed", "acme/alpha"]);
+      expect(names(rest)).toEqual(["acme/rest"]);
+      // Same card markup, including the private badge.
+      expect(within(starred as HTMLElement).getByTestId("private-badge")).toBeTruthy();
+      expect(screen.getByRole("region", { name: /^Starred/ })).toBe(starred);
+    });
+
+    it("shows no Starred section when nothing is starred", () => {
+      render(<RepoGrid now={NOW} starred={[]} repos={[repo("a")]} />);
+      expect(screen.queryByText(/Starred/)).toBeNull();
+      expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
+        "Repositories (1)",
+      ]);
+    });
+
+    it("omits the Repositories section when everything is starred", () => {
+      render(<RepoGrid now={NOW} starred={[repo("a")]} repos={[]} />);
+      expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
+        "Starred (1)",
+      ]);
+      expect(screen.queryByText(/Repositories/)).toBeNull();
+    });
+  });
 });

@@ -22,6 +22,8 @@ const repo = {
   htmlUrl: "https://github.com/acme/api",
   visibility: "public" as const,
   isAllowed: true,
+  starPosition: null,
+  isStarred: false,
   isOkf: false,
   okfVersion: null,
   syncStatus: "ok" as const,
@@ -43,6 +45,7 @@ describe("home page", () => {
     loadHome.mockResolvedValue({
       status: "ok",
       loadedAt: NOW,
+      starred: [],
       repos: [repo, { ...repo, id: 2, name: "hidden", visibility: "private" }],
     });
     const out = await html();
@@ -60,6 +63,7 @@ describe("home page", () => {
     loadHome.mockResolvedValue({
       status: "ok",
       loadedAt: NOW,
+      starred: [],
       repos: [
         { ...repo, id: 2, name: "kb", isOkf: true, okfVersion: "0.2" },
         { ...repo, id: 3, name: "plain" },
@@ -69,13 +73,38 @@ describe("home page", () => {
     expect(out.match(/data-testid="okf-badge"/g)).toHaveLength(1);
     expect(out).toContain("OKF v0.2");
 
-    loadHome.mockResolvedValue({ status: "ok", loadedAt: NOW, repos: [repo] });
+    loadHome.mockResolvedValue({ status: "ok", loadedAt: NOW, starred: [], repos: [repo] });
     const plain = await html();
     expect(plain).not.toMatch(/okf/i);
   });
 
+  it("shows a Starred section above Repositories, and the empty state only when nothing exists at all", async () => {
+    loadHome.mockResolvedValue({
+      status: "ok",
+      loadedAt: NOW,
+      starred: [{ ...repo, id: 3, name: "lead", isStarred: true, starPosition: 0 }],
+      repos: [repo],
+    });
+    const out = await html();
+    expect(out.indexOf("Starred")).toBeGreaterThan(-1);
+    expect(out.indexOf("Starred")).toBeLessThan(out.indexOf("Repositories"));
+    expect(out).not.toContain("Nothing synced yet");
+
+    // Everything starred: no Repositories section, and still not the empty state.
+    loadHome.mockResolvedValue({
+      status: "ok",
+      loadedAt: NOW,
+      starred: [{ ...repo, isStarred: true, starPosition: 0 }],
+      repos: [],
+    });
+    const all = await html();
+    expect(all).toContain("Starred");
+    expect(all).not.toContain("Repositories");
+    expect(all).not.toContain("Nothing synced yet");
+  });
+
   it("renders the empty state, with the search bar, when nothing is synced", async () => {
-    loadHome.mockResolvedValue({ status: "ok", loadedAt: NOW, repos: [] });
+    loadHome.mockResolvedValue({ status: "ok", loadedAt: NOW, starred: [], repos: [] });
     const out = await html();
     expect(out).toContain("Nothing synced yet");
     expect(out).toContain('action="/search"');

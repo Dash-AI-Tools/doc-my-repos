@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { repos, users } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import { createUser, listUsers, updateUser } from "./users";
-import { setRepoAllowed } from "./repos";
+import { reorderStarredRepos, setRepoAllowed, setRepoStarred } from "./repos";
 
 describeDb("admin user management", () => {
   let t: TestDatabase;
@@ -138,6 +138,75 @@ describeDb("admin repo allow/block", () => {
       ok: false,
       status: 400,
     });
+  });
+
+  it("stars at the end, keeps the place on a repeat, and unstars in the middle", async () => {
+    await t.db.insert(repos).values(
+      ["one", "two", "three"].map((name, i) => ({
+        githubId: 70 + i,
+        owner: "Star",
+        name,
+        defaultBranch: "main",
+        visibility: "public" as const,
+        htmlUrl: `https://github.com/Star/${name}`,
+      })),
+    );
+    const places = async () =>
+      Object.fromEntries(
+        (await t.db.select().from(repos))
+          .filter((r) => r.owner === "Star")
+          .map((r) => [r.name, r.starPosition]),
+      );
+    expect(await places()).toEqual({ one: null, two: null, three: null });
+
+    expect(await setRepoStarred(t.db, "star", "ONE", true)).toMatchObject({
+      ok: true,
+      owner: "Star",
+      isStarred: true,
+      starPosition: 0,
+    });
+    await setRepoStarred(t.db, "star", "two", true);
+    await setRepoStarred(t.db, "star", "three", true);
+    expect(await places()).toEqual({ one: 0, two: 1, three: 2 });
+    // Repeat: same place, not moved to the end.
+    expect(await setRepoStarred(t.db, "star", "one", true)).toMatchObject({ starPosition: 0 });
+    // Unstar in the middle, then star again: it goes last; the others keep their order.
+    expect(await setRepoStarred(t.db, "star", "two", false)).toMatchObject({
+      ok: true,
+      isStarred: false,
+      starPosition: null,
+    });
+    expect(await places()).toEqual({ one: 0, two: null, three: 2 });
+    await setRepoStarred(t.db, "star", "two", true);
+    expect(await places()).toEqual({ one: 0, two: 3, three: 2 });
+    // Blocking and re-allowing never touch the place.
+    await setRepoAllowed(t.db, "star", "three", false);
+    await setRepoAllowed(t.db, "star", "three", true);
+    expect((await places()).three).toBe(2);
+
+    expect(await setRepoStarred(t.db, "", "one", true)).toMatchObject({ ok: false, status: 400 });
+    expect(await setRepoStarred(t.db, "star", "one", "yes")).toMatchObject({ status: 400 });
+    expect(await setRepoStarred(t.db, "star", "one", undefined)).toMatchObject({ status: 400 });
+    expect(await setRepoStarred(t.db, "star", "missing", true)).toMatchObject({ status: 404 });
+
+    // Reorder rewrites the places to 0..n-1 (closing the gap) and never writes on failure.
+    const entry = (name: string) => ({ owner: "star", name });
+    expect(
+      await reorderStarredRepos(t.db, [entry("two"), entry("one"), entry("three")]),
+    ).toMatchObject({ ok: true });
+    expect(await places()).toEqual({ two: 0, one: 1, three: 2 });
+    expect(await reorderStarredRepos(t.db, [entry("two"), entry("one")])).toMatchObject({
+      ok: false,
+      status: 409,
+    });
+    expect(
+      await reorderStarredRepos(t.db, [entry("two"), entry("one"), entry("three"), entry("two")]),
+    ).toMatchObject({ ok: false, status: 400 });
+    expect(await reorderStarredRepos(t.db, [entry("two"), entry("nope")])).toMatchObject({
+      ok: false,
+      status: 400,
+    });
+    expect(await places()).toEqual({ two: 0, one: 1, three: 2 });
   });
 });
 

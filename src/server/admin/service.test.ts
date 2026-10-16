@@ -10,7 +10,8 @@ import {
   handleGithubConfig,
   handleListRepos,
   handleListUsers,
-  handleSetRepoAllowed,
+  handleReorderStarred,
+  handleUpdateRepo,
   handleUpdateUser,
 } from "./service";
 
@@ -101,7 +102,8 @@ describeDb("admin routes", () => {
       () => handleCreateUser(jsonRequest("/api/admin/users", "POST", {}), t.db),
       () => handleUpdateUser(adminId, jsonRequest("/x", "PATCH", {}), t.db),
       () => handleListRepos(t.db),
-      () => handleSetRepoAllowed(jsonRequest("/api/admin/repos", "PATCH", {}), t.db),
+      () => handleUpdateRepo(jsonRequest("/api/admin/repos", "PATCH", {}), t.db),
+      () => handleReorderStarred(jsonRequest("/api/admin/repos/starred", "PUT", {}), t.db),
       () => handleGithubConfig(),
     ]) {
       expect((await call()).status).toBe(401);
@@ -112,7 +114,8 @@ describeDb("admin routes", () => {
       () => handleCreateUser(jsonRequest("/api/admin/users", "POST", {}), t.db),
       () => handleUpdateUser(adminId, jsonRequest("/x", "PATCH", {}), t.db),
       () => handleListRepos(t.db),
-      () => handleSetRepoAllowed(jsonRequest("/api/admin/repos", "PATCH", {}), t.db),
+      () => handleUpdateRepo(jsonRequest("/api/admin/repos", "PATCH", {}), t.db),
+      () => handleReorderStarred(jsonRequest("/api/admin/repos/starred", "PUT", {}), t.db),
       () => handleGithubConfig(t.db),
     ]) {
       expect((await call()).status).toBe(403);
@@ -164,7 +167,7 @@ describeDb("admin routes", () => {
 
   it("toggles repo access as admin and lists blocked repos", async () => {
     signInAs("admin");
-    const blocked = await handleSetRepoAllowed(
+    const blocked = await handleUpdateRepo(
       jsonRequest("/api/admin/repos", "PATCH", {
         owner: "acme",
         name: "handbook",
@@ -177,11 +180,97 @@ describeDb("admin routes", () => {
       repos: { name: string; isAllowed: boolean }[];
     };
     expect(list.repos).toMatchObject([{ name: "handbook", isAllowed: false }]);
-    const missing = await handleSetRepoAllowed(
+    const missing = await handleUpdateRepo(
       jsonRequest("/api/admin/repos", "PATCH", { owner: "acme", name: "nope", isAllowed: false }),
       t.db,
     );
     expect(missing.status).toBe(404);
+  });
+
+  it("stars, unstars and reorders repos as admin, with 400 and 409 and nothing written on failure", async () => {
+    await t.db.insert(repos).values(
+      ["alpha", "beta"].map((name, i) => ({
+        githubId: 50 + i,
+        owner: "acme",
+        name,
+        defaultBranch: "main",
+        visibility: "public" as const,
+        htmlUrl: `https://github.com/acme/${name}`,
+      })),
+    );
+    signInAs("admin");
+    const patch = (body: unknown) =>
+      handleUpdateRepo(jsonRequest("/api/admin/repos", "PATCH", body), t.db);
+    const put = (body: unknown) =>
+      handleReorderStarred(jsonRequest("/api/admin/repos/starred", "PUT", body), t.db);
+    const starred = async () =>
+      (
+        (await (await handleListRepos(t.db)).json()) as {
+          repos: { name: string; isStarred: boolean; starPosition: number | null }[];
+        }
+      ).repos
+        .filter((r) => r.isStarred)
+        .sort((a, b) => (a.starPosition ?? 0) - (b.starPosition ?? 0))
+        .map((r) => r.name);
+
+    // Neither field, or a non-boolean, is a 400; isAllowed-only keeps working.
+    expect((await patch({ owner: "acme", name: "alpha" })).status).toBe(400);
+    expect((await patch({ owner: "acme", name: "alpha", isStarred: "yes" })).status).toBe(400);
+    expect(
+      (await patch({ owner: "acme", name: "alpha", isStarred: true, isAllowed: 1 })).status,
+    ).toBe(400);
+    expect(await starred()).toEqual([]);
+    const both = await patch({ owner: "ACME", name: "alpha", isStarred: true, isAllowed: false });
+    expect(both.status).toBe(200);
+    expect(await both.json()).toMatchObject({
+      repo: { owner: "acme", name: "alpha", isStarred: true, isAllowed: false, starPosition: 0 },
+    });
+    expect((await patch({ owner: "acme", name: "beta", isStarred: true })).status).toBe(200);
+    expect((await patch({ owner: "acme", name: "handbook", isStarred: true })).status).toBe(200);
+    expect(await starred()).toEqual(["alpha", "beta", "handbook"]);
+
+    // Reorder: valid (blocked alpha included), then stale, malformed and unknown.
+    const ok = await put({
+      repos: [
+        { owner: "acme", name: "handbook" },
+        { owner: "ACME", name: "ALPHA" },
+        { owner: "acme", name: "beta" },
+      ],
+    });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({
+      repos: [
+        { owner: "acme", name: "handbook" },
+        { owner: "acme", name: "alpha" },
+        { owner: "acme", name: "beta" },
+      ],
+    });
+    expect(await starred()).toEqual(["handbook", "alpha", "beta"]);
+    const before = await starred();
+    const entry = (name: string) => ({ owner: "acme", name });
+    for (const [body, status] of [
+      [{ repos: [entry("handbook"), entry("alpha")] }, 409],
+      [{ repos: [entry("handbook"), entry("alpha"), entry("beta"), entry("handbook")] }, 400],
+      [{ repos: [entry("handbook"), entry("alpha"), entry("nope")] }, 400],
+      [{ repos: [entry("handbook"), entry("alpha"), "beta"] }, 400],
+      [{ repos: "nope" }, 400],
+      [{}, 400],
+    ] as const) {
+      expect((await put(body)).status, JSON.stringify(body)).toBe(status);
+      expect(await starred()).toEqual(before);
+    }
+
+    // Unstar in the middle keeps the relative order; star again goes last.
+    expect((await patch({ owner: "acme", name: "alpha", isStarred: false })).status).toBe(200);
+    expect(await starred()).toEqual(["handbook", "beta"]);
+    expect((await patch({ owner: "acme", name: "alpha", isStarred: true })).status).toBe(200);
+    expect(await starred()).toEqual(["handbook", "beta", "alpha"]);
+    // A viewer cannot do either.
+    signInAs("user");
+    expect((await patch({ owner: "acme", name: "beta", isStarred: false })).status).toBe(403);
+    expect((await put({ repos: [] })).status).toBe(403);
+    signInAs("admin");
+    expect(await starred()).toEqual(["handbook", "beta", "alpha"]);
   });
 
   it("shows the GitHub config summary without secrets", async () => {

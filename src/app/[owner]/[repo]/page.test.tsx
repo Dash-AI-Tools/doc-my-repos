@@ -46,6 +46,8 @@ const repo: RepoDetail = {
   htmlUrl: "https://github.com/acme/api",
   visibility: "public" as const,
   isAllowed: true,
+  starPosition: null,
+  isStarred: false,
   isOkf: false,
   okfVersion: null,
   syncStatus: "ok" as const,

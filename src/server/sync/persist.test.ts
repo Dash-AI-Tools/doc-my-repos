@@ -681,6 +681,31 @@ describeDb("persistRepoSync on a real database", () => {
       expect((await docRows(id)).map((d) => d.path)).toEqual(["docs/a.md"]);
     });
 
+    it("keeps the star and its place across content syncs, renames, blocking and re-allowing", async () => {
+      const id = 700;
+      await persist({ repo: repoMeta(id), plan: content({ fetched: [A] }) });
+      await t.db.update(repos).set({ starPosition: 4 }).where(eq(repos.githubId, id));
+
+      // Updated content, then a rename: both are sync upserts of the same row.
+      await persist({ repo: repoMeta(id), plan: content({ treeSha: sha("t2"), fetched: [B] }) });
+      expect((await repoRow(id))?.starPosition).toBe(4);
+      await persist({
+        repo: repoMeta(id, { name: "renamed", htmlUrl: "https://github.com/acme/renamed" }),
+        plan: content({ treeSha: sha("t3") }),
+      });
+      expect(await repoRow(id)).toMatchObject({ name: "renamed", starPosition: 4 });
+
+      // Blocked, synced again, re-allowed: still starred in the same place.
+      await t.db.update(repos).set({ isAllowed: false }).where(eq(repos.githubId, id));
+      await persist({
+        repo: repoMeta(id, { name: "renamed" }),
+        plan: content({ treeSha: sha("t4") }),
+      });
+      expect(await repoRow(id)).toMatchObject({ isAllowed: false, starPosition: 4 });
+      await t.db.update(repos).set({ isAllowed: true }).where(eq(repos.githubId, id));
+      expect(await repoRow(id)).toMatchObject({ isAllowed: true, starPosition: 4 });
+    });
+
     it("deletes a stale row holding the new name under another id, ignoring case", async () => {
       await persist({ repo: repoMeta(700, { name: "thing" }), plan: content({ fetched: [A, B] }) });
       await persist({
