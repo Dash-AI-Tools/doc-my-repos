@@ -16,3 +16,4 @@ Changes to this documentation, oldest first. New entries go at the end.
 ## 2026-10-15
 
 - Added the [Comments guide](./guides/comments.md): who can comment, where comments are stored, what happens to them when a document moves, the limits, moderation and the `comments.enabled` switch.
+- Added the [Install wizard guide](./guides/install-wizard.md): `npx create-docmyrepos`, what it asks and writes, scripted and dry-run installs, and how to read the installer's source before running it.

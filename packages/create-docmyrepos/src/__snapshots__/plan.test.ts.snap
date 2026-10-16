@@ -1,0 +1,254 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`plan > all repositories, key as a compose secret (uid 1000) 1`] = `
+[
+  {
+    "content": "# DocMyRepos, written by create-docmyrepos 1.2.0.
+#
+#   docker compose up -d --wait
+#
+# Settings and secrets are in .env next to this file (keep it private, never commit it).
+# TLS belongs to a reverse proxy in front of the app. The app is published on 127.0.0.1 only;
+# change APP_BIND in .env only if the proxy runs on another host.
+# To upgrade, change DOCMYREPOS_VERSION in .env (or the tag below) and run \`docker compose pull\`.
+name: docmyrepos
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: \${POSTGRES_USER:-docmyrepos}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: \${POSTGRES_DB:-docmyrepos}
+    # The database port is not published: only the app reaches it, over the compose network.
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  app:
+    image: ghcr.io/dash-ai-tools/doc-my-repos:\${DOCMYREPOS_VERSION:-1.2.0}
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network the database is the \`db\` service.
+      DATABASE_URL: postgres://\${POSTGRES_USER:-docmyrepos}:\${POSTGRES_PASSWORD}@db:5432/\${POSTGRES_DB:-docmyrepos}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "\${APP_BIND:-127.0.0.1}:\${APP_PORT:-3000}:3000"
+    volumes:
+      - ./docmyrepos.config.yml:/app/docmyrepos.config.yml:ro
+    # The private key is a compose secret, mounted at /run/secrets/github_app_key.
+    secrets:
+      - github_app_key
+    healthcheck:
+      # The test comes from the image (GET /api/status: 200 when the app and the database answer).
+      interval: 10s
+    restart: unless-stopped
+    # Reaps zombie processes and forwards signals. SIGTERM stops the sync scheduler and the server.
+    init: true
+    stop_grace_period: 30s
+    # Immutable root file system; the server only writes to /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  github_app_key:
+    file: ./github-app.private-key.pem
+
+volumes:
+  db-data:
+",
+    "mode": "644",
+    "path": "docker-compose.yml",
+  },
+  {
+    "content": "# Written by create-docmyrepos. This file holds secrets: keep it owner-only and never commit it.
+# Portal address: http://localhost:3000
+APP_PORT=3000
+
+# Database (compose builds DATABASE_URL from these).
+POSTGRES_PASSWORD='ppppppppppppppppppppppppppppppppppppppppppp'
+
+# GitHub App (read-only).
+GITHUB_APP_ID=4242
+GITHUB_APP_INSTALLATION_ID=99
+GITHUB_APP_PRIVATE_KEY_PATH=/run/secrets/github_app_key
+GITHUB_WEBHOOK_SECRET='wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww'
+
+SYNC_SECRET='yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy'
+SESSION_SECRET='sssssssssssssssssssssssssssssssssssssssssss'
+
+# First administrator, created on the first sign-in while there are no users.
+# Remove both lines after signing in, then run \`docker compose up -d\`.
+ADMIN_EMAIL='admin@example.com'
+ADMIN_PASSWORD='correct horse battery'
+",
+    "mode": "600",
+    "path": ".env",
+  },
+  {
+    "content": "# DocMyRepos configuration. It only narrows the repositories the GitHub App can access;
+# see docmyrepos.config.example.yml in the DocMyRepos repository for every option.
+# All repositories the GitHub App installation can access are synced.
+",
+    "mode": "644",
+    "path": "docmyrepos.config.yml",
+  },
+  {
+    "content": ".env
+.env.*
+*.pem
+*.bak-*
+",
+    "mode": "644",
+    "path": ".gitignore",
+  },
+  {
+    "content": "<PEM>
+",
+    "mode": "600",
+    "path": "github-app.private-key.pem",
+  },
+]
+`;
+
+exports[`plan > picked repositories, key inline (other uid on Linux) 1`] = `
+[
+  {
+    "content": "# DocMyRepos, written by create-docmyrepos 1.2.0.
+#
+#   docker compose up -d --wait
+#
+# Settings and secrets are in .env next to this file (keep it private, never commit it).
+# TLS belongs to a reverse proxy in front of the app. The app is published on 127.0.0.1 only;
+# change APP_BIND in .env only if the proxy runs on another host.
+# To upgrade, change DOCMYREPOS_VERSION in .env (or the tag below) and run \`docker compose pull\`.
+name: docmyrepos
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: \${POSTGRES_USER:-docmyrepos}
+      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_DB: \${POSTGRES_DB:-docmyrepos}
+    # The database port is not published: only the app reaches it, over the compose network.
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  app:
+    image: ghcr.io/dash-ai-tools/doc-my-repos:\${DOCMYREPOS_VERSION:-1.2.0}
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network the database is the \`db\` service.
+      DATABASE_URL: postgres://\${POSTGRES_USER:-docmyrepos}:\${POSTGRES_PASSWORD}@db:5432/\${POSTGRES_DB:-docmyrepos}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "\${APP_BIND:-127.0.0.1}:\${APP_PORT:-3000}:3000"
+    volumes:
+      - ./docmyrepos.config.yml:/app/docmyrepos.config.yml:ro
+    healthcheck:
+      # The test comes from the image (GET /api/status: 200 when the app and the database answer).
+      interval: 10s
+    restart: unless-stopped
+    # Reaps zombie processes and forwards signals. SIGTERM stops the sync scheduler and the server.
+    init: true
+    stop_grace_period: 30s
+    # Immutable root file system; the server only writes to /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+
+volumes:
+  db-data:
+",
+    "mode": "644",
+    "path": "docker-compose.yml",
+  },
+  {
+    "content": "# Written by create-docmyrepos. This file holds secrets: keep it owner-only and never commit it.
+# Portal address: http://localhost:3000
+APP_PORT=3000
+
+# Database (compose builds DATABASE_URL from these).
+POSTGRES_PASSWORD='ppppppppppppppppppppppppppppppppppppppppppp'
+
+# GitHub App (read-only).
+GITHUB_APP_ID=4242
+GITHUB_APP_INSTALLATION_ID=99
+GITHUB_APP_PRIVATE_KEY='<PEM, \\n escaped>'
+GITHUB_WEBHOOK_SECRET='wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww'
+
+SYNC_SECRET='yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy'
+SESSION_SECRET='sssssssssssssssssssssssssssssssssssssssssss'
+
+# First administrator, created on the first sign-in while there are no users.
+# Remove both lines after signing in, then run \`docker compose up -d\`.
+ADMIN_EMAIL='admin@example.com'
+ADMIN_PASSWORD='correct horse battery'
+",
+    "mode": "600",
+    "path": ".env",
+  },
+  {
+    "content": "# DocMyRepos configuration. It only narrows the repositories the GitHub App can access;
+# see docmyrepos.config.example.yml in the DocMyRepos repository for every option.
+repos:
+  - "api"
+  - "true"
+  - "web.app"
+",
+    "mode": "644",
+    "path": "docmyrepos.config.yml",
+  },
+  {
+    "content": ".env
+.env.*
+*.pem
+*.bak-*
+",
+    "mode": "644",
+    "path": ".gitignore",
+  },
+]
+`;

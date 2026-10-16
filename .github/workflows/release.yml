@@ -1,0 +1,207 @@
+# Release (install-wizard tasks 5.1 and 5.2): on a version tag (v1.2.3), publish the container image
+# to ghcr.io and the installer package to npm, in lockstep, with provenance.
+#
+# - Only tags matching v*.*.* start it, and every job is guarded to the main repository, so a fork
+#   (or a pull request, which this workflow does not trigger on) publishes nothing.
+# - `verify` runs the full test set and the installer end-to-end test against an image built in
+#   this run. `image` and `npm` need it, and use the `release` environment (required reviewers),
+#   so nothing is published before a person approves.
+# - Nothing but the short-lived GITHUB_TOKEN and OIDC is used: the image is pushed with
+#   `packages: write`, the package is published with npm trusted publishing (`id-token: write`),
+#   and there is no long-lived secret. The workflow-level permissions stay read-only.
+# - The release is never run for a version that already exists: `image` fails when the tag is
+#   already in the registry, and npm refuses to publish a version twice.
+# - Actions are pinned to commit SHAs (the comment names the release), like ci.yml.
+# The one-time setup and the steps of a release are in CONTRIBUTING.md ("Releasing").
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+  IMAGE_NAME: ghcr.io/dash-ai-tools/doc-my-repos
+
+jobs:
+  verify:
+    name: Verify
+    if: github.repository == 'Dash-AI-Tools/doc-my-repos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.versions.outputs.version }}
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: docmyrepos
+          POSTGRES_PASSWORD: docmyrepos
+          POSTGRES_DB: docmyrepos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U docmyrepos -d docmyrepos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://docmyrepos:docmyrepos@127.0.0.1:5432/docmyrepos
+      TEST_DATABASE_URL: postgres://docmyrepos:docmyrepos@127.0.0.1:5432/docmyrepos
+      DATABASE_URL_E2E: postgres://docmyrepos:docmyrepos@127.0.0.1:5432/docmyrepos
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check that the tag, the root version and the installer version agree
+        id: versions
+        run: node scripts/check-release-versions.mjs "$GITHUB_REF_NAME"
+      - uses: ./.github/actions/setup
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - name: Build the installer
+        run: pnpm --filter create-docmyrepos build
+      - name: Check what would be published to npm
+        run: node scripts/check-pack.mjs
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm build:migrate
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the image that is tested (amd64, not pushed)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: docmyrepos:release-verify
+          build-args: |
+            VERSION=${{ steps.versions.outputs.version }}
+            REVISION=${{ github.sha }}
+      - name: Install with the installer against that image, once per key layout
+        env:
+          IMAGE: docmyrepos:release-verify
+        run: scripts/installer-e2e.sh
+      - name: Upload the Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  image:
+    name: Publish the image
+    needs: verify
+    if: github.repository == 'Dash-AI-Tools/doc-my-repos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Log in to ghcr.io
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Refuse to replace an existing version
+        run: |
+          set -u
+          if output="$(docker buildx imagetools inspect "${IMAGE_NAME}:${VERSION}" 2>&1)"; then
+            echo "::error::${IMAGE_NAME}:${VERSION} already exists. Version tags are never moved: bump the version and tag again."
+            exit 1
+          fi
+          case "$output" in
+            *"not found"* | *"manifest unknown"* | *"name unknown"* | *"no such manifest"*)
+              echo "${IMAGE_NAME}:${VERSION} does not exist yet." ;;
+            *)
+              echo "::error::Could not tell whether ${IMAGE_NAME}:${VERSION} exists, so nothing is published."
+              exit 1 ;;
+          esac
+      # The labels are the same four as scripts/docker-build-labeled.sh (a test compares them).
+      - name: Build and push both architectures, with provenance and an SBOM
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            REVISION=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+      - name: Attach a signed build attestation to the image
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  npm:
+    name: Publish the installer package
+    needs: [verify, image]
+    if: github.repository == 'Dash-AI-Tools/doc-my-repos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check that the tag, the root version and the installer version agree
+        id: versions
+        run: node scripts/check-release-versions.mjs "$GITHUB_REF_NAME"
+      - uses: ./.github/actions/setup
+      - name: Build the installer
+        run: pnpm --filter create-docmyrepos build
+      - name: Check what would be published
+        run: node scripts/check-pack.mjs
+      - name: Check that npm can publish with trusted publishing (npm 11.5.1 or newer)
+        run: |
+          node -e '
+            const [major, minor, patch] = process.argv[1].split(".").map(Number);
+            const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+            if (!ok) { console.error("npm " + process.argv[1] + " is too old for trusted publishing"); process.exit(1); }
+          ' "$(npm --version)"
+      - name: Publish with provenance
+        working-directory: packages/create-docmyrepos
+        env:
+          NPM_TAG: ${{ steps.versions.outputs.npm_tag }}
+        run: npm publish --provenance --access public --tag "$NPM_TAG"

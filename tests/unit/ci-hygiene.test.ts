@@ -76,10 +76,26 @@ describe("workflow files", () => {
     }
   });
 
-  it("never grant a job write permissions", () => {
+  it("never grant a job write permissions, except the two publishing jobs of the release workflow", () => {
+    // release.yml publishes: `image` pushes to ghcr.io and attests, `npm` uses OIDC for trusted
+    // publishing. Both sit behind the `release` environment (tests/unit/release-workflow.test.ts).
+    const allowed: Record<string, Record<string, string>> = {
+      "release.yml/image": {
+        contents: "read",
+        packages: "write",
+        "id-token": "write",
+        attestations: "write",
+      },
+      "release.yml/npm": { contents: "read", "id-token": "write" },
+    };
     for (const { file, doc } of workflowTexts) {
       for (const [name, job] of Object.entries(doc.jobs)) {
         if (job.permissions === undefined) continue;
+        const exception = allowed[`${file}/${name}`];
+        if (exception !== undefined) {
+          expect(job.permissions, `${file}/${name}`).toEqual(exception);
+          continue;
+        }
         const values =
           typeof job.permissions === "string" ? [job.permissions] : Object.values(job.permissions);
         expect(
