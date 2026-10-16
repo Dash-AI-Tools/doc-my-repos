@@ -63,6 +63,19 @@ sync:
 comments:
   enabled: true
 
+# Limits for the Ask assistant. All are optional; the values below are the
+# defaults. Whether Ask is on, and which provider and model it uses, is chosen by
+# an admin on /admin/ask, not here; provider credentials come from the
+# environment (see .env.example), never from this file.
+# `questionsPerDay` and `questionsPerTenMinutes` apply per user, `maxOutputTokens`
+# caps one answer, and `maxConcurrent` caps answers being produced at once in one
+# server process.
+ask:
+  questionsPerDay: 100
+  questionsPerTenMinutes: 20
+  maxOutputTokens: 1000
+  maxConcurrent: 8
+
 # Alternative to `repos`: every accessible repository except the listed ones.
 # BEGIN alternative: exclude
 # exclude:

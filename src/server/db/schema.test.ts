@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   apiSpecs,
+  askSettings,
+  askUsage,
   codeOwners,
   docComments,
   documents,
@@ -43,6 +45,18 @@ describe("db schema", () => {
       "doc_comments_body_length",
       "doc_comments_reply_not_resolved",
     ]);
+  });
+
+  it("keeps no text column that could hold a question, answer or excerpt on ask_usage", () => {
+    const textColumns = getTableConfig(askUsage)
+      .columns.filter((c) => c.dataType === "string")
+      .map((c) => c.name)
+      .sort();
+    expect(textColumns).toEqual(["outcome", "provider"]);
+    expect(getTableConfig(askSettings).checks.map((c) => c.name)).toEqual([
+      "ask_settings_single_row",
+    ]);
+    expect(column(askSettings, "enabled").default).toBe(false);
   });
 
   it("defines the core tables", () => {

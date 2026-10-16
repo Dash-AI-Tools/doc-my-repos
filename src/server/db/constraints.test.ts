@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   apiSpecs,
+  askSettings,
+  askUsage,
   codeOwners,
   docComments,
   documents,
@@ -296,6 +298,33 @@ describeDb("table constraints on a real database", () => {
     expect(await codeOf(t.db.insert(siteBranding).values({ id: 2, orgName: "Other" }))).toBe(
       "23514",
     );
+  });
+
+  describe("ask_settings and ask_usage", () => {
+    it("keeps ask_settings to one row, off by default", async () => {
+      const [row] = await t.db.insert(askSettings).values({ id: 1 }).returning();
+      expect(row).toMatchObject({ enabled: false, provider: null, model: null });
+      expect(await codeOf(t.db.insert(askSettings).values({ id: 1 }))).toBe(UNIQUE_VIOLATION);
+      expect(await codeOf(t.db.insert(askSettings).values({ id: 2 }))).toBe("23514");
+    });
+
+    it("sets updated_by and ask_usage.user_id to null when the user is removed", async () => {
+      const [u] = await t.db
+        .insert(users)
+        .values({ email: "asker@example.com", passwordHash: "x" })
+        .returning();
+      await t.db.update(askSettings).set({ updatedBy: u!.id }).where(eq(askSettings.id, 1));
+      const [usage] = await t.db
+        .insert(askUsage)
+        .values({ userId: u!.id, provider: "anthropic" })
+        .returning();
+      expect(usage).toMatchObject({ outcome: "started", inputTokens: 0, excerptCount: 0 });
+      await t.db.delete(users).where(eq(users.id, u!.id));
+      const [after] = await t.db.select().from(askUsage).where(eq(askUsage.id, usage!.id));
+      expect(after?.userId).toBeNull();
+      const [settings] = await t.db.select().from(askSettings);
+      expect(settings?.updatedBy).toBeNull();
+    });
   });
 
   describe("doc_comments", () => {

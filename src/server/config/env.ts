@@ -2,6 +2,7 @@ import { createPrivateKey } from "node:crypto";
 
 import { z } from "zod";
 
+import type { AiProvider } from "../../lib/ask/providers";
 import { LOG_THRESHOLDS, parseLogLevel } from "../log";
 import { MIN_SECRET_LENGTH, Secret } from "./secret";
 
@@ -296,4 +297,121 @@ export function parseEnv(env: EnvSource, readFile: FileReader): EnvResult {
     }),
     problems: [],
   };
+}
+
+/** Providers Ask can use (ask-the-docs design decisions 5 and 9). The set is fixed. */
+export { AI_PROVIDERS, type AiProvider } from "../../lib/ask/providers";
+
+export const AI_ANTHROPIC_API_KEY_VAR = "AI_ANTHROPIC_API_KEY";
+export const AI_OPENAI_BASE_URL_VAR = "AI_OPENAI_BASE_URL";
+export const AI_OPENAI_API_KEY_VAR = "AI_OPENAI_API_KEY";
+
+/**
+ * Whether one provider's environment group is usable. `missing` names variables still to set;
+ * `problem` (a fixed text naming the variable, never a value) says why a set value was refused. A
+ * group with a problem is not configured.
+ */
+export interface ProviderAvailability {
+  readonly configured: boolean;
+  readonly missing: readonly string[];
+  readonly problem?: string;
+  /** Host name of the endpoint (OpenAI-compatible only); never the full URL. */
+  readonly host?: string;
+}
+
+export type AllProviderAvailability = Readonly<Record<AiProvider, ProviderAvailability>>;
+
+/** Credentials for one provider, for its adapter. Reveal the key only when sending the request. */
+export type ProviderCredentials =
+  | { readonly provider: "anthropic"; readonly apiKey: Secret<string> }
+  | {
+      readonly provider: "openai-compatible";
+      readonly baseUrl: URL;
+      readonly apiKey: Secret<string> | null;
+    };
+
+const LOOPBACK_V4 = /^127(?:\.\d{1,3}){3}$/;
+
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === "localhost" || host === "[::1]" || LOOPBACK_V4.test(host);
+}
+
+function optionalValue(env: EnvSource, name: string): string | undefined {
+  return blankToUndefined(env[name]) as string | undefined;
+}
+
+type GroupResult =
+  | { availability: ProviderAvailability; credentials: ProviderCredentials }
+  | { availability: ProviderAvailability; credentials: null };
+
+function anthropicGroup(env: EnvSource): GroupResult {
+  const key = optionalValue(env, AI_ANTHROPIC_API_KEY_VAR);
+  if (key === undefined) {
+    return {
+      availability: { configured: false, missing: [AI_ANTHROPIC_API_KEY_VAR] },
+      credentials: null,
+    };
+  }
+  return {
+    availability: { configured: true, missing: [] },
+    credentials: { provider: "anthropic", apiKey: new Secret(key) },
+  };
+}
+
+function openAiGroup(env: EnvSource): GroupResult {
+  const rawUrl = optionalValue(env, AI_OPENAI_BASE_URL_VAR);
+  const key = optionalValue(env, AI_OPENAI_API_KEY_VAR);
+  const unavailable = (a: Omit<ProviderAvailability, "configured">): GroupResult => ({
+    availability: { configured: false, ...a },
+    credentials: null,
+  });
+
+  if (rawUrl === undefined) return unavailable({ missing: [AI_OPENAI_BASE_URL_VAR] });
+  const url = parseUrl(rawUrl);
+  const problem = (reason: string) =>
+    unavailable({ missing: [], problem: `${AI_OPENAI_BASE_URL_VAR}: ${reason}` });
+
+  if (url === null) return problem("is not a valid URL");
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    return problem("must be an http(s) URL");
+  }
+  if (url.username !== "" || url.password !== "") {
+    return problem("must not contain a username or password; use AI_OPENAI_API_KEY");
+  }
+  const loopback = isLoopbackHost(url.hostname);
+  if (url.protocol === "http:" && !loopback) {
+    return problem("must be an https URL (http is allowed only for localhost addresses)");
+  }
+  const host = url.hostname;
+  if (key === undefined && !loopback) {
+    return unavailable({ missing: [AI_OPENAI_API_KEY_VAR], host });
+  }
+  return {
+    availability: { configured: true, missing: [], host },
+    credentials: {
+      provider: "openai-compatible",
+      baseUrl: url,
+      apiKey: key === undefined ? null : new Secret(key),
+    },
+  };
+}
+
+/**
+ * Pure check of the Ask provider environment groups. Never throws and never includes a value. It is
+ * separate from `parseEnv` on purpose: a bad AI setting makes Ask unavailable, not the portal.
+ */
+export function providerAvailability(env: EnvSource): AllProviderAvailability {
+  return {
+    anthropic: anthropicGroup(env).availability,
+    "openai-compatible": openAiGroup(env).availability,
+  };
+}
+
+/** The credentials for `provider`, or `null` when its group is not configured. */
+export function providerCredentials(
+  env: EnvSource,
+  provider: AiProvider,
+): ProviderCredentials | null {
+  return (provider === "anthropic" ? anthropicGroup(env) : openAiGroup(env)).credentials;
 }

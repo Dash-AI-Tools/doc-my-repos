@@ -13,6 +13,8 @@ import { createDb } from "./client";
 import { MIGRATION_LOCK_KEY, MigrationError, migrateDatabase, runMigrations } from "./migrate";
 import {
   apiSpecs,
+  askSettings,
+  askUsage,
   codeOwners,
   docComments,
   documents,
@@ -43,6 +45,8 @@ const tables: AnyPgTable[] = [
   siteBranding,
   docComments,
   apiSpecs,
+  askSettings,
+  askUsage,
 ];
 
 describeDb("migrations on a real database", () => {
@@ -169,6 +173,7 @@ describeDb("migrations on a real database", () => {
     );
     expect(rows).toEqual([
       { table_name: "api_specs", column_name: "id", kind: "identity" },
+      { table_name: "ask_usage", column_name: "id", kind: "identity" },
       { table_name: "code_owners", column_name: "id", kind: "identity" },
       { table_name: "doc_comments", column_name: "id", kind: "identity" },
       { table_name: "documents", column_name: "id", kind: "identity" },
@@ -328,6 +333,56 @@ describeDb("the doc_comments migration onto an existing database", () => {
   }, 60_000);
 });
 
+describeDb("the ask migration onto an existing database", () => {
+  let empty: EmptyDatabase;
+  let dir: string;
+  beforeAll(async () => {
+    empty = await createEmptyDatabase();
+    // The migrations before the Ask tables, as a database from the previous release has them.
+    dir = mkdtempSync(join(tmpdir(), "docmyrepos-prior-ask-"));
+    mkdirSync(join(dir, "meta"));
+    const journal = JSON.parse(readFileSync(`${drizzleDir}/meta/_journal.json`, "utf8")) as {
+      entries: { tag: string }[];
+    };
+    const ask = journal.entries.findIndex((e) => e.tag.includes("_sweet_expediter"));
+    const prior = journal.entries.slice(0, ask);
+    writeFileSync(
+      join(dir, "meta", "_journal.json"),
+      JSON.stringify({ ...journal, entries: prior }),
+    );
+    for (const e of prior) copyFileSync(`${drizzleDir}/${e.tag}.sql`, join(dir, `${e.tag}.sql`));
+  }, 60_000);
+  afterAll(async () => {
+    rmSync(dir, { recursive: true, force: true });
+    await empty?.drop();
+  }, 60_000);
+
+  it("adds both tables and leaves existing rows untouched", async () => {
+    const handle = createDb(empty.url.reveal(), { max: 2 });
+    try {
+      await runMigrations(handle, dir);
+      await handle.pool.query(
+        "INSERT INTO users (email, password_hash) VALUES ('old@example.com', 'x')",
+      );
+      const before = await handle.pool.query("SELECT to_regclass('public.ask_usage') AS t");
+      expect(before.rows[0]?.t).toBeNull();
+
+      await runMigrations(handle, drizzleDir);
+      const after = await handle.pool.query(
+        "SELECT to_regclass('public.ask_usage') AS u, to_regclass('public.ask_settings') AS s",
+      );
+      expect(after.rows[0]).toEqual({ u: "ask_usage", s: "ask_settings" });
+      const users = await handle.pool.query("SELECT email FROM users");
+      expect(users.rows).toEqual([{ email: "old@example.com" }]);
+      // No settings row exists until an admin saves: Ask is off by default.
+      const settings = await handle.pool.query("SELECT count(*)::int AS n FROM ask_settings");
+      expect(settings.rows[0]?.n).toBe(0);
+    } finally {
+      await handle.close();
+    }
+  }, 60_000);
+});
+
 const run = promisify(execFile);
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
@@ -439,6 +494,8 @@ describeDb("parallel db:migrate runs on one empty database", () => {
       );
       expect(tables.rows.map((r) => r.table_name)).toEqual([
         "api_specs",
+        "ask_settings",
+        "ask_usage",
         "code_owners",
         "doc_comments",
         "documents",
