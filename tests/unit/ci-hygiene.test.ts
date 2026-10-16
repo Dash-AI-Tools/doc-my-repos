@@ -20,6 +20,7 @@ interface Step {
   name?: string;
 }
 interface Job {
+  uses?: string;
   "timeout-minutes"?: number;
   permissions?: Record<string, string> | string;
   steps?: Step[];
@@ -76,16 +77,23 @@ describe("workflow files", () => {
     }
   });
 
-  it("never grant a job write permissions", () => {
+  // The only write grants in the repository: the release workflow's image job pushes to GHCR with
+  // the workflow token. Nothing else, and nowhere else (tests/unit/release-workflow.test.ts).
+  const ALLOWED_WRITES: Record<string, string[]> = { "release.yml/image": ["packages"] };
+
+  it("never grant a job write permissions, except the release image push", () => {
     for (const { file, doc } of workflowTexts) {
       for (const [name, job] of Object.entries(doc.jobs)) {
         if (job.permissions === undefined) continue;
-        const values =
-          typeof job.permissions === "string" ? [job.permissions] : Object.values(job.permissions);
-        expect(
-          values.some((v) => /write|write-all/.test(v)),
-          `${file}/${name}`,
-        ).toBe(false);
+        const key = `${file}/${name}`;
+        if (typeof job.permissions === "string") {
+          expect(/write|write-all/.test(job.permissions), key).toBe(false);
+          continue;
+        }
+        const writes = Object.entries(job.permissions)
+          .filter(([, v]) => /write|write-all/.test(v))
+          .map(([scope]) => scope);
+        expect(writes, key).toEqual(ALLOWED_WRITES[key] ?? []);
       }
     }
   });
@@ -118,6 +126,8 @@ describe("workflow files", () => {
   it("give every job a timeout", () => {
     for (const { file, doc } of workflowTexts) {
       for (const [name, job] of Object.entries(doc.jobs)) {
+        // A job that calls a reusable workflow cannot set a timeout; the called jobs have theirs.
+        if (job.uses) continue;
         expect(job["timeout-minutes"], `${file}/${name}`).toBeTypeOf("number");
         expect(job["timeout-minutes"], `${file}/${name}`).toBeLessThanOrEqual(60);
       }
@@ -144,7 +154,11 @@ describe("workflow files", () => {
     expect(uses.length).toBeGreaterThan(0);
     for (const u of uses) {
       if (u.startsWith("./")) {
-        expect(existsSync(root(`${u.slice(2)}/action.yml`)), u).toBe(true);
+        // A local composite action (a folder) or a local reusable workflow (a file).
+        expect(
+          existsSync(root(`${u.slice(2)}/action.yml`)) || existsSync(root(u.slice(2))),
+          u,
+        ).toBe(true);
         continue;
       }
       expect(u, "unpinned action").toMatch(/^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/);
@@ -204,7 +218,8 @@ describe("ci.yml", () => {
     expect(setup).toMatch(/version: 11\.25\.0/);
     expect(read("Dockerfile")).toMatch(/ARG PNPM_VERSION=11\.25\.0/);
     for (const [name, job] of Object.entries(jobs)) {
-      if (name === "docker" || name === "openspec") continue;
+      // These need no Node or pnpm: Docker builds its own, OpenSpec uses npx, ShellCheck is installed.
+      if (name === "docker" || name === "openspec" || name === "shellcheck") continue;
       expect(usesValues(job), name).toContain("./.github/actions/setup");
     }
   });
@@ -250,6 +265,30 @@ describe("ci.yml", () => {
     expect(allRuns(job)).toContain("scripts/docker-smoke.sh");
     expect(text).not.toMatch(/docker\/login-action/);
     expect(existsSync(root("scripts/docker-smoke.sh"))).toBe(true);
+  });
+
+  it("installs with install.sh against the image it built, then checks the result", () => {
+    const docker = jobs.docker as Job;
+    const steps = docker.steps ?? [];
+    const install = steps.find((s) => s.run?.includes("scripts/install-e2e.sh"));
+    expect(install, "install step").toBeDefined();
+    expect((install as { env?: Record<string, string> }).env?.DOCMYREPOS_IMAGE).toBe(
+      "docmyrepos:ci",
+    );
+    const smoke = steps.findIndex((s) => s.run?.includes("scripts/docker-smoke.sh"));
+    expect(steps.indexOf(install as Step)).toBeGreaterThan(smoke);
+  });
+
+  it("runs ShellCheck on the installer and the scripts it ships with", () => {
+    const runs = allRuns(jobs.shellcheck as Job);
+    for (const file of [
+      "install.sh",
+      "scripts/check-release-versions.sh",
+      "scripts/install-e2e.sh",
+    ]) {
+      expect(runs).toContain(file);
+    }
+    expect(runs).toContain("shellcheck -s sh");
   });
 
   it("validates the OpenSpec change with a pinned CLI version", () => {

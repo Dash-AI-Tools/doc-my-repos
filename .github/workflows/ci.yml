@@ -14,6 +14,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The release workflow runs this same set on the tagged commit before it publishes anything.
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -168,6 +170,24 @@ jobs:
           # The container reaches the service container through the published host port.
           DATABASE_URL: postgres://docmyrepos:docmyrepos@host.docker.internal:5432/docmyrepos
         run: scripts/docker-smoke.sh
+      - name: Install with install.sh and check the result
+        # install.sh with the image built above (it is already on the machine, so nothing is
+        # pulled): health, sign-in, no published database port, owner-only .env, and a refused
+        # second install. Port 3100 keeps clear of the smoke test and the Postgres service.
+        env:
+          DOCMYREPOS_IMAGE: docmyrepos:ci
+        run: scripts/install-e2e.sh
+
+  shellcheck:
+    # The installer is piped into a shell on other people's machines: keep it ShellCheck-clean.
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: shellcheck -s sh -S style install.sh scripts/check-release-versions.sh scripts/install-e2e.sh
 
   openspec:
     # The change under openspec/ is the source of truth; a spec that no longer validates fails here.

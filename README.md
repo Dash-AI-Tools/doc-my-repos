@@ -166,9 +166,26 @@ The app authenticates as a **GitHub App installation** (read-only, never a perso
 
 You need a **GitHub App** first. Register and install it by following the [GitHub App setup guide](docs/github-app-setup.md) (read-only _Contents_ and _Metadata_, four events, a webhook URL and secret). You end with the App id, a private key and the installation id, which you enter in the app after the first sign-in. There is also an [App manifest](docs/github-app-manifest.json).
 
-### With Docker (recommended)
+### With the install script (recommended)
 
-Requires Docker with Compose.
+Requires Linux, macOS or WSL, `curl`, and Docker with Compose v2 running.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/v0.1.0/install.sh | sh
+```
+
+The script checks that Docker works, asks four questions in the terminal (install folder, port, first admin's email and password), generates every secret, writes a hardened `docker-compose.yml` and an owner-only `.env`, pulls the published image, starts the app and Postgres, and waits until the app is healthy. It never overwrites an existing installation and sends nothing anywhere except the image pull. Then:
+
+1. Open the address it prints and sign in as the administrator.
+2. Go to **Admin > Workspace configuration** and enter your GitHub App (see the [setup guide](docs/github-app-setup.md)).
+3. On **Repository access**, press **Run first sync**.
+4. Remove `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env` and run `docker compose up -d`.
+
+`--dry-run` shows the plan and writes nothing, `--yes` with flags and `DOCMYREPOS_*` variables runs it without questions (`curl ... | sh -s -- --dry-run`), and you can read the script before running it (`curl -fsSLO <url> && less install.sh`). Replace `v0.1.0` with the release you want. To upgrade later, run the newer release's script with `--upgrade --dir <folder>`: it backs up the database, changes only the image in `.env`, restarts and waits for health. All flags, the files it writes and how to restore a backup are in the [install script guide](docs/guides/install-script.md). **Back up the generated `.env` with your database**: it holds the key that decrypts your stored secrets.
+
+### With Docker Compose
+
+Requires Docker with Compose. This is the path for working from a clone of the repository.
 
 ```bash
 git clone https://github.com/Dash-AI-Tools/doc-my-repos.git
