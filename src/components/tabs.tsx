@@ -54,7 +54,11 @@ export function Tabs({
 
   return (
     <div className="flex flex-col gap-6">
-      <div role="tablist" aria-label={label} className="flex gap-1 border-b border-border">
+      <div
+        role="tablist"
+        aria-label={label}
+        className="flex flex-wrap gap-x-1 border-b border-border"
+      >
         {tabs.map((tab, i) => {
           const active = tab.id === selected;
           return (
@@ -72,7 +76,7 @@ export function Tabs({
               data-testid={`tab-${tab.id}`}
               onClick={() => setSelected(tab.id)}
               onKeyDown={(e) => onKeyDown(e, i)}
-              className={`-mb-px min-h-6 cursor-pointer border-b-2 px-4 py-2 font-medium ${
+              className={`-mb-px min-h-6 cursor-pointer border-b-2 px-3 py-2 font-medium ${
                 active
                   ? "border-foreground text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
