@@ -1,0 +1,97 @@
+# Release: on a version tag, check that the tag, package.json and install.sh agree, run the whole
+# CI set on the tagged commit, then build and push the container image to GHCR for amd64 and arm64
+# with build provenance and an SBOM.
+#
+# - Runs only in Dash-AI-Tools/doc-my-repos: a fork that pushes a tag publishes nothing.
+# - The only credential is the workflow's GITHUB_TOKEN, with `packages: write` on the image job
+#   alone. There is no long-lived registry secret and no npm publish.
+# - A version that is already published is never overwritten: the job fails first.
+# - The `release` environment can require a reviewer before the image job runs (repository
+#   settings > Environments). Actions are pinned to commit SHAs (the comment names the release).
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/dash-ai-tools/doc-my-repos
+
+jobs:
+  versions:
+    name: Check versions
+    if: github.repository == 'Dash-AI-Tools/doc-my-repos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The tag, package.json and install.sh carry one version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: scripts/check-release-versions.sh "$TAG"
+
+  ci:
+    name: CI
+    needs: versions
+    uses: ./.github/workflows/ci.yml
+
+  image:
+    name: Publish the image
+    needs: [versions, ci]
+    if: github.repository == 'Dash-AI-Tools/doc-my-repos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Version from the tag
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: echo "number=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Refuse to overwrite a published version
+        env:
+          REFERENCE: ${{ env.IMAGE }}:${{ steps.version.outputs.number }}
+        run: |
+          if docker buildx imagetools inspect "$REFERENCE" >/dev/null 2>&1; then
+            echo "::error::$REFERENCE is already published; versions are never overwritten."
+            exit 1
+          fi
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.version.outputs.number }}
+            ${{ env.IMAGE }}:latest
+          build-args: |
+            VERSION=${{ steps.version.outputs.number }}
+            REVISION=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

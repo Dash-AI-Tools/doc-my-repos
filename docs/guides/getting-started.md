@@ -15,7 +15,7 @@ stale_after: 2999-01-01
 
 # Getting started
 
-This guide takes you from nothing to a portal showing your repositories' docs. The product overview and the full self-hosting notes are in the repository [README](../../README.md).
+This guide takes you from nothing to a portal showing your repositories' docs. The product overview and the full self-hosting notes are in the repository [README](../../README.md). If you would rather answer a few questions than edit files, [Install with the script](./install-script.md) does steps 2 and 3 for you.
 
 ## Checklist
 

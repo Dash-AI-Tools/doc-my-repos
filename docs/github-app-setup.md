@@ -16,6 +16,7 @@ generated: 2026-10-14
 
 ## Before you start
 
+- Installing DocMyRepos itself? [Install with the script](./guides/install-script.md) starts the app in one command; come back here when you are ready to enter the GitHub App.
 - You need to be an **owner** of the organization (or the account owner, for a personal account). Only owners can create an App under _Settings > Developer settings_.
 - GitHub asks you to confirm access (_sudo mode_) with your passkey, GitHub Mobile or password the first time you open the new-App form. Do this yourself; nobody else can do it for you.
 - Decide how GitHub will reach the portal. You can register the App before you have a public URL: leave the webhook inactive and turn it on later (section 5a, step 4).

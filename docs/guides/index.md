@@ -1,6 +1,6 @@
 ---
 title: Guides
-description: Task-oriented guides for running DocMyRepos. Getting started, comments, asking the docs, configuration, webhooks, search and OKF support.
+description: Task-oriented guides for running DocMyRepos. Getting started, installing with the script, comments, asking the docs, configuration, webhooks, search and OKF support.
 ---
 
 # Guides
@@ -8,6 +8,7 @@ description: Task-oriented guides for running DocMyRepos. Getting started, comme
 Step-by-step pages for the things you do with DocMyRepos.
 
 - [Getting started](./getting-started.md): run it with Docker, or develop on the host.
+- [Install with the script](./install-script.md): one command that checks Docker, asks a few questions, writes the files and starts it.
 - [Comments](./comments.md): discussing a document on its page, who can do what, limits and moderation.
 - [Ask the docs](./ask.md): the AI assistant: setting up the provider and model, what is sent, limits and privacy.
 - [Configuration](./configuration.md): the settings admins manage in the app, the environment variables that remain, secrets, limits and the scheduler.
