@@ -102,7 +102,10 @@ export interface FetchResult {
 }
 
 /** A file to fetch. `size` is the size from the tree, checked against the fetched bytes. */
-export type BlobFile = Pick<PlannedFile, "path" | "blobSha" | "size">;
+export type BlobFile = Pick<PlannedFile, "path" | "blobSha" | "size"> & {
+  /** Per-file cap in bytes, replacing `FetchOptions.maxFileBytes` (API specs have their own). */
+  maxBytes?: number;
+};
 
 export interface BlobRepo {
   owner: string;
@@ -268,7 +271,8 @@ async function runFetch(
     const fail = (kind: BlobFailureKind) => ({
       fail: { path: file.path, blobSha: file.blobSha, kind },
     });
-    if (file.size > maxFileBytes) return fail("too_large");
+    const cap = file.maxBytes ?? maxFileBytes;
+    if (file.size > cap) return fail("too_large");
     if (reserved + file.size > maxTotalBytes) return fail("budget_exceeded");
     reserved += file.size;
     let bytes: Uint8Array;
@@ -282,7 +286,7 @@ async function runFetch(
       }
       throw error;
     }
-    if (bytes.length > maxFileBytes) return fail("too_large");
+    if (bytes.length > cap) return fail("too_large");
     if (bytes.length !== file.size) return fail("size_mismatch");
     const { text, warnings } = decodeBlobText(bytes);
     return { ok: { path: file.path, blobSha: file.blobSha, size: bytes.length, text, warnings } };
@@ -362,6 +366,16 @@ export interface SyncBlobsInput {
   files: readonly BlobFile[];
   /** Stored blob SHA per document path. */
   stored: ReadonlyMap<string, string>;
+  /**
+   * OpenAPI/Swagger spec files from the plan, diffed like documents against the stored blob SHA per
+   * spec path. Fetched after the documents and repo-level files, so they use the byte budget last.
+   */
+  apiSpecs?: {
+    files: readonly BlobFile[];
+    stored: ReadonlyMap<string, string>;
+    /** Per-spec cap in bytes (`limits.maxSpecBytes`). */
+    maxBytes: number;
+  };
   /** README and CODEOWNERS from the plan, with the SHAs stored for them. Optional. */
   repoLevel?: {
     files: RepoLevelFiles;
@@ -369,8 +383,17 @@ export interface SyncBlobsInput {
   };
 }
 
+/** The spec half of `syncBlobs`: same rules as documents (`fetched` upsert, `removed` delete). */
+export interface SpecBlobsResult extends FetchResult {
+  /** Same blob SHA as stored: not fetched, left as stored. */
+  unchanged: BlobFile[];
+  /** Stored spec paths missing from the plan. */
+  removed: { path: string; blobSha: string }[];
+}
+
 export interface SyncBlobsResult extends BlobDiff, FetchResult {
   repoLevel: { readme: RepoLevelResult; codeowners: RepoLevelResult };
+  apiSpecs: SpecBlobsResult;
 }
 
 /**
@@ -410,8 +433,18 @@ export async function syncBlobs(
   const codeownersIndex =
     codeowners.fetch && codeowners.file ? queue.push(codeowners.file) - 1 : -1;
 
+  const specDiff = input.apiSpecs ? diffFiles(input.apiSpecs.files, input.apiSpecs.stored) : null;
+  const specQueue = specDiff
+    ? [...specDiff.added, ...specDiff.modified]
+        .sort(byPath)
+        .map((f): BlobFile => ({ ...f, maxBytes: input.apiSpecs?.maxBytes }))
+    : [];
+  const specStart = queue.length;
+  queue.push(...specQueue);
+
   const outcomes = await runFetch(client, repo, queue, options);
   const docResults = collect(outcomes.slice(0, docs.length));
+  const specResults = collect(outcomes.slice(specStart));
 
   const finish = (
     entry: { file: BlobFile | null; fetch: boolean },
@@ -437,6 +470,11 @@ export async function syncBlobs(
     repoLevel: {
       readme: finish(readme, readmeIndex),
       codeowners: finish(codeowners, codeownersIndex),
+    },
+    apiSpecs: {
+      ...specResults,
+      unchanged: specDiff?.unchanged ?? [],
+      removed: specDiff?.removed ?? [],
     },
   };
 }

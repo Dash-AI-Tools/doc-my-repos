@@ -1,0 +1,4 @@
+name: docker-compose
+services:
+  web:
+    image: nginx

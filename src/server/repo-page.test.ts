@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ConfigError } from "./config/load";
 import type { Db } from "./db/client";
-import { codeOwners, documents, repos } from "./db/schema";
+import { apiSpecs, codeOwners, documents, repos } from "./db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "./db/test-db";
 import { RENDER_FAILED_WARNING, RENDER_TRUNCATED_WARNING } from "./markdown/pipeline";
 import {
@@ -206,6 +206,21 @@ describeDb("loadRepoPage on a real database", () => {
         sourcePath: ".github/CODEOWNERS",
       },
     ]);
+    const specRow = (path: string, title: string) => ({
+      repoId: full,
+      path,
+      blobSha: `sha-${path}`,
+      sizeBytes: 9,
+      format: "openapi" as const,
+      specVersion: "3.1.0",
+      title,
+      apiVersion: "2.0",
+      operationCount: 3,
+      spec: { openapi: "3.1.0", info: { title, version: "2.0" }, paths: {} },
+    });
+    await t.db
+      .insert(apiSpecs)
+      .values([specRow("openapi.yaml", "Zed"), specRow("api/a.yaml", "Alpha")]);
     await insertRepo("bare", 2, { description: null });
     await insertRepo("secret", 3, {
       visibility: "private",
@@ -220,6 +235,19 @@ describeDb("loadRepoPage on a real database", () => {
 
   const load = (owner: string, name: string, deps = {}) =>
     loadRepoPage(owner, name, { db: () => t.db, now: () => NOW, ...deps });
+
+  it("returns the API spec summaries ordered by path, none for a repository without", async () => {
+    const data = await load("acme", "full");
+    if (data.status !== "ok") throw new Error("expected ok");
+    expect(data.apiSpecs.map((x) => [x.path, x.title, x.apiVersion, x.operationCount])).toEqual([
+      ["api/a.yaml", "Alpha", "2.0", 3],
+      ["openapi.yaml", "Zed", "2.0", 3],
+    ]);
+    expect(data.apiSpecs[0]).not.toHaveProperty("spec");
+    const bare = await load("acme", "bare");
+    if (bare.status !== "ok") throw new Error("expected ok");
+    expect(bare.apiSpecs).toEqual([]);
+  });
 
   it("returns the repository, its code owners and a rendered README", async () => {
     const data = await load("acme", "full");

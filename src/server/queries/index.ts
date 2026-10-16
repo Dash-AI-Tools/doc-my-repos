@@ -1,3 +1,4 @@
+import { getApiSpec, listApiSpecs } from "./api-specs";
 import { findAssetRepo } from "./assets";
 import {
   countDocComments,
@@ -36,6 +37,8 @@ export const QUERY_FUNCTIONS = {
   listRepos,
   getRepo,
   listCodeOwners,
+  listApiSpecs,
+  getApiSpec,
   getDocsTree,
   getDocumentByPath,
   getDocPaths,
@@ -83,6 +86,7 @@ export const NOT_QUERIES: ReadonlySet<string> = new Set([
   "repoCondition",
 ]);
 
+export { getApiSpec, listApiSpecs, type ApiSpecDetail, type ApiSpecSummary } from "./api-specs";
 export { findAssetRepo, type AssetRepo } from "./assets";
 export {
   COMMENT_STATES_MAX,

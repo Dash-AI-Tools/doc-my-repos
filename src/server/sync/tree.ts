@@ -3,6 +3,8 @@ import {
   DEFAULT_DOCS_PATHS,
   DEFAULT_MAX_DOCS_PER_REPO,
   DEFAULT_MAX_FILE_BYTES as CONFIG_DEFAULT_MAX_FILE_BYTES,
+  DEFAULT_MAX_SPEC_BYTES as CONFIG_DEFAULT_MAX_SPEC_BYTES,
+  MAX_API_SPECS_PER_REPO,
 } from "../config/schema";
 import { pickCodeownersPath } from "../docs/codeowners-location";
 import { findDocsFolder, normalizeDocsPath } from "../docs/docs-folder";
@@ -30,6 +32,12 @@ import { GitHubError, type CallOptions, type GitHubClient, type TreeEntry } from
  *   so there is no per-directory fallback; a partial tree is never planned from, because it would
  *   delete the docs the truncated listing left out.
  *
+ * API specs (openapi-reference design decision 2): OpenAPI/Swagger candidates are selected beside
+ * the docs, never counted in the document cap, and reported through `Selection.apiSpecs`. By
+ * default a candidate is a file named `openapi` or `swagger` (any case) with `.yaml`, `.yml` or
+ * `.json` at the repository root or below the docs folder; configured `apiSpecs` paths replace
+ * that search. At most `MAX_API_SPECS_PER_REPO` are kept, in path order.
+ *
  * Document cap (task 12.3): more docs than `maxFiles` does not fail the sync. The first `maxFiles`
  * files in path order (code unit order, so the same tree always keeps the same files) are
  * selected, the rest are reported as `over_limit` skips and `capped` is set. Documents stored
@@ -41,8 +49,9 @@ import { GitHubError, type CallOptions, type GitHubClient, type TreeEntry } from
 /**
  * Bump when the selection rules in this file change, so every repo is re-planned once. 2: the
  * document cap truncates instead of failing, and content syncs record `repos.sync_warnings`.
+ * 3: OpenAPI/Swagger spec selection (`Selection.apiSpecs`) and the spec size limit.
  */
-export const SELECTION_RULES_VERSION = 2;
+export const SELECTION_RULES_VERSION = 3;
 
 /** Doc file extensions (spec: `.md`, `.mdx`), matched case-insensitively. */
 export const DEFAULT_DOC_EXTENSIONS = [".md", ".mdx"] as const;
@@ -55,6 +64,12 @@ export const DEFAULT_MAX_FILE_BYTES = CONFIG_DEFAULT_MAX_FILE_BYTES;
 export const DEFAULT_IGNORED_FOLDERS = ["node_modules"] as const;
 /** Most doc files planned for one repository; the rest are skipped `over_limit`. */
 export const DEFAULT_MAX_FILES = DEFAULT_MAX_DOCS_PER_REPO;
+/** Per-spec size cap (2 MB). The config's `limits.maxSpecBytes` may lower it, never raise it. */
+export const DEFAULT_MAX_SPEC_BYTES = CONFIG_DEFAULT_MAX_SPEC_BYTES;
+/** Most API specs kept for one repository; the rest are skipped `over_limit`. */
+export const MAX_API_SPECS = MAX_API_SPECS_PER_REPO;
+/** Default spec candidates: base name `openapi` or `swagger`, these extensions, any case. */
+const API_SPEC_NAME_RE = /^(?:openapi|swagger)\.(?:ya?ml|json)$/i;
 /** Longest accepted path; matches the GitHub client's own limit. */
 const MAX_PATH_LENGTH = 1024;
 
@@ -76,6 +91,13 @@ export interface SelectionOptions {
   /** Folder names to skip below the docs folder. When set it replaces the default list. */
   readonly ignoredFolders?: readonly string[];
   readonly maxFiles?: number;
+  /**
+   * Per-repo `apiSpecs` paths. When set (and non-empty) exactly these paths are considered instead
+   * of the default search.
+   */
+  readonly apiSpecs?: readonly string[] | null;
+  /** Per-spec size cap in bytes. */
+  readonly maxSpecBytes?: number;
 }
 
 /** Options with defaults applied and values normalized, so equal settings fingerprint equally. */
@@ -89,6 +111,9 @@ interface ResolvedSelection {
   maxFileBytes: number;
   ignoredFolders: string[];
   maxFiles: number;
+  /** Sorted, de-duplicated, normalized configured paths; null when the default search applies. */
+  apiSpecs: string[] | null;
+  maxSpecBytes: number;
 }
 
 export interface PlannedFile {
@@ -116,6 +141,38 @@ export type SkipReason =
   /** Past the per-repository document cap (`maxFiles`), in path order. */
   | "over_limit";
 
+/** Why a spec candidate was not planned. Typed for the sync warnings. */
+export type ApiSpecSkipReason =
+  /** Larger than `maxSpecBytes`. */
+  | "too_large"
+  | "size_unknown"
+  | "not_regular_file"
+  | "invalid_path"
+  | "invalid_entry"
+  /** A configured path inside a dot-folder or dot-file. */
+  | "hidden"
+  /** A configured path below `node_modules` (or another ignored folder). */
+  | "ignored_folder"
+  /** Past the per-repository spec limit, in path order. */
+  | "over_limit";
+
+export interface SkippedApiSpec {
+  /** Path as found, with control characters replaced so it is safe to store and display. */
+  path: string;
+  reason: ApiSpecSkipReason;
+}
+
+export interface ApiSpecSelection {
+  /** At most `MAX_API_SPECS`, sorted by path (code unit order). */
+  files: PlannedFile[];
+  /** Sorted by path. Includes the `over_limit` ones. */
+  skipped: SkippedApiSpec[];
+  /** How many candidates past the limit were left out (the `over_limit` skips). */
+  leftOut: number;
+  /** True when configured `apiSpecs` paths were used instead of the default search. */
+  configured: boolean;
+}
+
 export interface SkippedFile {
   /** Path as found, with control characters replaced so it is safe to store and display. */
   path: string;
@@ -138,7 +195,11 @@ export interface Selection {
   repoLevelFiles: RepoLevelFiles;
   /** Set when more docs than `maxFiles` were found: how many, and the cap. */
   capped: { found: number; limit: number } | null;
+  /** OpenAPI/Swagger candidates; independent of the document cap and of `files`. */
+  apiSpecs: ApiSpecSelection;
 }
+
+const NO_API_SPECS: ApiSpecSelection = { files: [], skipped: [], leftOut: 0, configured: false };
 
 /** Normalizes and validates options. Throws `TypeError` on a programming error (bad numbers). */
 function resolveSelection(options: SelectionOptions): ResolvedSelection {
@@ -165,7 +226,17 @@ function resolveSelection(options: SelectionOptions): ResolvedSelection {
     .map((p) => normalizeDocsPath(p))
     .filter((p): p is string => p !== null);
   const docsPath = options.docsPath == null ? null : normalizeDocsPath(options.docsPath);
+  const configuredSpecs =
+    options.apiSpecs == null || options.apiSpecs.length === 0
+      ? null
+      : [
+          ...new Set(
+            options.apiSpecs.map(normalizeDocsPath).filter((p): p is string => p !== null),
+          ),
+        ].sort();
   return {
+    apiSpecs: configuredSpecs,
+    maxSpecBytes: positiveInt(options.maxSpecBytes ?? DEFAULT_MAX_SPEC_BYTES, "maxSpecBytes"),
     docsPath,
     docsPathInvalid: options.docsPath != null && docsPath === null,
     docsPaths,
@@ -192,6 +263,9 @@ export function selectionFingerprint(options: SelectionOptions = {}): string {
     r.maxFileBytes,
     r.ignoredFolders,
     r.maxFiles,
+    r.apiSpecs,
+    r.maxSpecBytes,
+    MAX_API_SPECS,
   ]);
   return `v${SELECTION_RULES_VERSION}:${createHash("sha256").update(canonical).digest("hex")}`;
 }
@@ -314,6 +388,8 @@ export function selectDocFiles(
   const readme = readmeEntry ? accept(readmeEntry) : null;
   const codeowners = codeownersEntry ? accept(codeownersEntry) : null;
 
+  const apiSpecs = selectApiSpecs(entries, docsFolder, r);
+
   files.sort(byPath);
   let capped: Selection["capped"] = null;
   if (files.length > r.maxFiles) {
@@ -327,7 +403,85 @@ export function selectDocFiles(
     skipped: skipped.sort(byPath),
     repoLevelFiles: { readme, codeowners },
     capped,
+    apiSpecs,
   };
+}
+
+/**
+ * Picks the API spec files. Default search: regular-file blobs named `openapi`/`swagger` with an
+ * allowed extension at the root or below the docs folder; `node_modules` and dot-folders are not
+ * searched (silently, they are not candidates). Configured paths: exactly those that exist as
+ * blobs, with the same size, symlink, SHA, traversal and hidden/ignored-folder rules, reported
+ * when they fail. A missing configured path is not reported here. Then the first
+ * `MAX_API_SPECS` in path order are kept and the rest are `over_limit`.
+ */
+function selectApiSpecs(
+  entries: readonly TreeEntry[],
+  docsFolder: string | null,
+  r: ResolvedSelection,
+): ApiSpecSelection {
+  const skipped: SkippedApiSpec[] = [];
+  const skip = (path: string, reason: ApiSpecSkipReason) =>
+    skipped.push({ path: displayPath(path), reason });
+  const candidates: PlannedFile[] = [];
+
+  const consider = (entry: TreeEntry) => {
+    if (!isSafeTreePath(entry.path)) return skip(entry.path, "invalid_path");
+    if (entry.type !== "blob" || !REGULAR_FILE_MODES.has(entry.mode)) {
+      return skip(entry.path, "not_regular_file");
+    }
+    if (typeof entry.sha !== "string" || !SHA_RE.test(entry.sha)) {
+      return skip(entry.path, "invalid_entry");
+    }
+    if (entry.size === null || !Number.isSafeInteger(entry.size) || entry.size < 0) {
+      return skip(entry.path, "size_unknown");
+    }
+    if (entry.size > r.maxSpecBytes) return skip(entry.path, "too_large");
+    candidates.push({
+      path: entry.path,
+      blobSha: entry.sha,
+      size: entry.size,
+      mode: entry.mode,
+    });
+  };
+
+  const configured = r.apiSpecs !== null;
+  if (r.apiSpecs !== null) {
+    const wanted = new Set(r.apiSpecs);
+    for (const entry of entries) {
+      if (typeof entry.path !== "string" || entry.type === "tree" || !wanted.has(entry.path)) {
+        continue;
+      }
+      const segments = entry.path.split("/");
+      if (segments.slice(0, -1).some((s) => r.ignoredFolders.includes(s.toLowerCase()))) {
+        skip(entry.path, "ignored_folder");
+      } else if (segments.some((s) => s.startsWith("."))) {
+        skip(entry.path, "hidden");
+      } else consider(entry);
+    }
+  } else {
+    const prefix = docsFolder === null ? null : `${docsFolder}/`;
+    for (const entry of entries) {
+      if (typeof entry.path !== "string" || entry.type === "tree") continue;
+      const segments = entry.path.split("/");
+      const name = segments[segments.length - 1] ?? "";
+      if (!API_SPEC_NAME_RE.test(name)) continue;
+      const atRoot = segments.length === 1;
+      if (!atRoot) {
+        if (prefix === null || !entry.path.startsWith(prefix)) continue;
+        const below = segments.slice(prefix.split("/").length - 1, -1);
+        if (below.some((s) => s.startsWith(".") || r.ignoredFolders.includes(s.toLowerCase()))) {
+          continue;
+        }
+      }
+      consider(entry);
+    }
+  }
+
+  candidates.sort(byPath);
+  const over = candidates.splice(MAX_API_SPECS);
+  for (const file of over) skip(file.path, "over_limit");
+  return { files: candidates, skipped: skipped.sort(byPath), leftOut: over.length, configured };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -340,7 +494,7 @@ export interface PlanRepo {
   name: string;
   /** "" for an empty repository (GitHub reports no default branch). */
   defaultBranch: string;
-  config: { docsPath?: string };
+  config: { docsPath?: string; apiSpecs?: readonly string[] };
 }
 
 /** What the last successful sync stored for this repo; all null for a first sync. */
@@ -354,7 +508,7 @@ export interface StoredTreeState {
 
 export interface PlanOptions extends CallOptions {
   /** Selection settings other than the per-repo override, which comes from `repo.config`. */
-  selection?: Omit<SelectionOptions, "docsPath">;
+  selection?: Omit<SelectionOptions, "docsPath" | "apiSpecs">;
 }
 
 interface HeadState {
@@ -391,6 +545,7 @@ export type TreePlan =
       skipped: [];
       repoLevelFiles: { readme: null; codeowners: null };
       capped: null;
+      apiSpecs: ApiSpecSelection;
     };
 
 /**
@@ -407,6 +562,7 @@ export async function planTree(
   const selection: SelectionOptions = {
     ...options.selection,
     docsPath: repo.config.docsPath ?? null,
+    apiSpecs: repo.config.apiSpecs ?? null,
   };
   const fingerprint = selectionFingerprint(selection);
 
@@ -423,6 +579,7 @@ export async function planTree(
       skipped: [],
       repoLevelFiles: { readme: null, codeowners: null },
       capped: null,
+      apiSpecs: NO_API_SPECS,
     };
   }
 

@@ -92,6 +92,7 @@ function ok(over: Partial<RepoDetail> = {}) {
     tree,
     toc: null,
     view: null,
+    apiSpecs: [],
     lastRun: null,
   };
 }
@@ -113,6 +114,61 @@ beforeEach(() => {
   loadRepoPage.mockReset();
   views.length = 0;
   navView.current = "okf";
+});
+
+const spec = (path: string, over: Record<string, unknown> = {}) => ({
+  id: 1,
+  repoId: 1,
+  path,
+  format: "openapi" as const,
+  specVersion: "3.1.0",
+  title: "Pets API",
+  apiVersion: "1.2.0",
+  operationCount: 1,
+  sizeBytes: 1,
+  blobSha: "x",
+  updatedAt: NOW,
+  ...over,
+});
+
+describe("repository page API reference", () => {
+  it("shows no section without specs", async () => {
+    loadRepoPage.mockResolvedValue(ok());
+    const out = await html();
+    expect(out).not.toContain("api-reference-heading");
+    expect(out).not.toContain("API reference");
+  });
+
+  it("lists one spec with title, version, format and link", async () => {
+    loadRepoPage.mockResolvedValue({ ...ok(), apiSpecs: [spec("api/openapi.yaml")] });
+    const out = await html();
+    expect(out).toContain('id="api-reference-heading"');
+    expect(out).toContain("Pets API");
+    expect(out).toContain("v1.2.0");
+    expect(out).toContain("OpenAPI 3.1");
+    expect(out).toContain('href="/acme/api/api-reference/api/openapi.yaml"');
+  });
+
+  it("lists several specs in the given (path) order", async () => {
+    loadRepoPage.mockResolvedValue({
+      ...ok(),
+      apiSpecs: [
+        spec("a/openapi.yaml", { title: "First" }),
+        spec("b/swagger.json", {
+          title: "Second",
+          format: "swagger",
+          specVersion: "2.0",
+          apiVersion: null,
+        }),
+      ],
+    });
+    const out = await html();
+    expect(out.indexOf("First")).toBeGreaterThan(-1);
+    expect(out.indexOf("First")).toBeLessThan(out.indexOf("Second"));
+    expect(out).toContain("Swagger 2.0");
+    expect(out).toContain('href="/acme/api/api-reference/b/swagger.json"');
+    expect(out).toContain("(2)");
+  });
 });
 
 describe("repository page", () => {

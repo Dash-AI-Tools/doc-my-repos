@@ -1,0 +1,5 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Components Only", "version": "3" },
+  "components": { "schemas": { "Id": { "type": "string" } } }
+}

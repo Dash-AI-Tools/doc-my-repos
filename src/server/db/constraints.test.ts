@@ -1,7 +1,16 @@
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { codeOwners, docComments, documents, repos, siteBranding, syncRuns, users } from "./schema";
+import {
+  apiSpecs,
+  codeOwners,
+  docComments,
+  documents,
+  repos,
+  siteBranding,
+  syncRuns,
+  users,
+} from "./schema";
 import { createTestDatabase, describeDb, pgErrorCode, type TestDatabase } from "./test-db";
 
 let counter = 0;
@@ -178,6 +187,63 @@ describeDb("table constraints on a real database", () => {
     expect(
       await t.db.select().from(codeOwners).where(eq(codeOwners.repoId, kept!.id)),
     ).toHaveLength(1);
+  });
+
+  describe("api_specs", () => {
+    const specValues = (
+      repoId: number,
+      path: string,
+      over: Partial<typeof apiSpecs.$inferInsert> = {},
+    ): typeof apiSpecs.$inferInsert => ({
+      repoId,
+      path,
+      blobSha: "sha",
+      sizeBytes: 10,
+      format: "openapi",
+      specVersion: "3.1.0",
+      title: "API",
+      operationCount: 1,
+      spec: { openapi: "3.1.0" },
+      ...over,
+    });
+
+    it("is unique per (repo, path) and rejects an unknown format or a missing repo", async () => {
+      const [a, b] = await t.db
+        .insert(repos)
+        .values([repoValues(), repoValues()])
+        .returning({ id: repos.id });
+      await t.db.insert(apiSpecs).values(specValues(a!.id, "openapi.yaml"));
+      expect(await codeOf(t.db.insert(apiSpecs).values(specValues(a!.id, "openapi.yaml")))).toBe(
+        UNIQUE_VIOLATION,
+      );
+      await t.db.insert(apiSpecs).values(specValues(a!.id, "docs/openapi.yaml"));
+      await t.db.insert(apiSpecs).values(specValues(b!.id, "openapi.yaml"));
+      expect(
+        await codeOf(
+          t.db
+            .insert(apiSpecs)
+            .values(specValues(a!.id, "x.yaml", { format: "raml" as unknown as "openapi" })),
+        ),
+      ).toBe("23514");
+      expect(await codeOf(t.db.insert(apiSpecs).values(specValues(2_000_000_000, "a")))).toBe(
+        "23503",
+      );
+    });
+
+    it("is deleted with its repo, and only that repo's", async () => {
+      const [gone, kept] = await t.db
+        .insert(repos)
+        .values([repoValues(), repoValues()])
+        .returning({ id: repos.id });
+      for (const r of [gone!, kept!]) {
+        await t.db.insert(apiSpecs).values(specValues(r.id, "openapi.json"));
+      }
+      await t.db.delete(repos).where(eq(repos.id, gone!.id));
+      expect(await t.db.select().from(apiSpecs).where(eq(apiSpecs.repoId, gone!.id))).toEqual([]);
+      expect(await t.db.select().from(apiSpecs).where(eq(apiSpecs.repoId, kept!.id))).toHaveLength(
+        1,
+      );
+    });
   });
 
   it("rejects a document for a repo that does not exist", async () => {

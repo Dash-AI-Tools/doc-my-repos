@@ -59,7 +59,18 @@ export type SyncWarning = { path: string | null; message: string };
  * Messages are fixed texts plus numbers, never file contents.
  */
 export type RepoSyncWarning = {
-  code: "docs_capped" | "too_large" | "size_unknown" | "write_rejected" | "unsupported";
+  code:
+    | "docs_capped"
+    | "too_large"
+    | "size_unknown"
+    | "write_rejected"
+    | "unsupported"
+    // OpenAPI/Swagger spec files (openapi-reference): the same idea, apart from documents.
+    | "api_spec_invalid"
+    | "api_spec_too_large"
+    | "api_spec_over_limit"
+    | "api_spec_missing"
+    | "api_spec_unsupported";
   message: string;
   count: number;
   paths: string[];
@@ -213,6 +224,36 @@ export const documents = pgTable(
     unique("documents_repo_id_path_unique").on(t.repoId, t.path),
     index("documents_search_vector_idx").using("gin", t.searchVector),
     index("documents_repo_id_type_idx").on(t.repoId, t.type),
+  ],
+);
+
+/**
+ * Parsed OpenAPI/Swagger specs (openapi-reference design decision 1). Kept out of `documents` so
+ * they never enter search, the docs tree, doc counts or OKF detection. `spec` is the parsed
+ * document (strings cleaned like documents, `toDbJson`), rendered at read time.
+ */
+export const apiSpecs = pgTable(
+  "api_specs",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    repoId: integer("repo_id")
+      .notNull()
+      .references(() => repos.id, { onDelete: "cascade" }),
+    path: text("path").notNull(),
+    blobSha: text("blob_sha").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    format: text("format").$type<"openapi" | "swagger">().notNull(),
+    specVersion: text("spec_version").notNull(),
+    title: text("title").notNull(),
+    apiVersion: text("api_version"),
+    operationCount: integer("operation_count").notNull(),
+    spec: jsonb("spec").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique("api_specs_repo_id_path_unique").on(t.repoId, t.path),
+    check("api_specs_format", sql`${t.format} IN ('openapi', 'swagger')`),
   ],
 );
 

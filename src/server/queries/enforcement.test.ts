@@ -29,8 +29,8 @@ const SRC = fileURLToPath(new URL("../../", import.meta.url));
 const SCHEMA = join(SRC, "server", "db", "schema");
 
 /** The tables every portal read must reach through `src/server/queries`. */
-const PROTECTED_EXPORTS = new Set(["repos", "documents", "codeOwners", "docComments"]);
-const PROTECTED_SQL_TABLES = ["repos", "documents", "code_owners", "doc_comments"];
+const PROTECTED_EXPORTS = new Set(["repos", "documents", "codeOwners", "docComments", "apiSpecs"]);
+const PROTECTED_SQL_TABLES = ["repos", "documents", "code_owners", "doc_comments", "api_specs"];
 
 /**
  * Where direct access to the protected tables is allowed, and why. Paths are relative to `src/`.
@@ -288,6 +288,20 @@ describe("scanSource", () => {
       rules("app/x/page.tsx", `import type { docComments } from "@/server/db/schema";`),
     ).toHaveLength(1);
     expect(rules("server/comments/x.ts", named)).toEqual([]);
+    expect(rules("server/queries/x.ts", named)).toEqual([]);
+  });
+
+  it("protects api_specs: only the sync write side and the query layer may touch it", () => {
+    const named = `import { apiSpecs } from "@/server/db/schema";`;
+    expect(rules("app/x/page.tsx", named)).toContain(
+      "imports the apiSpecs table; read through @/server/queries",
+    );
+    expect(rules("server/repo-page.ts", named)).toHaveLength(1);
+    expect(rules("server/x.ts", "await db.query.apiSpecs.findMany();")).toHaveLength(1);
+    expect(rules("server/x.ts", 'await db.execute(sql`select * from "api_specs"`);')).toHaveLength(
+      1,
+    );
+    expect(rules("server/sync/persist.ts", named)).toEqual([]);
     expect(rules("server/queries/x.ts", named)).toEqual([]);
   });
 

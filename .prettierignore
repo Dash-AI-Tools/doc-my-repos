@@ -13,3 +13,4 @@ test-results
 .dsh
 .agents
 .impeccable/hook.cache.json
+src/server/docs/__fixtures__

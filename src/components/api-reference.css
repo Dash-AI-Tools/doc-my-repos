@@ -1,0 +1,643 @@
+/*
+ * Theme of the API reference widget (openapi-reference design decision 9a, task 5.5).
+ *
+ * Imported only by `api-reference-widget.tsx`, after `swagger-ui.css`, so it is part of the
+ * reference route's lazy chunk and nothing else. Every rule starts with `.api-reference
+ * .swagger-ui`: it cannot touch the rest of the site, and it out-ranks the stock rules of one or
+ * two classes. Colors come from the design tokens (globals.css), which switch with the `.dark`
+ * class, so there is no second set of dark rules (the stock `html.dark-mode` rules never apply:
+ * that class is not set). No `!important`.
+ *
+ * Content-Security-Policy: `img-src` has no `data:`. The stock stylesheet draws its icons (copy
+ * button, select arrow, checkbox tick, model toggles) with `url("data:image/svg+xml...")`; those
+ * declarations are overridden here with CSS-drawn glyphs (borders, gradients, pseudo-elements,
+ * text), so the browser never requests a `data:` image. The policy is not loosened for this.
+ *
+ * Specificity: the stock rules go up to four classes plus an element, so every selector here
+ * repeats `.swagger-ui` (a class repeated is the same element, only ranked higher) to win over them
+ * without `!important`, whatever the order the stylesheets load in.
+ *
+ * Method names are text ("GET"), never only a color; deprecated operations are struck through
+ * (stock) and the widget prints "Deprecated" next to them.
+ */
+
+/* Base: one text color, the site font, no stock backgrounds or shadows. */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui {
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overflow-wrap: anywhere;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui * {
+  color: inherit;
+  font-family: inherit;
+  background-color: transparent;
+  box-shadow: none;
+  text-shadow: none;
+  border-color: var(--border);
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  :is(code, pre, .microlight, .opblock-summary-path, .parameter__type) {
+  font-family: var(--font-mono);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .wrapper {
+  padding: 0;
+  max-width: none;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .info {
+  margin: 0 0 1.5rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .info .title {
+  font-size: 1.625rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .info .title small,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .info .title small.version-stamp {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.75rem;
+  vertical-align: middle;
+  top: 0;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .info .title small pre {
+  color: inherit;
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  :is(.info p, .info li, .info table, .markdown p, .renderedMarkdown p) {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .markdown,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .renderedMarkdown {
+  overflow-wrap: anywhere;
+}
+
+/* Links */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui a,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .info a,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .link {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui a:hover {
+  color: var(--link-hover);
+}
+
+/* Focus: the site ring on every control (swagger-ui uses `outline: auto`). */
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Servers and schemes bar */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .scheme-container {
+  background-color: transparent;
+  box-shadow: none;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin: 0 0 1.5rem;
+  padding: 1rem 0;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .scheme-container .schemes {
+  gap: 0.75rem;
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .scheme-container
+  .schemes
+  > .schemes-server-container
+  > label,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .servers > label {
+  margin: 0 0.75rem 0 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .servers-title {
+  color: var(--muted-foreground);
+}
+
+/* Tag headings */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock-tag {
+  border-bottom: 1px solid var(--border);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  padding: 0.75rem 0.25rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock-tag:hover {
+  background-color: var(--muted);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock-tag small {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock-tag-section {
+  margin-bottom: 0.5rem;
+}
+
+/* Operation blocks: a hairline box, a text badge for the method. */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-get,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-post,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-put,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-delete,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-patch,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-head,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-options,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-deprecated {
+  background-color: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0.125rem;
+  box-shadow: none;
+  margin: 0 0 0.5rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.is-open {
+  border-color: var(--input);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-summary,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-get .opblock-summary,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-post .opblock-summary,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-put .opblock-summary,
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .opblock.opblock-delete
+  .opblock-summary,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-patch .opblock-summary,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-head .opblock-summary,
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .opblock.opblock-options
+  .opblock-summary {
+  border-color: var(--border);
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-summary-method {
+  background-color: var(--foreground);
+  color: var(--background);
+  border-radius: 0.125rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  min-width: 4.5rem;
+  padding: 0.375rem 0.5rem;
+  text-transform: uppercase;
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .opblock.opblock-get
+  .opblock-summary-method {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .opblock.opblock-delete
+  .opblock-summary-method {
+  background-color: var(--destructive);
+  color: var(--destructive-foreground);
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .opblock.opblock-deprecated
+  .opblock-summary-method {
+  background-color: var(--private-badge);
+  color: var(--private-badge-foreground);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-summary-path,
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .opblock
+  .opblock-summary-path__deprecated {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-summary-description {
+  flex: 1 1 100%;
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+@media (min-width: 640px) {
+  .api-reference
+    .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+    .opblock
+    .opblock-summary-description {
+    flex: 0 1 auto;
+    text-align: right;
+  }
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-summary-path a {
+  display: inline-block;
+  min-height: 1.5rem;
+  line-height: 1.5rem;
+  text-decoration: none;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock.opblock-deprecated {
+  opacity: 1;
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .opblock-deprecated
+  .opblock-summary-path {
+  text-decoration: line-through;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-section-header {
+  background-color: var(--muted);
+  box-shadow: none;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-section-header h4,
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .opblock
+  .opblock-section-header
+  > label {
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-body,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock-body {
+  overflow-x: auto;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-description-wrapper,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-external-docs-wrapper,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-title_normal {
+  padding: 0.75rem;
+  color: var(--foreground);
+  font-size: 1rem;
+}
+
+/* Tables: parameters, responses */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui table thead tr :is(th, td) {
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui table tbody tr td {
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .parameter__name,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .parameter__type,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .parameter__in,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .response-col_status,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .response-col_description {
+  color: var(--foreground);
+  font-size: 0.9375rem;
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  :is(.parameter__type, .parameter__in, .parameter__deprecated) {
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .parameter__name.required span,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .parameter__name.required:after {
+  color: var(--destructive);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .parameter__name.required:after {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .response-col_status
+  .response-undocumented {
+  color: var(--muted-foreground);
+}
+
+/* Code: the code tokens, wrapped, scrolling inside the block when needed. */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock-body pre.microlight,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .highlight-code pre.microlight,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui pre {
+  background-color: var(--code-background);
+  color: var(--code-foreground);
+  border: 1px solid var(--border);
+  border-radius: 0.125rem;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.6;
+  padding: 0.75rem;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  :is(.markdown, .renderedMarkdown, .info)
+  code,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui code {
+  background-color: var(--code-background);
+  color: var(--code-foreground);
+  border-radius: 0.125rem;
+  font-size: 0.875em;
+  font-weight: 400;
+  padding: 0.0625rem 0.3125rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui pre code {
+  background-color: transparent;
+  padding: 0;
+}
+/*
+ * The stock highlighter writes fixed colors as inline `style` attributes (dark block, light text
+ * and one hue per token), which only `!important` can beat. Scoped to those blocks: the block uses
+ * the code tokens and its tokens keep the block color (no hue, so contrast holds in both themes).
+ */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui pre.microlight {
+  background: var(--code-background) !important;
+  color: var(--code-foreground) !important;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui pre.microlight :is(code, span) {
+  color: inherit !important;
+}
+
+/* Tabs (Example Value / Schema, media types) */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .tab li,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .tab li button.tablinks {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .tab li.active,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .tab li.active button.tablinks {
+  color: var(--foreground);
+  font-weight: 700;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .tab li:first-of-type:after {
+  background-color: var(--border);
+}
+
+/* Inputs and selects */
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  :is(
+    input[type="text"],
+    input[type="password"],
+    input[type="search"],
+    input[type="email"],
+    input[type="file"],
+    textarea
+  ) {
+  background-color: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--input);
+  border-radius: 0.125rem;
+  box-shadow: none;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui select {
+  appearance: none;
+  background-color: var(--background);
+  /* The arrow is two gradients (a triangle), not a data: image. */
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--foreground) 50%),
+    linear-gradient(135deg, var(--foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.125rem) 50%,
+    calc(100% - 0.8125rem) 50%;
+  background-size:
+    0.3125rem 0.3125rem,
+    0.3125rem 0.3125rem;
+  background-repeat: no-repeat;
+  color: var(--foreground);
+  border: 1px solid var(--input);
+  border-radius: 0.125rem;
+  box-shadow: none;
+  font-size: 0.875rem;
+  font-weight: 400;
+  max-width: 100%;
+  min-height: 2rem;
+  padding: 0.25rem 2rem 0.25rem 0.5rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui select[multiple] {
+  background-image: none;
+  padding: 0.25rem;
+}
+
+/* Buttons */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .btn,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .btn.authorize {
+  background-color: transparent;
+  color: var(--foreground);
+  border: 1px solid var(--input);
+  border-radius: 0.125rem;
+  box-shadow: none;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .btn:hover {
+  background-color: var(--muted);
+  box-shadow: none;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .btn.authorize svg,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .btn svg {
+  fill: currentColor;
+  color: inherit;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui svg,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui svg path {
+  fill: currentColor;
+}
+
+/* Copy buttons: a two-sheet glyph drawn with borders. */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .copy-to-clipboard {
+  background-color: var(--muted);
+  border: 1px solid var(--input);
+  border-radius: 0.125rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .copy-to-clipboard:active {
+  background-color: var(--accent);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .copy-to-clipboard button,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .download-contents button {
+  background: transparent;
+  background-image: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+  position: relative;
+  border: 0;
+  width: 100%;
+  min-width: 1.25rem;
+  color: var(--foreground);
+  cursor: pointer;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .copy-to-clipboard button::before,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .copy-to-clipboard button::after {
+  content: "";
+  position: absolute;
+  width: 0.5625rem;
+  height: 0.6875rem;
+  border: 1.5px solid currentColor;
+  border-radius: 1px;
+  background-color: var(--muted);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .copy-to-clipboard button::before {
+  left: calc(50% - 0.4375rem);
+  top: calc(50% - 0.4375rem);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .copy-to-clipboard button::after {
+  left: calc(50% - 0.125rem);
+  top: calc(50% - 0.125rem);
+}
+
+/* Checkboxes (stock inputs are hidden, the label's .item is the box): the tick is a rotated corner. */
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .checkbox
+  input[type="checkbox"]
+  + label
+  > .item,
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .checkbox
+  input[type="checkbox"]:checked
+  + label
+  > .item {
+  background-color: var(--background);
+  background-image: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+  border: 1px solid var(--input);
+  border-radius: 0.125rem;
+  box-shadow: none;
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  .checkbox
+  input[type="checkbox"]:checked
+  + label
+  > .item::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 0.3125rem;
+  height: 0.6rem;
+  border: solid var(--foreground);
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+/* Model and schema toggles: a chevron drawn with two borders (the toggle element rotates it). */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .model-toggle::after {
+  background: transparent;
+  background-image: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin: 0.375rem;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(-45deg);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .model-toggle {
+  color: var(--foreground);
+}
+
+/* Models (component schemas) */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui section.models {
+  border: 1px solid var(--border);
+  border-radius: 0.125rem;
+  margin: 2rem 0 0;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui section.models.is-open h4 {
+  border-bottom: 1px solid var(--border);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui section.models h4 {
+  color: var(--foreground);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui section.models h4 span,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui section.models h5 {
+  color: inherit;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui section.models .model-container {
+  background-color: transparent;
+  border-radius: 0;
+  margin: 0;
+  padding: 0.5rem 1rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui section.models .model-container:hover {
+  background-color: var(--muted);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .model-box {
+  background-color: transparent;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.api-reference
+  .swagger-ui.swagger-ui.swagger-ui.swagger-ui
+  :is(.model, .model-title, .prop-type, .prop-format) {
+  color: var(--foreground);
+  font-size: 0.9375rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .prop-type {
+  color: var(--accent-foreground);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .prop-format {
+  color: var(--muted-foreground);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .model .property.primitive {
+  color: var(--muted-foreground);
+}
+
+/* Modals (Authorize) */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .dialog-ux .modal-ux {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--input);
+  border-radius: 0.25rem;
+  box-shadow: none;
+  max-width: calc(100vw - 2rem);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .dialog-ux .modal-ux-header {
+  border-bottom: 1px solid var(--border);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .dialog-ux .backdrop-ux {
+  background-color: color-mix(in srgb, var(--background) 80%, transparent);
+}
+
+/* Errors and notices from the widget */
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .errors-wrapper {
+  background-color: var(--destructive-muted);
+  color: var(--destructive-muted-foreground);
+  border: 1px solid var(--destructive-muted-border);
+  border-radius: 0.125rem;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .errors-wrapper * {
+  color: inherit;
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .loading-container .loading::after {
+  color: var(--muted-foreground);
+}
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock-tag-section .opblock-tag small,
+.api-reference .swagger-ui.swagger-ui.swagger-ui.swagger-ui .opblock .opblock-summary-operation-id {
+  color: var(--muted-foreground);
+}

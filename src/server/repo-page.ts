@@ -19,8 +19,10 @@ import {
 } from "./markdown/pipeline";
 import {
   getDocsTree,
+  listApiSpecs,
   getRepo,
   getRepoSyncInfo,
+  type ApiSpecSummary,
   type RepoDetail,
   type RepoLastRun,
 } from "./queries";
@@ -30,7 +32,7 @@ import { logger, type LogFn } from "./log";
 
 /**
  * Data for the repository page `/<owner>/<repo>` (tasks 9.3, 9.4 and 9.6). Reads only through the
- * shared query layer (`getRepo`, `getDocsTree`, `getRepoSyncInfo` for the last sync run of the
+ * shared query layer (`getRepo`, `getDocsTree`, `listApiSpecs`, `getRepoSyncInfo` for the last sync run of the
  * header, task 12.2); never GitHub. The document rows give both the docs
  * table of contents (`tree`) and the `docPaths` set the README's link resolver needs. The README is rendered here, on the
  * server, from the stored Markdown with the same options every document uses (link and image
@@ -80,6 +82,8 @@ export type RepoPageData =
       readonly toc: TocData | null;
       /** The navigation view shown; null for a repository that is not OKF (no selector). */
       readonly view: NavView | null;
+      /** API specs of the repository ordered by path (no spec bodies); empty when none. */
+      readonly apiSpecs: readonly ApiSpecSummary[];
       /** The repository's latest recorded sync run (task 12.2); null when none is recorded. */
       readonly lastRun: RepoLastRun | null;
       /** When the data was read; the page formats "x minutes ago" against this. */
@@ -176,6 +180,7 @@ export async function loadRepoPage(
       render,
       log,
     );
+    const apiSpecs = await listApiSpecs(handle, { id: repo.id });
     const sync = await getRepoSyncInfo(handle, { id: repo.id });
     return {
       status: "ok",
@@ -185,6 +190,7 @@ export async function loadRepoPage(
       tree,
       toc,
       view: shown,
+      apiSpecs,
       lastRun: sync?.lastRun ?? null,
       loadedAt: now(),
     };
