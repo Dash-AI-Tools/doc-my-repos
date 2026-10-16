@@ -179,7 +179,8 @@ describe("GithubSettingsForm: saving", () => {
   });
 
   it("leaves empty secret fields out (keep) and sends null for Clear", async () => {
-    fetchMock.mockResolvedValue(json(CONFIGURED));
+    // A fresh Response per call: a body can be read only once.
+    fetchMock.mockImplementation(async () => json(CONFIGURED));
     render(<GithubSettingsForm initial={CONFIGURED} />);
     save();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());

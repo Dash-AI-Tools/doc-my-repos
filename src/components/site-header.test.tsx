@@ -118,7 +118,7 @@ describe("site header account menu", () => {
     expect(html).toContain("account-menu-trigger");
     expect(html).toContain("admin@example.com");
     expect(html).toContain('aria-expanded="false"');
-    for (const label of ["Users", "Repository access", "Branding"]) {
+    for (const label of ["Users", "Workspace configuration", "Branding"]) {
       expect(html).toContain(label);
     }
     expect(html).not.toContain("Administration");

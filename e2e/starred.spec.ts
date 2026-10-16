@@ -56,7 +56,8 @@ async function homeOrder(page: Page): Promise<string[]> {
 
 async function openAdmin(page: Page): Promise<void> {
   await page.goto("/admin/repos");
-  await expect(page.getByRole("heading", { level: 1, name: "Repository access" })).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/workspace\?tab=repos/);
+  await expect(page.getByRole("tab", { name: "Repository access", selected: true })).toBeVisible();
 }
 
 async function saved(page: Page): Promise<void> {
@@ -205,9 +206,6 @@ test("an admin reaches the admin pages through the email menu; the top bar has n
     await expect(page).toHaveURL(new RegExp(`${path}$`));
   }
   await page.getByTestId("account-menu-trigger").click();
-  await expect(
-    page.getByTestId("account-menu").getByRole("link", { name: "Repository access" }),
-  ).toBeVisible();
   await expect(
     page.getByTestId("account-menu").getByRole("button", { name: "Sign out" }),
   ).toBeVisible();
