@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { createDb } from "../../src/server/db/client";
 import { runMigrations } from "../../src/server/db/migrate";
 import { assertPostgresReachable, createDatabase } from "./db";
+import { seedAskData } from "./ask-seed";
 import { seedCommentData } from "./comment-seed";
 import { seedDatabase } from "./seed";
 import {
@@ -41,7 +42,10 @@ async function prepare(kind: DatabaseKind): Promise<void> {
   try {
     await runMigrations(handle, MIGRATIONS_FOLDER);
     if (kind !== "empty") await seedDatabase(handle.db);
-    if (kind === "comments" || kind === "commentsoff") await seedCommentData(handle.db);
+    if (kind === "comments" || kind === "commentsoff" || kind === "ask") {
+      await seedCommentData(handle.db);
+    }
+    if (kind === "ask") await seedAskData(handle.db);
   } finally {
     await handle.close();
   }
@@ -61,6 +65,7 @@ export default async function globalSetup(): Promise<void> {
     await prepare("starred");
     await prepare("comments");
     await prepare("commentsoff");
+    await prepare("ask");
   } catch (error) {
     await teardown();
     throw error;
