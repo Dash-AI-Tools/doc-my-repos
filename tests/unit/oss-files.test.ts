@@ -133,7 +133,10 @@ describe("README screenshots", () => {
   });
 
   it("uses a prefers-color-scheme picture for every image", () => {
-    const pictures = readme.match(/<picture>[\s\S]*?<\/picture>/g) ?? [];
+    // Screenshots only: the logo in the header is a branding picture with its own light and white files.
+    const pictures = (readme.match(/<picture>[\s\S]*?<\/picture>/g) ?? []).filter((p) =>
+      p.includes("docs-assets/screenshots/"),
+    );
     expect(pictures.length).toBeGreaterThanOrEqual(names.size);
     for (const picture of pictures) {
       expect(picture).toMatch(
