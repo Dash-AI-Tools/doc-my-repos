@@ -88,7 +88,7 @@ Documentation comes from third-party repositories and is untrusted.
 - Fill in the pull request template. In short, a pull request is ready when:
   - the spec is updated for any behavior change and `openspec validate docmyrepos-mvp` passes;
   - tests are added or updated, and `pnpm typecheck`, `pnpm lint`, `pnpm format:check` and `pnpm test` pass locally (and `pnpm test:e2e` for UI changes);
-  - documentation is updated (README, `docs/`, `.env.example` and `docmyrepos.config.example.yml` for new settings);
+  - documentation is updated (README, `docs/` and `.env.example` for new settings);
   - UI changes come with screenshots in light and dark;
   - no secrets, no unrelated refactors.
 - CI must be green. It cannot read repository secrets, so it also runs on pull requests from forks.

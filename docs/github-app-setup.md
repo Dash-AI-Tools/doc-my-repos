@@ -69,10 +69,10 @@ In GitHub's App settings, the _Subscribe to events_ checkboxes appear only for e
 
 Details taken from the endpoint:
 
-- The signature (`X-Hub-Signature-256`) is verified over the raw body with `GITHUB_WEBHOOK_SECRET`. A missing or wrong signature gets a fixed 401.
+- The signature (`X-Hub-Signature-256`) is verified over the raw body with the webhook secret saved at `/admin/workspace`. A missing or wrong signature gets a fixed 401.
 - `application/x-www-form-urlencoded` is refused with 415. Choose `application/json`.
 - Bodies over 25 MiB get 413.
-- If `GITHUB_WEBHOOK_SECRET` is missing or shorter than 16 characters, every delivery gets 500.
+- If no webhook secret is saved, every delivery gets the same fixed 401 as a bad signature, and nothing is synced.
 - A good delivery gets 202 (200 for `ping`). A sync is started in the background and is not waited for beyond about 5 seconds.
 
 ## 5. Registering the App
@@ -118,7 +118,7 @@ How the manifest flow works, per GitHub's documentation:
 
 1. You send the manifest in a form field named `manifest` with an HTML form that POSTs to `https://github.com/settings/apps/new` (personal account) or `https://github.com/organizations/<ORG>/settings/apps/new` (organization). A short local HTML file with one hidden input and a submit button is enough. You can add `?state=<random string>` to the URL.
 2. GitHub shows the App for confirmation. When you confirm, GitHub redirects the browser to `redirect_url` with `?code=<temporary code>` (and your `state`). `redirect_url` must be reachable by your browser, but nothing has to be listening: you only need to copy the `code` from the address bar.
-3. Within one hour, exchange the code with `POST https://api.github.com/app-manifests/<code>/conversions` (no authentication needed). The response contains the App `id`, the private key `pem`, and a generated `webhook_secret`. Save the `pem` to a file, and use the `webhook_secret` as `GITHUB_WEBHOOK_SECRET` (it is at least 16 characters; check this).
+3. Within one hour, exchange the code with `POST https://api.github.com/app-manifests/<code>/conversions` (no authentication needed). The response contains the App `id`, the private key `pem`, and a generated `webhook_secret`. Keep the `pem`, and enter the `webhook_secret` in the **Webhook secret** field at `/admin/workspace` (it is at least 16 characters; check this).
 
 What the manifest leaves to you or to GitHub, stated honestly:
 
@@ -129,53 +129,54 @@ What the manifest leaves to you or to GitHub, stated honestly:
 
 ## 6. App id, private key and installation id
 
-1. **App id.** On the App's settings page (_Settings > Developer settings > GitHub Apps > your App_), under **About**, copy **App ID**, a number. This is `GITHUB_APP_ID`. The page also shows a **Client ID** (starts with `Iv`); it is not the App ID, do not use it for `GITHUB_APP_ID`.
+1. **App id.** On the App's settings page (_Settings > Developer settings > GitHub Apps > your App_), under **About**, copy **App ID**, a number. This goes in the **App ID** field. The page also shows a **Client ID** (starts with `Iv`); it is not the App ID, do not use it there.
 2. **Private key.** GitHub will not let you install the App until it has a private key, so do this first. On the same page, open **Private keys** (the _Credentials_ tab in the current UI, or the bottom of _General_) and press _Generate a private key_. GitHub downloads a `.pem` file once. Store it somewhere private. GitHub issues an unencrypted RSA key in PKCS#1 form (`-----BEGIN RSA PRIVATE KEY-----`). DocMyRepos also accepts an unencrypted PKCS#8 RSA key (`-----BEGIN PRIVATE KEY-----`). Encrypted keys and non-RSA keys are rejected.
 3. **Install.** Open the App's **Install App** tab, choose your organization, and select **All repositories** or **Only select repositories**. To import every repository of the organization now and in the future, choose **All repositories**. GitHub shows the permissions the App will get ("Read access to code and metadata") before you press **Install**. You can open the page directly at `https://github.com/apps/<app-slug>/installations/new`.
-4. **Installation id.** After installing, you land on a URL like `https://github.com/organizations/<ORG>/settings/installations/<id>` (for a personal account, `https://github.com/settings/installations/<id>`). The number at the end is `GITHUB_APP_INSTALLATION_ID`. You can also find it later under the organization's _Settings > GitHub Apps > Configure_, in the same URL. Through the API, authenticate as the App with a JWT and call `GET /app/installations`; the `id` field of the entry for your organization is the installation id.
+4. **Installation id.** After installing, you land on a URL like `https://github.com/organizations/<ORG>/settings/installations/<id>` (for a personal account, `https://github.com/settings/installations/<id>`). The number at the end goes in the **Installation ID** field. You can also find it later under the organization's _Settings > GitHub Apps > Configure_, in the same URL. Through the API, authenticate as the App with a JWT and call `GET /app/installations`; the `id` field of the entry for your organization is the installation id.
 
 ### Which repositories are synced
 
-The App's installation selection is the upper bound. DocMyRepos discovers repositories from the installation's accessible repositories, so a repository the App cannot see is never synced, whatever the config says.
+The App's installation selection is the upper bound. DocMyRepos discovers repositories from the installation's accessible repositories, so a repository the App cannot see is never synced, whatever the settings say.
 
-`docmyrepos.config.yml` only narrows that set:
+The repository list on `/admin/workspace` only narrows that set:
 
-- no `repos` and no `exclude`: every repository the installation can access (the repository's sample `docmyrepos.config.yml` used to list three demo repositories; check yours does not narrow the set by accident);
-- `repos`: only those names (they must be accessible to the App);
-- `exclude`: every accessible repository except those.
+- **All repositories the App can access** (the default): every repository the installation can access;
+- **Only these repositories**: only those names (they must be accessible to the App);
+- **All except these repositories**: every accessible repository except those.
 
 A private repository that is missing from the portal usually means it is not in the installation's selection. Add it under _Settings > GitHub Apps > Configure > Repository access_; GitHub then sends `installation_repositories`.
 
 Remember that every signed-in user can read every repository an admin has made visible, including private ones. Install the App only on repositories you want shown.
 
-## 7. Environment variables
+## 7. Entering the settings
 
-Set these in `.env` for local development, or in your deployment's environment. The names are the ones read by `src/server/config/env.ts`.
+The GitHub App settings are entered by an administrator in the app, at `/admin/workspace` (_Administration > Workspace configuration_), and stored in the database. They are not environment variables. Secrets are encrypted before they are stored, are never shown again, and a change applies to the next sync or webhook with no restart.
 
-| Variable                      | Value                                                                                            |
-| ----------------------------- | ------------------------------------------------------------------------------------------------ |
-| `GITHUB_APP_ID`               | The numeric App ID.                                                                              |
-| `GITHUB_APP_INSTALLATION_ID`  | The numeric installation id.                                                                     |
-| `GITHUB_APP_PRIVATE_KEY_PATH` | Path to the `.pem` file. Preferred.                                                              |
-| `GITHUB_APP_PRIVATE_KEY`      | The PEM text inline, as an alternative. Set exactly one of the two; setting both is an error.    |
-| `GITHUB_WEBHOOK_SECRET`       | The webhook secret from section 4. At least 16 characters.                                       |
-| `SYNC_SECRET`                 | Secret that guards `POST /api/sync`. At least 16 characters. For example `openssl rand -hex 32`. |
+| Field           | Value                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| App ID          | The numeric App ID.                                                                            |
+| Installation ID | The numeric installation id.                                                                   |
+| Private key     | The PEM text, pasted whole, including the `-----BEGIN ...-----` and `-----END ...-----` lines. |
+| Webhook secret  | The webhook secret from section 4. At least 16 characters.                                     |
 
-The IDs must be positive integers. Values are trimmed, and empty values count as unset.
+Press **Test GitHub connection** before or after saving: it mints an installation token and lists the repositories the installation can access (read-only), and answers with a fixed result. It never saves anything.
+
+The server environment still holds a few settings: `DATABASE_URL`, `SESSION_SECRET`, `SYNC_SECRET` (guards `POST /api/sync`, at least 16 characters, for example `openssl rand -hex 32`) and `SETTINGS_ENCRYPTION_KEY`, the key that encrypts the stored secrets (`openssl rand -base64 32`). See `.env.example`.
+
+On a fresh install no administrator exists yet: set `ADMIN_EMAIL` and `ADMIN_PASSWORD` for the first sign-in (see `.env.example`), then enter the App settings.
 
 ### Providing the private key
 
-- Prefer `GITHUB_APP_PRIVATE_KEY_PATH`. The file is read at startup. The variable must hold a path; if its value looks like key content, the app refuses it and tells you to use `GITHUB_APP_PRIVATE_KEY`.
-- Inline (`GITHUB_APP_PRIVATE_KEY`) accepts the PEM with real newlines, or on one line with literal `\n` escapes (`\r\n` too). Keep the `-----BEGIN ...-----` and `-----END ...-----` lines.
-- Never commit the key or `.env`. Keep both out of images and logs.
-- In Docker, mount the key as a read-only file or secret (for example `-v /secure/app.pem:/run/secrets/app.pem:ro`) and set `GITHUB_APP_PRIVATE_KEY_PATH=/run/secrets/app.pem`.
-- Set restrictive permissions on the file (`chmod 600`).
+- Paste the PEM text into the **Private key** field. The server never reads a file path from the form.
+- Never commit the key. Keep it out of images, logs and chat. The field is write-only: after saving, the page shows only that a key is set and when it changed.
+- Back up `SETTINGS_ENCRYPTION_KEY` with your database backups. Without it the stored key cannot be read; you then enter the key again (documents are not affected).
 
 ### Rotating
 
-- **Private key.** Generate a second key on the App's settings page, switch `GITHUB_APP_PRIVATE_KEY_PATH` (or the inline value) to it, restart DocMyRepos, check that a manual sync works, then delete the old key on GitHub.
-- **Webhook secret.** The new value must be set in two places that cannot change at the same instant: the App settings and `GITHUB_WEBHOOK_SECRET`. Deliveries sent between the two changes fail with 401. Change both, restart, and redeliver any failed deliveries from _Advanced > Recent Deliveries_.
-- **Sync secret.** Change `SYNC_SECRET` and update every cron job or script that calls `/api/sync`.
+- **Private key.** Generate a second key on the App's settings page, paste it into the **Private key** field and save, press _Test GitHub connection_, check that a manual sync works, then delete the old key on GitHub. No restart is needed.
+- **Webhook secret.** The new value must be set in two places that cannot change at the same instant: the App settings and the **Webhook secret** field. Deliveries sent between the two changes fail with 401. Change both, and redeliver any failed deliveries from _Advanced > Recent Deliveries_.
+- **Sync secret.** Change `SYNC_SECRET` in the environment, restart, and update every cron job or script that calls `/api/sync`.
+- **Encryption key.** Changing `SETTINGS_ENCRYPTION_KEY` makes the stored secrets unreadable. The admin pages and `/status` say which ones, by name, and you enter them again.
 
 ## 8. Local development
 
@@ -185,7 +186,7 @@ GitHub must be able to reach your machine to deliver webhooks. Use a tunnel to t
 - **ngrok.** `ngrok http 3000`, then use `https://<id>.ngrok-free.app/api/webhooks/github`.
 - **cloudflared.** `cloudflared tunnel --url http://localhost:3000`, then use the printed `https://<name>.trycloudflare.com/api/webhooks/github`.
 
-Next.js reads `.env` only when `pnpm dev` starts. After you change `GITHUB_WEBHOOK_SECRET`, `SYNC_SECRET` or any App variable, stop the dev server and start it again; a server started earlier keeps the old values and answers 401. `pnpm dev` also picks port 3001 when 3000 is taken, which breaks a tunnel pointed at 3000, so make sure only one dev server is running.
+Next.js reads `.env` only when `pnpm dev` starts, so restart the dev server after changing `SYNC_SECRET` or another variable. The GitHub App settings need no restart: save them at `/admin/workspace`. `pnpm dev` also picks port 3001 when 3000 is taken, which breaks a tunnel pointed at 3000, so make sure only one dev server is running.
 
 Set the App's webhook URL (_App settings > General > Webhook URL_) to the tunnel URL. Free tunnel URLs change on restart, so update it each time. Switch it back to the real host afterwards.
 
@@ -218,19 +219,18 @@ Answers: 200 finished, 202 another sync is running and will rerun to cover this 
 
 | Symptom                                                                           | Likely cause and fix                                                                                                                                                                                                                                                                           |
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Webhook delivery gets 401                                                         | `GITHUB_WEBHOOK_SECRET` differs from the App's secret, or a proxy changed the body (re-encoding, compression). Forward the raw body untouched.                                                                                                                                                 |
+| Webhook delivery gets 401                                                         | The saved webhook secret differs from the App's secret, none is saved yet, or a proxy changed the body (re-encoding, compression). Forward the raw body untouched.                                                                                                                             |
 | Delivery gets 415                                                                 | The App's content type is `application/x-www-form-urlencoded`. Change it to `application/json`.                                                                                                                                                                                                |
-| Delivery gets 500                                                                 | `GITHUB_WEBHOOK_SECRET` is unset or shorter than 16 characters, or dispatching failed. Check the server log.                                                                                                                                                                                   |
+| Delivery gets 500                                                                 | The GitHub settings are incomplete or dispatching failed. Check the server log.                                                                                                                                                                                                                |
 | Delivery or `/api/sync` gets 401 with body `{"error":"Unauthorized"}` (capital U) | That body comes from the login gate in `src/proxy.ts`, not from the route (the route's own 401 is lowercase `{"error":"unauthorized"}`). `/api/sync` and `/api/webhooks/github` must be exempt from the session gate. If you see this, check that `isPublicPath` in `src/proxy.ts` lists both. |
 | Delivery gets 202 but nothing syncs                                               | The event is ignored by design: another branch, a repository outside `repos`/`exclude`, another installation id, or an unhandled event. Check the log line.                                                                                                                                    |
 | `/api/sync` returns 401                                                           | Wrong secret, or the header is not `Authorization: Bearer <secret>`.                                                                                                                                                                                                                           |
-| `/api/sync` returns 500 `misconfigured`                                           | `SYNC_SECRET` is unset or shorter than 16 characters, or the config file is invalid.                                                                                                                                                                                                           |
+| `/api/sync` returns 500 `misconfigured`                                           | `SYNC_SECRET` is unset or shorter than 16 characters, or the GitHub settings are incomplete (see `/status`).                                                                                                                                                                                   |
 | `/api/sync` returns 503                                                           | GitHub rate limit or a transient error. Wait for `Retry-After` and retry. Sync backs off automatically.                                                                                                                                                                                        |
 | Repositories show "installation unavailable"                                      | The App was uninstalled or suspended (`installation` event `deleted`/`suspend`). Content is kept. Reinstall or unsuspend; an `unsuspend`/`created` event starts a full sync, or run a manual sync.                                                                                             |
 | A private repository does not appear                                              | It is not in the installation's repository selection, or `repos`/`exclude` filters it out.                                                                                                                                                                                                     |
 | Startup says the private key is invalid                                           | Wrong or truncated PEM, an encrypted key, or a non-RSA key. Use the `.pem` GitHub issued. With the inline variable, check the `\n` escapes.                                                                                                                                                    |
 | Startup says the key file cannot be read (ENOENT, EACCES)                         | The path is wrong or the process cannot read the file. In Docker, check the mount.                                                                                                                                                                                                             |
-| Startup says to set only one of the key variables                                 | Both `GITHUB_APP_PRIVATE_KEY` and `GITHUB_APP_PRIVATE_KEY_PATH` are set. Unset one.                                                                                                                                                                                                            |
 
 ## Verification still required by a human
 
@@ -241,7 +241,7 @@ This guide has not been tested end to end. To finish task 6.5, a person with per
 - [x] Confirm Contents (Read-only), Metadata (mandatory, Read-only), and the `push` and `repository` checkboxes match sections 2 and 3.
 - [x] `installation` arrives without a checkbox: an `installation.created` delivery appeared in _Advanced > Recent Deliveries_ right after the install, with only `push` and `repository` ticked. Not checked yet: `installation_repositories`, and whether either is valid in `default_events`.
 - [ ] Confirm the manifest conversion returns a webhook secret of at least 16 characters.
-- [ ] Generate a private key and confirm DocMyRepos accepts it via `GITHUB_APP_PRIVATE_KEY_PATH` and via the inline variable.
+- [ ] Generate a private key, paste it at `/admin/workspace` and confirm _Test GitHub connection_ passes.
 - [x] Install the App on a test organization (done 2026-10-14 with _All repositories_; GitHub landed on `.../settings/installations/<id>` as described in section 6).
 - [ ] Confirm the installation id from the URL matches `GET /app/installations`.
 - [x] Run DocMyRepos through a tunnel (ngrok), and confirm the `ping` delivery succeeds. Done 2026-10-14: the first deliveries failed with 401 (secret not set yet and, at the time, the login gate in `src/proxy.ts` blocked the route); after fixing both, _Redeliver_ on the ping showed a green check.

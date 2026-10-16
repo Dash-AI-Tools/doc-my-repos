@@ -432,3 +432,55 @@ describe("configSchema ask limits", () => {
     expect(issues({ ask: null })).toEqual([expect.stringMatching(/^ask: /)]);
   });
 });
+
+describe("configSchema GitHub identifiers and provider endpoint", () => {
+  it("defaults to nothing set", () => {
+    const config = configSchema.parse({});
+    expect(config.github).toEqual({});
+    expect(config.providers).toEqual({});
+  });
+
+  it("accepts positive integer ids and a secure endpoint", () => {
+    const config = configSchema.parse({
+      github: { appId: 123456, installationId: 7 },
+      providers: { openaiBaseUrl: "https://models.example.com/v1" },
+    });
+    expect(config.github).toEqual({ appId: 123456, installationId: 7 });
+    expect(
+      configSchema.safeParse({ providers: { openaiBaseUrl: "http://127.0.0.1:11434/v1" } }).success,
+    ).toBe(true);
+    expect(
+      configSchema.safeParse({ providers: { openaiBaseUrl: "http://localhost:8000" } }).success,
+    ).toBe(true);
+  });
+
+  it("rejects bad ids, naming the field", () => {
+    for (const value of [0, -1, 1.5, "12", null]) {
+      expect(issues({ github: { appId: value } })).toEqual([
+        expect.stringMatching(/^github\.appId: appId must be /),
+      ]);
+    }
+    expect(issues({ github: { installationId: 0 } })).toEqual([
+      "github.installationId: installationId must be a positive integer",
+    ]);
+  });
+
+  it("rejects insecure or malformed endpoints without echoing them", () => {
+    const messages = [
+      "http://models.example.com",
+      "ftp://models.example.com",
+      "https://user:hunter2@models.example.com",
+      "not a url",
+    ].map((url) => issues({ providers: { openaiBaseUrl: url } }).join("\n"));
+    for (const message of messages) {
+      expect(message).toMatch(/^providers\.openaiBaseUrl: openaiBaseUrl /);
+      expect(message).not.toContain("hunter2");
+      expect(message).not.toContain("models.example.com");
+    }
+  });
+
+  it("rejects unknown keys in both blocks", () => {
+    expect(issues({ github: { privateKey: "x" } })).toEqual(["github.privateKey: unknown field"]);
+    expect(issues({ providers: { apiKey: "x" } })).toEqual(["providers.apiKey: unknown field"]);
+  });
+});

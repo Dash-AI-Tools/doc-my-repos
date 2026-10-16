@@ -19,9 +19,12 @@ import {
   docComments,
   documents,
   repos,
+  settingsAudit,
   siteBranding,
   syncRuns,
   users,
+  workspaceSecrets,
+  workspaceSettings,
 } from "./schema";
 import {
   createEmptyDatabase,
@@ -47,6 +50,9 @@ const tables: AnyPgTable[] = [
   apiSpecs,
   askSettings,
   askUsage,
+  workspaceSettings,
+  workspaceSecrets,
+  settingsAudit,
 ];
 
 describeDb("migrations on a real database", () => {
@@ -179,6 +185,7 @@ describeDb("migrations on a real database", () => {
       { table_name: "documents", column_name: "id", kind: "identity" },
       { table_name: "documents", column_name: "search_vector", kind: "generated" },
       { table_name: "repos", column_name: "id", kind: "identity" },
+      { table_name: "settings_audit", column_name: "id", kind: "identity" },
       { table_name: "sync_runs", column_name: "id", kind: "identity" },
       { table_name: "users", column_name: "id", kind: "identity" },
     ]);
@@ -500,9 +507,12 @@ describeDb("parallel db:migrate runs on one empty database", () => {
         "doc_comments",
         "documents",
         "repos",
+        "settings_audit",
         "site_branding",
         "sync_runs",
         "users",
+        "workspace_secrets",
+        "workspace_settings",
       ]);
     } finally {
       await client.end();

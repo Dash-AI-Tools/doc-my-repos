@@ -6,7 +6,7 @@ import type { NavView } from "@/lib/reading-prefs";
 import { isReservedOwner } from "@/lib/routes";
 import { parseTocFilters, type TocData, type TocFilterState } from "@/lib/toc-filters";
 
-import type { Db } from "./db/client";
+import { type Db, getDb } from "./db/client";
 import { isValidOwner, isValidRepoName } from "./github/client";
 import { expectedFailureKind } from "./home";
 import { rehypeHighlight } from "./markdown/highlight";
@@ -26,7 +26,6 @@ import {
   type RepoDetail,
   type RepoLastRun,
 } from "./queries";
-import { getRuntime } from "./runtime";
 import { loadToc } from "./toc-data";
 import { logger, type LogFn } from "./log";
 
@@ -93,7 +92,7 @@ export type RepoPageData =
   | { readonly status: "error"; readonly loadedAt: Date };
 
 export interface RepoPageDeps {
-  /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
+  /** The database to read. Default: the shared handle's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
@@ -166,7 +165,7 @@ export async function loadRepoPage(
   if (!isRepoRoute(owner, name)) return { status: "not_found" };
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? logger.error;
-  const db = deps.db ?? (() => getRuntime().db.db);
+  const db = deps.db ?? (() => getDb().db);
   const render = deps.render ?? renderMarkdown;
   try {
     const handle = db();

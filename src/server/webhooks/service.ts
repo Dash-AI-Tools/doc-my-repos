@@ -1,8 +1,8 @@
 import "server-only";
 
-import { readWebhookSecret, type EnvSource } from "../config/env";
+import { Secret } from "../config/secret";
 import type { Logger } from "../log";
-import { getRuntime } from "../runtime";
+import { getWorkspace, requireGitHub } from "../workspace";
 import { repoNameSelection } from "../sync/discovery";
 import { requestSync, syncAll, type RequestSyncResult, type SyncContext } from "../sync/engine";
 import { removeRepo } from "../sync/removal";
@@ -19,14 +19,23 @@ import { markInstallationUnavailable, markRepoPrivate } from "./store";
 /** How long a webhook removal waits for a running sync of the same repo before giving up. */
 export const WEBHOOK_REMOVAL_LOCK_WAIT_MS = 30_000;
 
-/** The configured webhook secret from the environment, or null. Reads no file and opens no connection. */
-export function readConfiguredWebhookSecret(env: EnvSource = process.env): string | null {
-  return readWebhookSecret(env)?.reveal() ?? null;
+/**
+ * The stored webhook secret, or null when none is saved or it cannot be read (no key, wrong key).
+ * Never throws: a database problem reads as "no secret", which the endpoint answers with 401.
+ */
+export async function readConfiguredWebhookSecret(
+  load: () => Promise<{ webhookSecret: Secret<string> | null }> = () => getWorkspace(),
+): Promise<string | null> {
+  try {
+    return (await load()).webhookSecret?.reveal() ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export interface WebhookWiring {
   sync: SyncContext;
-  /** `GITHUB_APP_INSTALLATION_ID`. */
+  /** The installation id from the workspace settings. */
   installationId: number;
   /** Where background syncs and removals are tracked. */
   tasks: BackgroundTasks;
@@ -98,15 +107,15 @@ export function webhookTasks(): BackgroundTasks {
 
 /**
  * The dispatcher for verified events. It is called only after the signature is verified, so it
- * builds the shared runtime (`getRuntime()`) lazily; a configuration problem rejects the dispatch
- * (500, GitHub may redeliver) without logging any value.
+ * loads the current workspace lazily; incomplete GitHub settings reject the dispatch (500, GitHub
+ * may redeliver) without logging any value.
  */
 export function getWebhookDispatch(): WebhookDispatch {
-  return (event, payload, deliveryId) => {
-    const runtime = getRuntime();
+  return async (event, payload, deliveryId) => {
+    const github = requireGitHub(await getWorkspace());
     return createWebhookDispatch({
-      sync: runtime.sync,
-      installationId: runtime.loaded.env.githubAppInstallationId,
+      sync: github.sync,
+      installationId: github.installationId,
       tasks: webhookTasks(),
     })(event, payload, deliveryId);
   };

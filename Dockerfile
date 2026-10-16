@@ -8,8 +8,8 @@
 #
 # Three stages: `deps` installs the locked dependencies, `build` makes the Next.js standalone
 # server and the migration bundle, `runtime` holds only what runs. The image contains no secrets
-# and no config: the GitHub App settings come from environment variables, the optional
-# docmyrepos.config.yml is mounted at /app/docmyrepos.config.yml (or named by CONFIG_PATH).
+# and no config. GitHub, provider and sync-scope settings are entered in the admin interface and stored in the
+# database; the container needs only the environment in .env.example (SETTINGS_ENCRYPTION_KEY, ...).
 # On start the entrypoint applies the database migrations, then starts the server (see
 # docker-entrypoint.sh). Node and pnpm are plain JavaScript here, so Alpine (musl) is fine.
 
@@ -37,8 +37,8 @@ FROM deps AS build
 COPY . .
 ENV NEXT_OUTPUT=standalone
 RUN pnpm build && pnpm build:migrate \
-    # The file tracer copies src/server/config (with its tests) because the config loader reads
-    # files from the working directory. The server runs from the compiled build, not from src.
+    # The file tracer copies src/server/config (with its tests) because the environment check looks for
+    # the retired config file in the working directory. The server runs from the compiled build, not from src.
     && rm -rf .next/standalone/src
 
 # ---------------------------------------------------------------------------------------------

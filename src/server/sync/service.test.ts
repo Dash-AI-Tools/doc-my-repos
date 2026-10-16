@@ -7,18 +7,21 @@ import { withRepoSyncLock } from "../db/advisory-lock";
 import { createDb, type DbHandle } from "../db/client";
 import { documents, repos, syncRuns } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
+import { ENCRYPTION_KEY_VAR, parseEncryptionKey } from "../settings/crypto";
+import { readVersion, saveWorkspace } from "../settings/store";
 import { FakeGitHub } from "./fake-github";
 import { handleManualSync } from "./manual-sync";
 import { getSyncService, readConfiguredSyncSecret } from "./service";
 import { captureOutput } from "../test-logger";
 
-// The real handler, service, runtime reload, engine and client, over a fake GitHub and a real
-// test database.
+// The real handler, service, workspace, engine and client, over a fake GitHub and a real test
+// database whose settings are saved the way the admin interface saves them.
 
 const SECRET = "SENTINEL-sync-secret-4f9a1c7e";
 const TOKEN = "ghs_SENTINELserviceToken";
 const DB_PASSWORD = "SENTINELdbPassw0rd";
-const CONFIG_FILE = "/etc/docmyrepos.yml";
+const ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+const WORKSPACE_CACHE = Symbol.for("docmyrepos.workspace");
 
 const { privateKey: PEM } = generateKeyPairSync("rsa", {
   modulusLength: 2048,
@@ -58,20 +61,29 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
   let testDb: TestDatabase;
   let h: DbHandle;
   let fake: FakeGitHub;
-  let configYaml: string;
-  let createDbCalls: number;
   const responses: string[] = [];
 
   const env = {
     DATABASE_URL: `postgres://app:${DB_PASSWORD}@db.invalid:5432/docmyrepos`,
-    GITHUB_APP_ID: "12345",
-    GITHUB_APP_INSTALLATION_ID: "4242",
-    GITHUB_APP_PRIVATE_KEY: PEM,
-    GITHUB_WEBHOOK_SECRET: "SENTINELwebhookSecret",
     SYNC_SECRET: SECRET,
     SESSION_SECRET: "SENTINELsessionSecret",
-    CONFIG_PATH: CONFIG_FILE,
+    [ENCRYPTION_KEY_VAR]: ENCRYPTION_KEY,
   };
+  const key = parseEncryptionKey(ENCRYPTION_KEY).key;
+
+  /** Saves the GitHub App identity, its key and the repository list, like the admin page. */
+  async function configure(reposList?: string[], withKey = true) {
+    const result = await saveWorkspace(h.db, key, {
+      userId: null,
+      expectedVersion: await readVersion(h.db),
+      settings: {
+        github: { appId: 12345, installationId: 4242 },
+        ...(reposList ? { repos: reposList } : {}),
+      },
+      ...(withKey ? { secrets: { github_private_key: PEM } } : {}),
+    });
+    expect(result.ok).toBe(true);
+  }
 
   beforeAll(async () => {
     testDb = await createTestDatabase();
@@ -84,16 +96,17 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
   });
 
   beforeEach(async () => {
-    await h.db.execute(sql`TRUNCATE repos, sync_runs RESTART IDENTITY CASCADE`);
+    await h.db.execute(
+      sql`TRUNCATE repos, sync_runs, workspace_settings, workspace_secrets, settings_audit RESTART IDENTITY CASCADE`,
+    );
     fake = fixture();
-    configYaml = "repos:\n  - handbook\n  - metrics\n";
-    createDbCalls = 0;
+    await configure(["handbook", "metrics"]);
     responses.length = 0;
   });
 
   afterEach(() => {
-    // The shared runtime points at the test pool; never leave it behind.
-    delete (globalThis as Record<symbol, unknown>)[Symbol.for("docmyrepos.runtime")];
+    // The shared workspace points at the test pool; never leave it behind.
+    delete (globalThis as Record<symbol, unknown>)[WORKSPACE_CACHE];
   });
 
   function post(body?: string, authorization: string | null = `Bearer ${SECRET}`) {
@@ -104,16 +117,7 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
   async function call(request: Request) {
     const response = await handleManualSync(request, {
       readSecret: () => readConfiguredSyncSecret(env),
-      getService: () =>
-        getSyncService({
-          env,
-          readFile: (path) => {
-            if (path !== CONFIG_FILE) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-            return configYaml;
-          },
-          fetch: fake.fetch,
-          createDb: () => (createDbCalls++, h),
-        }),
+      getService: () => getSyncService({ env, fetch: fake.fetch, handle: h }),
     });
     const text = await response.text();
     responses.push(text);
@@ -175,11 +179,11 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
   });
 
   it("answers 404 for an unknown or unselected repository without starting a run", async () => {
-    configYaml = "";
+    await configure(undefined, false);
     const unknown = await call(post('{"repo":"nope"}'));
     expect(unknown.response.status).toBe(404);
     expect(unknown.json.error).toBe("repository_not_found");
-    configYaml = "repos:\n  - handbook\n";
+    await configure(["handbook"], false);
     const unselected = await call(post('{"repo":"metrics"}'));
     expect(unselected.response.status).toBe(404);
     expect(unselected.json).toMatchObject({
@@ -200,21 +204,19 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
     const bad = await call(post('{"repo":"handbook"}', "Bearer nope-nope-nope-nope"));
     expect(bad.response.status).toBe(401);
     expect(fake.requests).toEqual([]);
-    expect(createDbCalls).toBe(0);
     expect(await runs()).toEqual([]);
     expect(await repoCount()).toBe(0);
-    expect(
-      (globalThis as Record<symbol, unknown>)[Symbol.for("docmyrepos.runtime")],
-    ).toBeUndefined();
+    // Authorization is decided before any settings are loaded.
+    expect((globalThis as Record<symbol, unknown>)[WORKSPACE_CACHE]).toBeUndefined();
   });
 
-  it("re-reads the config on every request and reuses the database handle", async () => {
-    configYaml = "repos:\n  - handbook\n";
+  it("applies a saved change to the next request and reuses the database handle", async () => {
+    await configure(["handbook"], false);
     const first = await call(post());
     expect(first.json.repositories).toMatchObject([{ repo: "acme/handbook" }]);
     expect(await repoCount()).toBe(1);
 
-    configYaml = "repos:\n  - handbook\n  - metrics\n";
+    await configure(["handbook", "metrics"], false);
     const second = await call(post());
     expect(second.json.repositories.map((r: { repo: string }) => r.repo)).toEqual([
       "acme/handbook",
@@ -222,8 +224,8 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
     ]);
     expect(await repoCount()).toBe(2);
 
-    // Dropping a repository from the file removes it on the next call.
-    configYaml = "repos:\n  - metrics\n";
+    // Dropping a repository from the settings removes it on the next call.
+    await configure(["metrics"], false);
     const third = await call(post());
     expect(third.response.status).toBe(200);
     expect(third.json.repositories).toContainEqual(
@@ -234,27 +236,53 @@ describeDb("POST /api/sync against a fixture-backed fake GitHub and a real datab
     await h.db.execute(sql`select 1`);
   });
 
-  it("answers 500 with a fixed body for an invalid config file and keeps working after a fix", async () => {
-    configYaml = "reposs: SENTINELfileText\n";
+  it("answers with a fixed body, and calls GitHub not at all, while GitHub is not configured", async () => {
+    await h.db.execute(sql`TRUNCATE workspace_settings, workspace_secrets RESTART IDENTITY`);
     const output = captureOutput();
     try {
       const bad = await call(post());
       expect(bad.response.status).toBe(500);
       expect(bad.json).toMatchObject({ error: "misconfigured" });
-      expect(responses.at(-1)).not.toContain("SENTINELfileText");
-      expect(responses.at(-1)).not.toContain("reposs");
       const logged = output.text();
-      expect(output.records().map((r) => r.event)).toContain("sync_api.config_invalid");
-      expect(logged).not.toContain("SENTINELfileText");
+      const record = output.records().find((r) => r.event === "sync_api.not_configured");
+      expect(record?.missing).toEqual([
+        "github.appId",
+        "github.installationId",
+        "github_private_key",
+      ]);
       for (const secret of [SECRET, TOKEN, DB_PASSWORD, PEM_LINE]) {
         expect(logged).not.toContain(secret);
+        expect(responses.at(-1)).not.toContain(secret);
       }
     } finally {
       output.restore();
     }
     expect(fake.requests).toEqual([]);
-    configYaml = "repos:\n  - handbook\n";
+    expect(await runs()).toEqual([]);
+    await configure(["handbook"]);
     expect((await call(post())).response.status).toBe(200);
+  });
+
+  it("uses a replaced private key on the next request", async () => {
+    expect((await call(post())).response.status).toBe(200);
+    const { privateKey: other } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    });
+    const saved = await saveWorkspace(h.db, key, {
+      userId: null,
+      expectedVersion: await readVersion(h.db),
+      secrets: { github_private_key: other },
+    });
+    expect(saved.ok).toBe(true);
+    // The fake GitHub accepts any key; what matters is a new workspace was built for the change.
+    const before = (globalThis as Record<symbol, { workspace: unknown }>)[WORKSPACE_CACHE]
+      ?.workspace;
+    expect((await call(post())).response.status).toBe(200);
+    const after = (globalThis as Record<symbol, { workspace: unknown }>)[WORKSPACE_CACHE]
+      ?.workspace;
+    expect(after).not.toBe(before);
   });
 
   it("answers 409 for a never-synced repository whose lock is held elsewhere (nothing recorded)", async () => {

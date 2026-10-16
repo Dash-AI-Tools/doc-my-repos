@@ -5,8 +5,9 @@
 #   IMAGE=docmyrepos:ci DATABASE_URL=postgres://user:pass@host.docker.internal:5432/smoke \
 #     scripts/docker-smoke.sh
 #
-# Starts the image against the given Postgres with a throwaway GitHub App key (generated here,
-# never a real credential) and the sync scheduler off, so GitHub is never contacted. Checks that
+# Starts the image against the given Postgres with a throwaway encryption key (generated here,
+# never a real credential), no GitHub settings and the sync scheduler off, so GitHub is never
+# contacted. Checks that
 # the migrations ran, /api/health answers 200, / redirects to /login and /api/status is 401 without a
 # session, the login page renders, the security headers are
 # set, and that `docker stop` ends the container cleanly. Prints the container log on failure.
@@ -24,18 +25,14 @@ trap 'status=$?; if [ "$status" -ne 0 ]; then echo "--- container log ---" >&2; 
 
 fail() { echo "smoke test failed: $*" >&2; exit 1; }
 
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$workdir/key.pem" 2>/dev/null
-GITHUB_APP_PRIVATE_KEY="$(cat "$workdir/key.pem")"
-export GITHUB_APP_PRIVATE_KEY
+SETTINGS_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+export SETTINGS_ENCRYPTION_KEY
 
 docker run -d --init --name "$NAME" \
   --add-host host.docker.internal:host-gateway \
   -p "127.0.0.1:${PORT}:3000" \
   -e DATABASE_URL \
-  -e GITHUB_APP_PRIVATE_KEY \
-  -e GITHUB_APP_ID=1 \
-  -e GITHUB_APP_INSTALLATION_ID=1 \
-  -e GITHUB_WEBHOOK_SECRET=smoke-test-webhook-secret \
+  -e SETTINGS_ENCRYPTION_KEY \
   -e SYNC_SECRET=smoke-test-sync-secret-value \
   -e SESSION_SECRET=smoke-test-session-secret-value \
   -e SYNC_SCHEDULER=0 \

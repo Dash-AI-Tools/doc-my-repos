@@ -59,7 +59,7 @@ The system SHALL read the encryption key only from the operator's environment, S
 - **THEN** the affected settings are reported as unreadable on the status page without values, and the rest of the portal works
 
 ### Requirement: Changes apply without a restart
-The system SHALL use a saved change on the next operation that depends on it (sync, webhook delivery, image proxy request, Ask question), without a restart or redeploy, SHALL let a sync, webhook handling or answer already in progress finish with the values it started with, and SHALL keep the previous working values in use when a saved change fails validation.
+The system SHALL use a saved change on the next operation that depends on it (sync, webhook delivery, image proxy request, Ask question), without a restart or redeploy, SHALL let a sync, webhook handling or answer already in progress finish with the values it started with, SHALL read the background sync schedule (interval and run-on-startup) when the server starts, and SHALL keep the previous working values in use when a saved change fails validation.
 
 #### Scenario: New private key
 - **WHEN** an administrator replaces the GitHub App private key
@@ -68,6 +68,10 @@ The system SHALL use a saved change on the next operation that depends on it (sy
 #### Scenario: New repository list
 - **WHEN** an administrator changes the repository list
 - **THEN** the next sync follows the new list
+
+#### Scenario: Background schedule
+- **WHEN** an administrator changes the sync interval or the run-on-startup setting
+- **THEN** the change is stored at once and the background schedule follows it after the next restart, while every other use of the settings follows it at once
 
 #### Scenario: Run in progress
 - **WHEN** a sync is running while the settings change

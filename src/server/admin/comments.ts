@@ -19,7 +19,7 @@ import {
   isCommentCursor,
 } from "@/server/queries";
 import { allowAllRepos } from "@/server/queries/visibility";
-import { getRuntime } from "@/server/runtime";
+import { commentsEnabled } from "@/server/workspace";
 
 /**
  * Data for the admin Comments page (document-comments task 5.1). Admin only: it asks
@@ -31,7 +31,7 @@ type Raw = Readonly<Record<string, string | string[] | undefined>>;
 
 export interface ModerationDeps {
   readonly db?: () => Db;
-  readonly enabled?: () => boolean;
+  readonly enabled?: () => boolean | Promise<boolean>;
   readonly admin?: (db: Db) => Promise<unknown>;
   readonly now?: () => Date;
 }
@@ -51,10 +51,6 @@ export function parseModerationFilters(raw: Raw): ModerationFilters {
   };
 }
 
-function defaultEnabled(): boolean {
-  return getRuntime().loaded.config.comments.enabled;
-}
-
 export async function loadModeration(raw: Raw, deps: ModerationDeps = {}): Promise<ModerationData> {
   const db = (deps.db ?? (() => getDb().db))();
   await (deps.admin ?? ((d: Db) => requireAdmin(d)))(db);
@@ -62,7 +58,7 @@ export async function loadModeration(raw: Raw, deps: ModerationDeps = {}): Promi
   try {
     let enabled = true;
     try {
-      enabled = (deps.enabled ?? defaultEnabled)();
+      enabled = await (deps.enabled ?? commentsEnabled)();
     } catch {
       // A configuration problem must not lock the admin out of purging.
     }

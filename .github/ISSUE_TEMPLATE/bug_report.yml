@@ -65,9 +65,9 @@ body:
   - type: textarea
     id: config
     attributes:
-      label: Config
-      description: Your `docmyrepos.config.yml`, if relevant. No secrets belong in it.
-      render: yaml
+      label: Settings
+      description: The settings from Admin > Workspace configuration, if relevant. Do not paste secrets.
+      render: text
   - type: input
     id: browser
     attributes:

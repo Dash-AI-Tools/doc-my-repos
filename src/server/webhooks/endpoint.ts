@@ -39,7 +39,10 @@ import { SIGNATURE_HEADER, verifyWebhookSignature } from "./verify";
  *   400  bad event headers or body       401  missing, malformed or wrong signature
  *   405  method other than POST          413  body over the cap
  *   415  content type not application/json
- *   500  webhook secret not configured, or the dispatcher failed
+ *   500  the dispatcher failed
+ *
+ * No stored webhook secret (a workspace not yet set up) is answered 401 like a bad signature, with
+ * nothing read or dispatched: nobody can be told apart from an unauthorized sender.
  */
 
 /** GitHub caps webhook payloads at 25 MB; 25 MiB leaves a little room above that. */
@@ -66,8 +69,8 @@ export type WebhookDispatch = (
 export const acknowledgeOnly: WebhookDispatch = async () => undefined;
 
 export interface WebhookDeps {
-  /** The configured webhook secret, or null when it is missing or invalid. Must not touch the DB. */
-  readSecret(): string | null;
+  /** The stored webhook secret, or null when none is saved or it cannot be read. */
+  readSecret(): string | null | Promise<string | null>;
   /** Called only after the signature is verified. Defaults to `acknowledgeOnly`. */
   dispatch?: WebhookDispatch;
   /** Body cap in bytes. Defaults to `MAX_WEBHOOK_BODY_BYTES`. */
@@ -91,9 +94,6 @@ function json(status: number, body: Json, headers: Record<string, string> = {}):
 }
 
 const unauthorized = (): Response => json(401, { error: "unauthorized" });
-
-const notConfigured = (): Response =>
-  json(500, { error: "misconfigured", message: "The server is not configured for webhooks." });
 
 const internalError = (): Response =>
   json(500, { error: "internal_error", message: "The webhook could not be processed." });
@@ -227,13 +227,13 @@ export async function handleWebhookRequest(request: Request, deps: WebhookDeps):
   try {
     let secret: string | null;
     try {
-      secret = deps.readSecret();
+      secret = await deps.readSecret();
     } catch {
       secret = null;
     }
     if (typeof secret !== "string" || secret.length < MIN_SECRET_LENGTH) {
-      log.error("webhook.not_configured", { variable: "GITHUB_WEBHOOK_SECRET" });
-      return notConfigured();
+      log.warn("webhook.not_configured", { setting: "github_webhook_secret" });
+      return unauthorized();
     }
     const rejected = (reason: string, response: Response): Response => {
       log.warn("webhook.rejected", { reason, httpStatus: response.status });

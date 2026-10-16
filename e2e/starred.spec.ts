@@ -198,7 +198,7 @@ test("an admin reaches the admin pages through the email menu; the top bar has n
   for (const [name, path] of [
     ["Users", "/admin/users"],
     ["Repository access", "/admin/repos"],
-    ["GitHub configuration", "/admin/github"],
+    ["Workspace configuration", "/admin/workspace"],
   ] as const) {
     await page.goto("/");
     await page.getByTestId("account-menu-trigger").click();

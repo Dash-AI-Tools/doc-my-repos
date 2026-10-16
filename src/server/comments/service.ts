@@ -18,7 +18,7 @@ import {
 } from "../queries";
 import { allowAllRepos, type QueryOptions } from "../queries/visibility";
 import { requireSameOrigin } from "../same-origin";
-import { getRuntime } from "../runtime";
+import { commentsEnabled } from "../workspace";
 import {
   failure,
   type CommentChange,
@@ -59,8 +59,8 @@ const USER_LOCK_NAMESPACE = "docmyrepos:comment-author";
 export interface CommentDeps {
   /** The database. Default: the shared handle. */
   readonly db?: Db;
-  /** Whether comments are on. Default: `comments.enabled` from the runtime config. */
-  readonly enabled?: () => boolean;
+  /** Whether comments are on. Default: `comments.enabled` from the workspace settings. */
+  readonly enabled?: () => boolean | Promise<boolean>;
   /** Default: the process logger. */
   readonly log?: Logger;
   /** Query options; tests swap the visibility filter. Trusted admin paths override it. */
@@ -96,9 +96,9 @@ export function authFailure(error: unknown): CommentFailure {
   return failure(503, "unavailable");
 }
 
-export function isEnabled(deps: CommentDeps): boolean | CommentFailure {
+export async function isEnabled(deps: CommentDeps): Promise<boolean | CommentFailure> {
   try {
-    return (deps.enabled ?? (() => getRuntime().loaded.config.comments.enabled))();
+    return await (deps.enabled ?? commentsEnabled)();
   } catch {
     return failure(503, "unavailable");
   }
@@ -133,7 +133,7 @@ async function prepare(
   mode: { body: boolean; admin?: boolean },
 ): Promise<Prepared> {
   if (!mode.admin) {
-    const enabled = isEnabled(deps);
+    const enabled = await isEnabled(deps);
     if (typeof enabled === "object") return enabled;
     if (!enabled) return failure(404, "not_found");
   }

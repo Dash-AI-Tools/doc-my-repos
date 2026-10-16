@@ -1,9 +1,8 @@
 import "server-only";
 
-import type { Db } from "./db/client";
+import { type Db, getDb } from "./db/client";
 import { expectedFailureKind } from "./home";
 import { getSyncStatus, type QueryOptions, type SyncRunCounts, type SyncStatus } from "./queries";
-import { getRuntime } from "./runtime";
 import { logger, type LogFn } from "./log";
 
 /**
@@ -38,7 +37,7 @@ export const MAX_IN_FLIGHT = 4;
 export const UNAVAILABLE_STATUS_BODY = { error: "unavailable" } as const;
 
 export interface StatusApiDeps {
-  /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
+  /** The database to read. Default: the shared handle's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
@@ -168,7 +167,7 @@ export async function handleStatusRequest(
   if (inFlight >= (deps.maxInFlight ?? MAX_IN_FLIGHT)) return unavailable({ "Retry-After": "1" });
   inFlight += 1;
   try {
-    const db = (deps.db ?? (() => getRuntime().db.db))();
+    const db = (deps.db ?? (() => getDb().db))();
     const sync = await getSyncStatus(db, {}, deps.options);
     return json(statusBody(sync, now()));
   } catch (error) {

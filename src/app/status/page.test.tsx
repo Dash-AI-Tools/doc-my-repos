@@ -27,6 +27,7 @@ function ok(over: Partial<Extract<StatusPageData, { status: "ok" }>["sync"]> = {
     status: "ok",
     loadedAt: NOW,
     ask: { state: "off" },
+    workspace: null,
     sync: {
       lastRun: {
         trigger: "schedule",
@@ -162,7 +163,7 @@ describe("/status page", () => {
     expect(out).toContain("GitHub App installation unavailable");
   });
 
-  it("shows the Ask line: off, ready, and unavailable naming variables only", async () => {
+  it("shows the Ask line: off, ready, and unavailable naming settings only", async () => {
     const data = ok();
     if (data.status !== "ok") throw new Error("fixture");
     const lines: [Parameters<typeof withAsk>[1], string[], string[]][] = [
@@ -173,17 +174,17 @@ describe("/status page", () => {
         ["AI_"],
       ],
       [
-        { state: "unavailable", missing: ["AI_ANTHROPIC_API_KEY"] },
-        ["Unavailable", "Set AI_ANTHROPIC_API_KEY."],
+        { state: "unavailable", missing: ["Anthropic API key"] },
+        ["Unavailable", "Enter Anthropic API key on the Ask admin page."],
         [],
       ],
       [
         {
           state: "unavailable",
           missing: [],
-          problem: "AI_OPENAI_BASE_URL: must be an https URL",
+          problem: "OpenAI-compatible base URL must be an https URL",
         },
-        ["Unavailable", "AI_OPENAI_BASE_URL: must be an https URL."],
+        ["Unavailable", "OpenAI-compatible base URL must be an https URL."],
         [],
       ],
     ];
@@ -194,6 +195,40 @@ describe("/status page", () => {
       for (const text of present) expect(out).toContain(text);
       for (const text of absent) expect(out).not.toContain(text);
     }
+  });
+
+  it("shows the workspace line: configured, or what needs attention by name only", async () => {
+    const data = ok();
+    if (data.status !== "ok") throw new Error("fixture");
+    const clean = {
+      missingGithub: [],
+      encryptionKey: null,
+      unreadable: [],
+      invalidStored: false,
+      retired: [],
+    };
+    loadStatusPage.mockResolvedValue({ ...data, workspace: clean });
+    let out = await html();
+    expect(out).toContain('data-testid="status-workspace"');
+    expect(out).toContain("Configured");
+    expect(out).toContain("GitHub is configured.");
+
+    loadStatusPage.mockResolvedValue({
+      ...data,
+      workspace: {
+        ...clean,
+        missingGithub: ["github.appId", "github_private_key"],
+        retired: ["GITHUB_APP_ID"],
+      },
+    });
+    out = await html();
+    expect(out).toContain("Needs attention");
+    expect(out).toContain("Enter the GitHub App ID, the GitHub App private key");
+    expect(out).toContain("GITHUB_APP_ID is still present but no longer read");
+
+    // The settings could not be read: the section is left out rather than guessed.
+    loadStatusPage.mockResolvedValue({ ...data, workspace: null });
+    expect(await html()).not.toContain('data-testid="status-workspace"');
   });
 
   it("renders the in-page error state", async () => {

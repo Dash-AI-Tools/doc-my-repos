@@ -1,8 +1,10 @@
 import { EmptyState } from "@/components/empty-state";
 import { LoadErrorState } from "@/components/load-error";
 import { RepoGrid } from "@/components/repo-grid";
+import { SetupBanner } from "@/components/setup-banner";
 import { SearchBar } from "@/components/search-bar";
 import { loadHome } from "@/server/home";
+import { setupNeeded } from "@/server/onboarding";
 
 /**
  * Home page (task 9.2): search bar and the repository grid, read from Postgres only (never
@@ -16,9 +18,10 @@ import { loadHome } from "@/server/home";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const home = await loadHome();
+  const [home, setup] = await Promise.all([loadHome(), setupNeeded()]);
   return (
     <div className="flex flex-col gap-16">
+      {setup ? <SetupBanner /> : null}
       <section aria-labelledby="home-heading" className="flex max-w-3xl flex-col gap-8">
         <div>
           <h1

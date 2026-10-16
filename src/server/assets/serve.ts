@@ -280,7 +280,7 @@ function refused(status: 404 | 413 | 415): AssetOutcome {
 export async function serveAsset(
   request: AssetRequestLike,
   rawSegments: readonly string[] | null,
-  getDeps: () => AssetDeps,
+  getDeps: () => AssetDeps | Promise<AssetDeps>,
   options: ServeAssetOptions = {},
 ): Promise<AssetResponse> {
   const method = request.method.toUpperCase();
@@ -295,9 +295,14 @@ export async function serveAsset(
   let deps: AssetDeps;
   let repo: AssetRepo | null;
   try {
-    deps = getDeps();
+    deps = await getDeps();
     repo = await deps.findRepo(target.owner, target.repo);
   } catch (error) {
+    if (error instanceof Error && error.name === "NotConfiguredError") {
+      // GitHub settings are not complete: say so, with no detail.
+      log.warn("asset.not_configured", {});
+      return errorResponse(503, method);
+    }
     // Config and database errors can name hosts or variables; log safe error fields only.
     log.error("asset.lookup_failed", errorFields(error));
     return errorResponse(500, method);
@@ -373,7 +378,7 @@ export function toResponse(result: AssetResponse): Response {
  */
 export async function handleAssetRequest(
   request: Request,
-  getDeps: () => AssetDeps,
+  getDeps: () => AssetDeps | Promise<AssetDeps>,
   options: ServeAssetOptions = {},
 ): Promise<Response> {
   let segments: string[] | null;

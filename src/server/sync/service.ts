@@ -1,7 +1,7 @@
 import "server-only";
 
 import { readSyncSecret, type EnvSource } from "../config/env";
-import { reloadRuntime, type RuntimeOptions } from "../runtime";
+import { getWorkspace, requireGitHub, type WorkspaceOptions } from "../workspace";
 import { requestSync, syncAll } from "./engine";
 import { fromRequestSync, type ManualSyncService } from "./manual-sync";
 
@@ -16,16 +16,16 @@ export function readConfiguredSyncSecret(env: EnvSource = process.env): string |
 }
 
 /**
- * The sync service over a freshly re-read configuration (design: config is re-read on
- * `/api/sync`). The database pool is reused; see `reloadRuntime`. Throws `ConfigError` when the
- * configuration is invalid. `options` is for tests (environment, file reader, fetch, database).
+ * The sync service over the current workspace settings, re-checked on every call so a saved change
+ * applies to the next sync. Rejects with `NotConfiguredError` (setting names only) when the GitHub
+ * settings are incomplete. `options` is for tests (environment, fetch, database).
  *
  * A single-repo sync goes through `requestSync` (task 6.4): a repo another sync holds answers
  * `coalesced` at once, and a request for a never-synced repo whose first sync is running elsewhere
  * answers `busy` instead of waiting (`queueWaitMs: 0`).
  */
-export function getSyncService(options: RuntimeOptions = {}): ManualSyncService {
-  const { sync } = reloadRuntime(options);
+export async function getSyncService(options: WorkspaceOptions = {}): Promise<ManualSyncService> {
+  const { sync } = requireGitHub(await getWorkspace({ ...options, fresh: true }));
   return {
     syncAll: (options) => syncAll(sync, options),
     syncOne: async (target, options) =>

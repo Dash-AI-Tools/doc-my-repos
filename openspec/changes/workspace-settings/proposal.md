@@ -26,7 +26,7 @@ Today an operator must edit `docmyrepos.config.yml` and environment variables, t
 
 ## Impact
 
-- Code: `src/server/config/*` (env and file loading shrink; a settings store, encryption and validation are added), `src/server/runtime.ts` (built from the database and rebuilt when settings change; becomes async), GitHub token provider, webhook and sync secret reads, image proxy, Ask provider credentials, `/admin/github` (read-only today), `/admin/ask`, status page, and the server boot (`src/instrumentation.ts`).
+- Code: `src/server/config/*` (env and file loading shrink; a settings store, encryption and validation are added), `src/server/runtime.ts` (built from the database and rebuilt when settings change; becomes async), GitHub token provider, webhook and sync secret reads, image proxy, Ask provider credentials, `/admin/workspace` (read-only today), `/admin/ask`, status page, and the server boot (`src/instrumentation.ts`).
 - Database: new tables for settings and encrypted secrets (migration).
 - Environment and docs: `.env.example`, `docmyrepos.config.example.yml` (removed), `docker-compose.yml`, README, the configuration, GitHub App and Ask guides, and the example-file tests.
 - Tests: config and env tests are rewritten around the settings store; a real test database is used for load, encryption round trips and apply-without-restart.

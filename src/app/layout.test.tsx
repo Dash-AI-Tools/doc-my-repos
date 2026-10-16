@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { CommandPalette } from "@/components/command-palette";
 import { THEME_STORAGE_KEY } from "@/components/theme-provider";
 import { E2E_CRASH_HEADER } from "@/lib/e2e-fixtures";
+import { AskLauncher } from "@/components/ask-launcher";
 import { SiteHeader } from "@/components/site-header";
 import { THEME_TOKENS } from "@/lib/theme-tokens";
 
@@ -58,6 +59,19 @@ const session = vi.hoisted(() => ({
 }));
 vi.mock("@/server/auth/current-user", () => ({ getCurrentUser: async () => session.user }));
 vi.mock("@/server/ask/settings", () => ({ getAskState: async () => session.ask }));
+vi.mock("@/server/ask-page", () => ({
+  loadAskPage: async () =>
+    session.ask.state === "ready"
+      ? {
+          status: "ready",
+          providerLabel: "Anthropic",
+          host: null,
+          scope: null,
+          repos: ["acme/api"],
+          initialQuestion: "",
+        }
+      : { status: "off" },
+}));
 
 const NONCE = "AAECAwQFBgcICQoLDA0ODw==";
 
@@ -110,6 +124,22 @@ describe("root layout: the Ask link", () => {
     session.user = { id: 1, email: "u@example.com", role: "user" };
     session.ask = { state: "ready" };
     expect(await askEnabled()).toBe(true);
+  });
+
+  it("shows the floating Ask orb only when the link is on", async () => {
+    session.user = { id: 1, email: "u@example.com", role: "user" };
+    session.ask = { state: "ready" };
+    const orb = propsOf<{ providerLabel: string; repos: string[] }>(
+      await renderLayout(),
+      AskLauncher,
+    );
+    expect(orb).toMatchObject({ providerLabel: "Anthropic", repos: ["acme/api"] });
+
+    session.ask = { state: "off" };
+    expect(propsOf(await renderLayout(), AskLauncher)).toBeNull();
+    session.user = null;
+    session.ask = { state: "ready" };
+    expect(propsOf(await renderLayout(), AskLauncher)).toBeNull();
   });
 
   it("is off for a signed-out visitor even when Ask is ready", async () => {

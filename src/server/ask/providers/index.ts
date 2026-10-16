@@ -1,4 +1,4 @@
-import type { ProviderCredentials } from "../../config/env";
+import type { ProviderCredentials } from "../credentials";
 import { createAnthropicAdapter } from "./anthropic";
 import { createOpenAiCompatibleAdapter } from "./openai-compatible";
 import type { ProviderAdapter, ProviderDeps } from "./types";

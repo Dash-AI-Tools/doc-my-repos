@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { loadApiReference } from "./api-reference-page";
-import { ConfigError } from "./config/load";
+import { ConfigError } from "./config/errors";
 import type { Db } from "./db/client";
 import { apiSpecs, repos } from "./db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "./db/test-db";

@@ -85,6 +85,13 @@
       "when": 1792124902996,
       "tag": "0011_sweet_expediter",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792158591503,
+      "tag": "0012_fresh_thor",
+      "breakpoints": true
     }
   ]
 }

@@ -1,22 +1,20 @@
 import { createHmac } from "node:crypto";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { Secret } from "@/server/config/secret";
 
 const SECRET = "SENTINEL-webhook-secret-91c4d2";
 
 // The route must authenticate from the environment alone: building the runtime or the database
 // handle on an unauthenticated request is a failure.
-const getRuntime = vi.fn(() => {
-  throw new Error("runtime must not be built");
-});
+// The stored webhook secret comes from the workspace; the database is never opened here.
+const stored = vi.hoisted(() => ({ secret: null as string | null }));
+const getWorkspace = vi.hoisted(() => vi.fn());
+vi.mock("@/server/workspace", () => ({ getWorkspace }));
 const getDb = vi.fn(() => {
   throw new Error("database must not be opened");
 });
-vi.mock("@/server/runtime", () => ({
-  getRuntime,
-  reloadRuntime: getRuntime,
-  createRuntime: getRuntime,
-}));
 vi.mock("@/server/db/client", () => ({ getDb, createDb: getDb }));
 
 const dispatch = vi.fn(async () => undefined);
@@ -49,11 +47,10 @@ function signed(signature: string | null, event = "push"): Request {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubEnv("GITHUB_WEBHOOK_SECRET", `  ${SECRET}\n`);
-});
-
-afterEach(() => {
-  vi.unstubAllEnvs();
+  stored.secret = SECRET;
+  getWorkspace.mockImplementation(async () => ({
+    webhookSecret: stored.secret === null ? null : new Secret(stored.secret),
+  }));
 });
 
 describe("/api/webhooks/github route", () => {
@@ -62,7 +59,7 @@ describe("/api/webhooks/github route", () => {
     expect(runtime).toBe("nodejs");
   });
 
-  it("accepts a delivery signed with GITHUB_WEBHOOK_SECRET and dispatches it", async () => {
+  it("accepts a delivery signed with the stored webhook secret and dispatches it", async () => {
     const response = await POST(signed(sign(BODY)));
     expect(response.status).toBe(202);
     expect(dispatch).toHaveBeenCalledExactlyOnceWith(
@@ -78,7 +75,7 @@ describe("/api/webhooks/github route", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it("rejects missing and wrong signatures identically, without the runtime or database", async () => {
+  it("rejects missing and wrong signatures identically, without opening the database", async () => {
     const texts: string[] = [];
     for (const signature of [null, sign(BODY, "another-secret-0123456789")]) {
       const response = await POST(signed(signature));
@@ -87,25 +84,25 @@ describe("/api/webhooks/github route", () => {
     }
     expect(texts[0]).toBe(texts[1]);
     expect(dispatch).not.toHaveBeenCalled();
-    expect(getRuntime).not.toHaveBeenCalled();
     expect(getDb).not.toHaveBeenCalled();
   });
 
-  it("answers 500 to everyone when the secret is missing or too short", async () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    try {
-      for (const value of ["", "short-secret"]) {
-        vi.stubEnv("GITHUB_WEBHOOK_SECRET", value);
-        const response = await POST(signed(sign(BODY, value)));
-        expect(response.status).toBe(500);
-        expect(await response.json()).toMatchObject({ error: "misconfigured" });
-      }
-      expect(JSON.stringify(error.mock.calls)).not.toContain("short-secret");
-    } finally {
-      error.mockRestore();
+  it("answers 401 to everyone, signed or not, while no webhook secret is stored", async () => {
+    stored.secret = null;
+    for (const signature of [null, sign(BODY), sign(BODY, "")]) {
+      const response = await POST(signed(signature));
+      expect(response.status).toBe(401);
+      expect(await response.json()).toEqual({ error: "unauthorized" });
     }
     expect(dispatch).not.toHaveBeenCalled();
-    expect(getRuntime).not.toHaveBeenCalled();
+  });
+
+  it("answers 401 when the settings cannot be loaded, without leaking why", async () => {
+    getWorkspace.mockRejectedValue(new Error(`boom ${SECRET}`));
+    const response = await POST(signed(sign(BODY)));
+    expect(response.status).toBe(401);
+    expect(await response.text()).not.toContain(SECRET);
+    expect(dispatch).not.toHaveBeenCalled();
   });
 
   it.each<[string, (request: Request) => Response]>([

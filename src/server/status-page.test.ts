@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ConfigError } from "./config/load";
+import { ConfigError } from "./config/errors";
 import type { Db } from "./db/client";
 import { loadStatusPage } from "./status-page";
 

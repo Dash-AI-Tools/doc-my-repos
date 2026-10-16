@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { HIGHLIGHT_START } from "@/lib/search";
 import { EMPTY_SEARCH_STATE, parseSearchParams, type SearchState } from "@/lib/search-params";
 
-import { ConfigError } from "./config/load";
+import { ConfigError } from "./config/errors";
 import type { Db } from "./db/client";
 import { documents, repos, type Heading } from "./db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "./db/test-db";

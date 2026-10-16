@@ -1,10 +1,11 @@
 import "server-only";
 
 import { getAskState, type AskState } from "./ask/settings";
-import type { Db } from "./db/client";
+import type { WorkspaceStatusInput } from "@/lib/workspace-status";
+import { currentWorkspaceState } from "./workspace-state";
+import { type Db, getDb } from "./db/client";
 import { expectedFailureKind } from "./home";
 import { getSyncStatus, type QueryOptions, type SyncStatus } from "./queries";
-import { getRuntime } from "./runtime";
 import { logger, type LogFn } from "./log";
 
 /**
@@ -20,12 +21,14 @@ export type StatusPageData =
       readonly status: "ok";
       readonly sync: SyncStatus;
       readonly ask: AskState;
+      /** Null when the settings could not be read; the section is then left out. */
+      readonly workspace: WorkspaceStatusInput | null;
       readonly loadedAt: Date;
     }
   | { readonly status: "error"; readonly loadedAt: Date };
 
 export interface StatusPageDeps {
-  /** The database to read. Default: the shared runtime's. May throw `ConfigError`. */
+  /** The database to read. Default: the shared handle's. May throw `ConfigError`. */
   readonly db?: () => Db;
   readonly now?: () => Date;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
@@ -34,16 +37,19 @@ export interface StatusPageDeps {
   readonly options?: QueryOptions;
   /** Where Ask stands. Default: the stored choice plus the environment (never throws). */
   readonly askState?: () => Promise<AskState>;
+  /** What is missing or unreadable in the workspace. Default: the current workspace. */
+  readonly workspaceState?: () => Promise<WorkspaceStatusInput>;
 }
 
 export async function loadStatusPage(deps: StatusPageDeps = {}): Promise<StatusPageData> {
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? logger.error;
-  const db = deps.db ?? (() => getRuntime().db.db);
+  const db = deps.db ?? (() => getDb().db);
   try {
     const sync = await getSyncStatus(db(), {}, deps.options);
     const ask = await (deps.askState ?? (() => getAskState()))();
-    return { status: "ok", sync, ask, loadedAt: now() };
+    const workspace = await (deps.workspaceState ?? currentWorkspaceState)().catch(() => null);
+    return { status: "ok", sync, ask, workspace, loadedAt: now() };
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;

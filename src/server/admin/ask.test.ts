@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import type { CurrentUser } from "../auth/current-user";
+import { Secret } from "../config/secret";
 import { AttemptWindow } from "../ask/connection-test";
 import { readAskSettings, saveAskSettings } from "../ask/settings";
 import { startFakeProvider, type FakeProvider, type Script } from "../ask/testing/fake-provider";
@@ -24,6 +25,15 @@ type AdminJson = {
     { configured: boolean; missing: string[]; problem?: string; host?: string }
   >;
 };
+
+/** The provider settings a test describes with the old variable-style names. */
+function providersFrom(e: Record<string, string>) {
+  return async () => ({
+    anthropicKey: e.AI_ANTHROPIC_API_KEY ? new Secret(e.AI_ANTHROPIC_API_KEY) : null,
+    openaiBaseUrl: e.AI_OPENAI_BASE_URL ?? null,
+    openaiKey: e.AI_OPENAI_API_KEY ? new Secret(e.AI_OPENAI_API_KEY) : null,
+  });
+}
 
 describeDb("admin Ask API", () => {
   let t: TestDatabase;
@@ -68,7 +78,7 @@ describeDb("admin Ask API", () => {
   function deps(over: Partial<AskAdminDeps> = {}): AskAdminDeps {
     return {
       db: t.db,
-      env,
+      providers: providersFrom(env),
       log: recorder.log,
       admin,
       providerDeps: { sleep: async () => undefined },
@@ -136,20 +146,30 @@ describeDb("admin Ask API", () => {
           "openai-compatible": { configured: true, missing: [], host: "127.0.0.1" },
         },
         state: { state: "off" },
+        credentials: {
+          version: 0,
+          openaiBaseUrl: null,
+          anthropicKey: { set: false, updatedAt: null },
+          openaiKey: { set: false, updatedAt: null },
+        },
       });
     });
 
-    it("names missing variables only, and reports a refused value without echoing it", async () => {
+    it("names missing settings only, and reports a refused value without echoing it", async () => {
       const response = await handleGetAsk(
-        deps({ env: { AI_OPENAI_BASE_URL: "http://models.example.com/secret-path?k=zzz" } }),
+        deps({
+          providers: providersFrom({
+            AI_OPENAI_BASE_URL: "http://models.example.com/secret-path?k=zzz",
+          }),
+        }),
       );
       const body = await json(response);
       expect(body.providers.anthropic).toEqual({
         configured: false,
-        missing: ["AI_ANTHROPIC_API_KEY"],
+        missing: ["Anthropic API key"],
       });
       expect(body.providers["openai-compatible"]?.configured).toBe(false);
-      expect(body.providers["openai-compatible"]?.problem).toMatch(/^AI_OPENAI_BASE_URL: /);
+      expect(body.providers["openai-compatible"]?.problem).toMatch(/^OpenAI-compatible base URL /);
       expect(JSON.stringify(body)).not.toMatch(/secret-path|zzz|models\.example\.com/);
     });
 
@@ -167,10 +187,10 @@ describeDb("admin Ask API", () => {
       expect(text).toContain('"host":"127.0.0.1"');
     });
 
-    it("reports unavailable by variable name when the saved provider lost its credentials", async () => {
+    it("reports unavailable by setting name when the saved provider lost its credentials", async () => {
       await saveAskSettings(t.db, { enabled: true, provider: "anthropic", model: "m" }, null);
-      const body = await json(await handleGetAsk(deps({ env: {} })));
-      expect(body.state).toEqual({ state: "unavailable", missing: ["AI_ANTHROPIC_API_KEY"] });
+      const body = await json(await handleGetAsk(deps({ providers: providersFrom({}) })));
+      expect(body.state).toEqual({ state: "unavailable", missing: ["Anthropic API key"] });
       expect(body.settings).toEqual({ enabled: true, provider: "anthropic", model: "m" });
     });
   });
@@ -233,19 +253,19 @@ describeDb("admin Ask API", () => {
 
       response = await handleSaveAsk(
         req("PUT", { enabled: true, provider: "anthropic", model: "m" }),
-        deps({ env: {} }),
+        deps({ providers: providersFrom({}) }),
       );
       const body = await json(response);
       expect(response.status).toBe(400);
       expect(body.field).toBe("provider");
-      expect(body.error).toContain("AI_ANTHROPIC_API_KEY");
+      expect(body.error).toContain("Anthropic API key");
 
       response = await handleSaveAsk(
         req("PUT", { enabled: true, provider: "openai-compatible", model: "m" }),
-        deps({ env: { AI_OPENAI_BASE_URL: "http://models.example.com" } }),
+        deps({ providers: providersFrom({ AI_OPENAI_BASE_URL: "http://models.example.com" }) }),
       );
       expect(response.status).toBe(400);
-      expect((await json(response)).error).toMatch(/AI_OPENAI_BASE_URL/);
+      expect((await json(response)).error).toMatch(/OpenAI-compatible base URL/);
 
       expect(await readAskSettings(t.db)).toEqual({ enabled: false, provider: null, model: null });
     });
@@ -281,7 +301,7 @@ describeDb("admin Ask API", () => {
     it("lets an admin save a choice while off even when credentials are missing", async () => {
       const response = await handleSaveAsk(
         req("PUT", { enabled: false, provider: "anthropic", model: "m" }),
-        deps({ env: {} }),
+        deps({ providers: providersFrom({}) }),
       );
       expect(response.status).toBe(200);
     });
@@ -370,9 +390,12 @@ describeDb("admin Ask API", () => {
         expect(response.status).toBe(400);
         expect((await json(response)).field).toBe(field);
       }
-      const response = await test({ env: {} }, { provider: "anthropic", model: "m" });
+      const response = await test(
+        { providers: providersFrom({}) },
+        { provider: "anthropic", model: "m" },
+      );
       expect(response.status).toBe(400);
-      expect((await json(response)).error).toContain("AI_ANTHROPIC_API_KEY");
+      expect((await json(response)).error).toContain("Anthropic API key");
       expect(fake.requests).toHaveLength(0);
     });
 

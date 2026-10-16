@@ -69,7 +69,7 @@ interface Setup {
   github: GitHubClient;
   cache: AssetCache;
   clock: { now: number };
-  getDeps: ReturnType<typeof vi.fn<() => AssetDeps>>;
+  getDeps: ReturnType<typeof vi.fn<() => AssetDeps | Promise<AssetDeps>>>;
   logs: RecordingLogger;
   serve(
     path: string,
@@ -101,7 +101,7 @@ function setup(over: Partial<AssetDeps> = {}): Setup {
     cache,
     ...over,
   };
-  const getDeps = vi.fn(() => deps);
+  const getDeps = vi.fn<() => AssetDeps | Promise<AssetDeps>>(() => deps);
   const logs = recordingLogger();
   return {
     fake,
@@ -505,6 +505,22 @@ describe("serveAsset: upstream failures", () => {
     const res = await s.serve("acme/handbook/docs/img/arch.png", { signal: controller.signal });
     expect(res.status).toBe(504);
     expect(contentRequests(s.fake)).toHaveLength(0);
+  });
+
+  it("answers 503 with a fixed text, and no lookup, while GitHub is not configured", async () => {
+    const t = setup();
+    t.getDeps.mockImplementation(async () => {
+      throw Object.assign(new Error(`GitHub is not configured (missing: github_private_key)`), {
+        name: "NotConfiguredError",
+      });
+    });
+    const res = await t.serve("acme/handbook/docs/img/arch.png");
+    expect(res.status).toBe(503);
+    expect(String(res.body)).toBe("The image is temporarily unavailable. Try again later.");
+    expect(t.logs.find("asset.not_configured")).toEqual([
+      expect.objectContaining({ level: "warn" }),
+    ]);
+    expect(t.logs.find("asset.lookup_failed")).toEqual([]);
   });
 
   it("answers 500 when the runtime or database fails, logging fixed text only", async () => {

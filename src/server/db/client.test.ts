@@ -4,7 +4,7 @@ import { format, inspect } from "node:util";
 import { sql } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ConfigError } from "../config/load";
+import { ConfigError } from "../config/errors";
 import { DEFAULT_CONNECT_TIMEOUT_MS, closeDb, createDb, describeDbError, getDb } from "./client";
 import { MigrationError, migrateDatabase } from "./migrate";
 import { createTestDatabase, describeDb } from "./test-db";

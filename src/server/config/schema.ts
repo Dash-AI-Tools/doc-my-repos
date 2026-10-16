@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { checkOpenAiBaseUrl } from "../../lib/ask/endpoint";
+
 /** Default docs folder candidates, tried in order and matched case-insensitively. */
 export const DEFAULT_DOCS_PATHS = ["docs", "doc", "documentation"] as const;
 
@@ -201,8 +203,42 @@ const ask = z
   })
   .prefault({});
 
+const githubId = (name: string) =>
+  z
+    .int(`${name} must be a whole number`)
+    .min(1, `${name} must be a positive integer`)
+    .max(Number.MAX_SAFE_INTEGER, `${name} must be a positive integer`)
+    .optional();
+
+/** GitHub App identifiers. The private key and webhook secret are secrets, stored apart. */
+const github = z
+  .strictObject({
+    appId: githubId("appId"),
+    installationId: githubId("installationId"),
+  })
+  .prefault({});
+
+/**
+ * Non-secret model provider settings. The OpenAI-compatible base URL is an endpoint, not a secret,
+ * but must be https (or loopback http). Keys are secrets, stored apart.
+ */
+const providers = z
+  .strictObject({
+    openaiBaseUrl: z
+      .string()
+      .max(2048, "openaiBaseUrl is too long")
+      .superRefine((value, ctx) => {
+        const check = checkOpenAiBaseUrl(value);
+        if (!check.ok) ctx.addIssue({ code: "custom", message: `openaiBaseUrl ${check.problem}` });
+      })
+      .optional(),
+  })
+  .prefault({});
+
 export const configSchema = z
   .strictObject({
+    github,
+    providers,
     repos: z.array(repoEntry).min(1, "repos must list at least one repository").optional(),
     exclude: z.array(repoName).min(1, "exclude must list at least one repository").optional(),
     defaults,

@@ -4,8 +4,6 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 
-import { configSchema } from "../../src/server/config/schema";
-
 /**
  * Static checks of the container files (tasks 13.1 and 13.2), with no Docker needed: they catch the
  * mistakes that matter without a build, such as a baked-in secret, a root user, a published
@@ -174,10 +172,9 @@ describe("docker-compose.yml", () => {
     expect(app.env_file).toEqual([{ path: ".env", required: false }]);
   });
 
-  it("mounts the config read-only at the path the loader reads", () => {
-    const mount = app.volumes?.find((v) => v.includes(":/app/docmyrepos.config.yml"));
-    expect(mount).toBeDefined();
-    expect(mount).toMatch(/:\/app\/docmyrepos\.config\.yml:ro$/);
+  it("mounts no config file: settings live in the database", () => {
+    expect(app.volumes ?? []).toEqual([]);
+    expect(composeText).not.toMatch(/^\s*[^#\n]*docmyrepos\.config/m);
   });
 
   it("hardens the app container", () => {
@@ -209,24 +206,17 @@ describe("docker-compose.yml", () => {
   });
 });
 
-describe("the default compose config", () => {
-  it("exists and means the default configuration", () => {
-    const text = read("docker/docmyrepos.config.default.yml");
-    const value = parse(text) as unknown;
-    expect(value ?? {}).toEqual({});
-    expect(() => configSchema.parse(value ?? {})).not.toThrow();
-  });
-});
-
 describe(".env.example", () => {
   it("holds no key material or real-looking secrets", () => {
     const active = instructions(envExample);
     expect(active.join("\n")).not.toMatch(/BEGIN [A-Z ]*PRIVATE KEY/);
     const get = (name: string) =>
       active.find((l) => l.startsWith(`${name}=`))?.slice(name.length + 1);
-    expect(get("GITHUB_APP_PRIVATE_KEY")).toBe("");
-    expect(get("GITHUB_APP_ID")).toBe("");
+    expect(get("SETTINGS_ENCRYPTION_KEY")).toBe("");
     expect(get("SYNC_SECRET")).toMatch(/^replace-with-/);
-    expect(get("GITHUB_WEBHOOK_SECRET")).toMatch(/^replace-with-/);
+    // GitHub and provider settings are entered in the admin interface, never in the environment.
+    for (const retired of ["GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_WEBHOOK_SECRET"]) {
+      expect(get(retired), retired).toBeUndefined();
+    }
   });
 });

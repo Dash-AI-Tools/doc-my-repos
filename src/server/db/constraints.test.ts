@@ -9,9 +9,12 @@ import {
   docComments,
   documents,
   repos,
+  settingsAudit,
   siteBranding,
   syncRuns,
   users,
+  workspaceSecrets,
+  workspaceSettings,
 } from "./schema";
 import { createTestDatabase, describeDb, pgErrorCode, type TestDatabase } from "./test-db";
 
@@ -323,6 +326,59 @@ describeDb("table constraints on a real database", () => {
       const [after] = await t.db.select().from(askUsage).where(eq(askUsage.id, usage!.id));
       expect(after?.userId).toBeNull();
       const [settings] = await t.db.select().from(askSettings);
+      expect(settings?.updatedBy).toBeNull();
+    });
+  });
+
+  describe("workspace settings", () => {
+    it("keeps workspace_settings to one row that starts at version 1", async () => {
+      const [row] = await t.db.insert(workspaceSettings).values({ id: 1, data: {} }).returning();
+      expect(row).toMatchObject({ version: 1, data: {} });
+      expect(await codeOf(t.db.insert(workspaceSettings).values({ id: 1, data: {} }))).toBe(
+        UNIQUE_VIOLATION,
+      );
+      expect(await codeOf(t.db.insert(workspaceSettings).values({ id: 2, data: {} }))).toBe(
+        "23514",
+      );
+    });
+
+    it("allows one row per known secret name and refuses other names", async () => {
+      const value = { ciphertext: "c", nonce: "n" };
+      await t.db.insert(workspaceSecrets).values({ name: "github_private_key", ...value });
+      expect(
+        await codeOf(
+          t.db.insert(workspaceSecrets).values({ name: "github_private_key", ...value }),
+        ),
+      ).toBe(UNIQUE_VIOLATION);
+      expect(
+        await codeOf(t.db.insert(workspaceSecrets).values({ name: "something_else", ...value })),
+      ).toBe("23514");
+    });
+
+    it("sets updated_by and the audit user to null when the user is removed", async () => {
+      const [u] = await t.db
+        .insert(users)
+        .values({ email: "settings-admin@example.com", passwordHash: "x" })
+        .returning();
+      await t.db
+        .update(workspaceSettings)
+        .set({ updatedBy: u!.id })
+        .where(eq(workspaceSettings.id, 1));
+      await t.db
+        .update(workspaceSecrets)
+        .set({ updatedBy: u!.id })
+        .where(eq(workspaceSecrets.name, "github_private_key"));
+      const [audit] = await t.db
+        .insert(settingsAudit)
+        .values({ userId: u!.id, fields: ["github.appId"] })
+        .returning();
+      await t.db.delete(users).where(eq(users.id, u!.id));
+      const [after] = await t.db
+        .select()
+        .from(settingsAudit)
+        .where(eq(settingsAudit.id, audit!.id));
+      expect(after).toMatchObject({ userId: null, fields: ["github.appId"] });
+      const [settings] = await t.db.select().from(workspaceSettings);
       expect(settings?.updatedBy).toBeNull();
     });
   });

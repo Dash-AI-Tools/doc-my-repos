@@ -1,7 +1,7 @@
 import { eq, isNull } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { ConfigError } from "./config/load";
+import { ConfigError } from "./config/errors";
 import { createDb, type Db } from "./db/client";
 import { repos } from "./db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "./db/test-db";

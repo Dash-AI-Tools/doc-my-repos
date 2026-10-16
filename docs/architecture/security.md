@@ -87,9 +87,9 @@ SVG is served with `Content-Security-Policy: default-src 'none'; style-src 'unsa
 
 ## Authentication of machines
 
-- **Webhooks.** `X-Hub-Signature-256` is verified over the raw request bytes with `GITHUB_WEBHOOK_SECRET`. Only the `sha256=` form with 64 lowercase hex characters is accepted. A wrong or missing signature gets one fixed `401`, and no JSON is parsed before it passes. `node:crypto` is used instead of a library because hashing must see the exact bytes GitHub signed.
+- **Webhooks.** `X-Hub-Signature-256` is verified over the raw request bytes with the webhook secret saved at `/admin/workspace` (stored encrypted, write-only). Only the `sha256=` form with 64 lowercase hex characters is accepted. A wrong or missing signature gets one fixed `401`, and no JSON is parsed before it passes. `node:crypto` is used instead of a library because hashing must see the exact bytes GitHub signed.
 - **Manual sync.** `Authorization: Bearer <SYNC_SECRET>` only; the secret is never accepted in a query string or body. The app has no brute-force counter, so rate-limit this path at the reverse proxy.
-- Both secrets must be at least 16 characters after trimming.
+- Both secrets must be at least 16 characters after trimming. The webhook secret is entered by an admin and stored encrypted; `SYNC_SECRET` stays in the environment.
 
 ## Secrets and logs
 
