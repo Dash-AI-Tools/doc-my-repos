@@ -146,7 +146,7 @@ The App's installation selection is the upper bound. DocMyRepos discovers reposi
 
 A private repository that is missing from the portal usually means it is not in the installation's selection. Add it under _Settings > GitHub Apps > Configure > Repository access_; GitHub then sends `installation_repositories`.
 
-Remember that the portal has no login in the MVP: anyone who can reach it can read everything the App can read. Install the App only on repositories you want shown.
+Remember that every signed-in user can read every repository an admin has made visible, including private ones. Install the App only on repositories you want shown.
 
 ## 7. Environment variables
 

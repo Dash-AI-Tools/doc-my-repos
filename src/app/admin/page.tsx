@@ -26,6 +26,14 @@ export default function AdminPage() {
             </p>
           </li>
           <li>
+            <Link href="/admin/comments" className="font-medium underline underline-offset-4">
+              Comments
+            </Link>
+            <p className="text-sm text-muted-foreground">
+              Review, delete and permanently remove document comments.
+            </p>
+          </li>
+          <li>
             <Link href="/admin/github" className="font-medium underline underline-offset-4">
               GitHub configuration
             </Link>

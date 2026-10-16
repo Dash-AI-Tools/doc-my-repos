@@ -14,7 +14,9 @@ import { SKIP_DB, STACKS, serverEnv, stackUrl } from "./e2e/support/stack";
  * - 3101 `seeded`: a throwaway database filled from `e2e/support/seed-data.ts`.
  * - 3102 `empty`: a throwaway, migrated, empty database.
  *   (3104 `starred` is a second seeded database for specs that star and reorder repositories, so
- *   they cannot disturb the read-only specs on `seeded`.)
+ *   they cannot disturb the read-only specs on `seeded`. 3105 `comments` adds seeded users and
+ *   comments and is acted on with the `x-e2e-user` header; 3106 `commentsoff` is the same data
+ *   with `comments.enabled: false`.)
  * - 3103 `unreachable`: `DATABASE_URL` points at a port nothing listens on.
  *
  * The last three need Postgres (`docker compose --env-file .env.example up -d --wait db`, or
@@ -57,7 +59,7 @@ export default defineConfig({
     },
     ...(SKIP_DB
       ? []
-      : (["seeded", "empty", "starred"] as const).map((name) => ({
+      : (["seeded", "empty", "starred", "comments", "commentsoff"] as const).map((name) => ({
           command: start(STACKS[name].port),
           url: stackUrl(name),
           reuseExistingServer: false,

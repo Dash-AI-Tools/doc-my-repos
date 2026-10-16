@@ -21,6 +21,7 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - [Configuration](#configuration)
 - [Self-hosting](#self-hosting)
 - [Operations](#operations)
+- [Comments](#comments)
 - [Reading aids](#reading-aids)
 - [Security](#security)
 - [Development](#development)
@@ -33,9 +34,10 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - **Good-looking Markdown**: GitHub-flavored Markdown, syntax highlighting with Shiki, and [Mermaid](https://mermaid.js.org) diagrams. Documents are untrusted: output is sanitized and `.mdx` is never executed.
 - **Search**: full-text search across every synced repository (Postgres full-text search, weighted by title, headings, description and body), with highlighted snippets, facets and a `Ctrl/Cmd+K` palette.
 - **OKF aware**: when a repository uses OKF, filter by concept `type` (plus tags and status) and see each document's metadata, notices and change log. A switch at the top of the docs column toggles between this OKF view and a **Tree** view that mirrors the repository's folders and file names. Other repositories show no OKF interface.
+- **Comments**: signed-in users discuss a document on its page, admins can answer as the organization and moderate. Comments are stored in the portal, not in GitHub (see [Comments](#comments)).
 - **Light and dark themes**: light, dark, or follow the system, including code blocks and diagrams, without a flash on load.
 - **Fresh content**: GitHub webhooks re-sync a repository when its default branch changes, and a scheduled full sync catches missed deliveries. Syncs are incremental (tree SHA, then blob SHA), idempotent and serialized per repository; a failed sync keeps the previous content.
-- **Self-hostable**: one Next.js app plus Postgres, with a Docker image and Compose file. No login in the MVP (see [Security](#security)).
+- **Self-hostable**: one Next.js app plus Postgres, with a Docker image and Compose file. Behind a login with admin and user roles (see [Security](#security)).
 
 ## Screenshots
 
@@ -174,6 +176,8 @@ limits:
 sync:
   intervalMinutes: 60
   onStartup: true
+comments:
+  enabled: true # false turns comments off
 ```
 
 | Key                     | Default                        | Meaning                                                                                                                                 |
@@ -185,6 +189,7 @@ sync:
 | `limits.maxFileBytes`   | `262144` (1024 to 262144)      | Larger files are skipped with a warning. 256 KB is also the maximum.                                                                    |
 | `sync.intervalMinutes`  | `60`                           | Period of the full sync that catches missed webhooks. `0` turns it off, otherwise `5` to `10080`.                                       |
 | `sync.onStartup`        | `true`                         | One full sync about 10 seconds after the server starts.                                                                                 |
+| `comments.enabled`      | `true`                         | `false` removes the Comments section and turns the comment APIs off. Stored comments are kept. See [Comments](#comments).               |
 
 Files left out by the limits are listed as a warning in the repository header and on `/status`. Changes to `sync` apply after a restart. The file path defaults to `docmyrepos.config.yml` in the working directory; set `CONFIG_PATH` to use another.
 
@@ -253,14 +258,14 @@ location / {
 }
 ```
 
-**The portal has no login.** Anyone who can reach it can read everything it has synced. If any synced repository is private, put authentication in front of it (network rules, an authenticating proxy).
+**The portal is behind a login.** Only signed-in users can read documents, and admins choose which repositories are visible. Access is by role, not per repository: every signed-in user can read every visible repository, so make a private repository visible only if all your users may read it.
 
 ## Operations
 
 - **Health and sync status:** `/status` shows the last sync run and every repository's state, errors and warnings. `GET /api/status` serves the same data as JSON (needs a login, never cached, no secrets; it shows what the pages show). For health checks use `GET /api/health`, which needs no login and returns only the verdict: `200 {"status":"ok"}` means the app and its database answer; `503 {"error":"unavailable"}` means they do not. A failed repository sync does not change the status code: read `summary.error` or `lastRun.status` on `/api/status`.
 - **Scheduler:** it runs the startup and periodic full syncs (with ±10 % jitter, retrying failures sooner with backoff up to 15 minutes) and, every minute, any per-repository syncs left waiting by busy repositories or a restart. With several instances only one runs a scheduled full sync at a time. `SYNC_SCHEDULER=0` turns it off.
 - **Logs:** one JSON object per line, `debug` and `info` on stdout, `warn` and `error` on stderr (`docker compose logs app`). Event names are stable dotted names such as `sync.run.finished`, `webhook.received` and `sync.discovery.failed`. Keep `LOG_LEVEL` at `info` or above in production. Credentials, request bodies, error messages and stacks are never logged, and the logger redacts anything that looks like a secret.
-- **Backups:** everything in the database is derived from GitHub, so a lost database is rebuilt by a full sync (the sync history is lost). To keep it: `docker compose exec db pg_dump -U docmyrepos docmyrepos > backup.sql`.
+- **Backups:** documents and repositories are derived from GitHub, so a lost database is rebuilt by a full sync (the sync history is lost), but users, settings and [comments](#comments) are not and cannot be rebuilt. To keep them: `docker compose exec db pg_dump -U docmyrepos docmyrepos > backup.sql`.
 - **Upgrading:** `git pull && docker compose up -d --build`. The new container applies pending migrations before it serves. To roll back, redeploy the previous image; migrations are forward-only, so take a backup first.
 - **Several replicas:** point them all at one database. Migrations are serialized by the advisory lock (or set `SKIP_MIGRATIONS=1` on all but one, or migrate once with `docker compose run --rm --no-deps --entrypoint node app dist/db-migrate.mjs`). Repository syncs never overlap across replicas.
 - **Rotating secrets:** see the [setup guide](docs/github-app-setup.md#rotating).
@@ -277,6 +282,17 @@ Admins can make the portal read as their organization's own from `/admin/brandin
 - **Reset to defaults** clears everything, including the logo.
 
 The logo is served publicly at `/api/branding/logo?v=<version>` (the sign-in page shows it), as the original bytes under a sandboxed content policy, so a script inside an SVG logo never runs. Nothing set means nothing changes. The footer always credits the project (`Powered by DocMyRepos` with a star link to the repository); it cannot be removed from the admin page.
+
+## Comments
+
+Every document page has a **Comments** section where signed-in users start threads, reply, edit, delete and resolve. The full guide is [docs/guides/comments.md](docs/guides/comments.md).
+
+- **Who can do what.** Any signed-in user who can see a document can read and post comments on it. Authors edit and delete their own comments. A thread's author or an admin can resolve and reopen it. Admins can delete any comment, can also post **as the organization** (shown with the organization name and an "Organization" badge) and can edit organization comments, but cannot edit other people's personal comments.
+- **Stored in the portal, not in GitHub.** Comments live in the portal's Postgres database. The GitHub App stays read-only, nothing is written to the repository, and comments are not searched or exposed to agents. They are shown only where the document is visible: blocking a repository hides its comments and allowing it brings them back. If you back up the database (see [Operations](#operations)), note that comments are **not** derived from GitHub and cannot be rebuilt by a sync.
+- **Retention and orphans.** Syncs never change comments. Deleting a comment removes its text from storage; a deleted comment with replies stays as a "This comment was deleted" placeholder. When a document is deleted or moved in its repository its comments stay stored but hidden ("orphaned") and reappear if the path returns. Nothing is removed automatically: admins find orphans on `/admin/comments` and remove them permanently there.
+- **Name display.** A comment shows the part of the author's email before the `@`; admins also see the full email. The name is saved with the comment, so it survives the account's removal.
+- **Limits.** Plain text of 1 to 4,000 characters (no HTML or Markdown; `http(s)` addresses become safe links), 20 new comments per user per 10 minutes, 1,000 comments per document, and writes must be same-origin JSON requests.
+- **The switch.** `comments.enabled` in `docmyrepos.config.yml` (default `true`). With `false` the section and the `/api/comments*` routes disappear (404) and stored comments are kept; the admin Comments page still opens so they can be purged.
 
 ## Reading aids
 
@@ -295,7 +311,7 @@ The R key is ignored while you type in a field, while a dialog or the search pal
 Docs come from third-party repositories and are treated as untrusted. See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 - **Read-only GitHub App.** Contents and Metadata, read-only. Installation tokens are short-lived, cached and refreshed. The private key, tokens and secrets never reach the browser, the logs or error messages.
-- **No login (MVP).** The portal is single-tenant: anyone who can reach it can read everything the App installation can read and the config selects. Install the App only on repositories you want shown, and put authentication in front of the app if some are private. Private repositories are marked with a badge, and the app records each repository's visibility so per-user access can be added later.
+- **Login, no per-repository access.** The portal is single-tenant and behind a login with the `admin` and `user` roles. Every signed-in user can read every repository an admin has made visible, including private ones, so install the App only on repositories you want shown and block the rest under **Admin**. Private repositories are marked with a badge, and the app records each repository's visibility so per-user access can be added later.
 - **Sanitized rendering.** HTML is sanitized after every rehype transform; `.mdx` is never executed; Mermaid runs with `securityLevel: 'strict'`.
 - **Verified inputs.** Webhook signatures are checked against the raw body; `/api/sync` needs `SYNC_SECRET`; `/api/asset` only serves image content types from inside a configured repository and blocks path traversal.
 - **Security headers and CSP** are set by the app (`src/proxy.ts`, values in `src/lib/security-headers.ts`) and need no help from the proxy:

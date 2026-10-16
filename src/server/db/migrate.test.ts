@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withAdvisoryLock } from "./advisory-lock";
 import { createDb } from "./client";
 import { MIGRATION_LOCK_KEY, MigrationError, migrateDatabase, runMigrations } from "./migrate";
-import { codeOwners, documents, repos, siteBranding, syncRuns, users } from "./schema";
+import { codeOwners, docComments, documents, repos, siteBranding, syncRuns, users } from "./schema";
 import {
   createEmptyDatabase,
   createTestDatabase,
@@ -25,7 +25,15 @@ const journalLength = (
   JSON.parse(readFileSync(`${drizzleDir}/meta/_journal.json`, "utf8")) as { entries: unknown[] }
 ).entries.length;
 
-const tables: AnyPgTable[] = [repos, documents, codeOwners, syncRuns, users, siteBranding];
+const tables: AnyPgTable[] = [
+  repos,
+  documents,
+  codeOwners,
+  syncRuns,
+  users,
+  siteBranding,
+  docComments,
+];
 
 describeDb("migrations on a real database", () => {
   let t: TestDatabase;
@@ -94,6 +102,36 @@ describeDb("migrations on a real database", () => {
     expect(rows).toEqual([{ is_nullable: "YES", column_default: null }]);
   });
 
+  it("has the doc_comments indexes, checks and foreign keys, and none to repos or documents", async () => {
+    const { rows: idx } = await t.pool.query<{ indexname: string; indexdef: string }>(
+      "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'doc_comments' AND indexname <> 'doc_comments_pkey' ORDER BY indexname",
+    );
+    expect(idx.map((r) => r.indexname)).toEqual([
+      "doc_comments_created_idx",
+      "doc_comments_doc_created_idx",
+    ]);
+    expect(idx[0]?.indexdef).toMatch(/\(created_at DESC NULLS LAST\)/);
+    expect(idx[1]?.indexdef).toMatch(/\(github_repo_id, path, created_at\)/);
+    const { rows: cons } = await t.pool.query<{
+      conname: string;
+      contype: string;
+      ref: string | null;
+    }>(
+      `SELECT conname, contype, confrelid::regclass::text AS ref FROM pg_constraint
+       WHERE conrelid = 'public.doc_comments'::regclass AND contype IN ('c', 'f') ORDER BY conname`,
+    );
+    expect(cons.filter((c) => c.contype === "c").map((c) => c.conname)).toEqual([
+      "doc_comments_body_length",
+      "doc_comments_reply_not_resolved",
+    ]);
+    expect(
+      cons
+        .filter((c) => c.contype === "f")
+        .map((c) => c.ref)
+        .sort(),
+    ).toEqual(["doc_comments", "users", "users"]);
+  });
+
   it("has the sync_runs started_at index", async () => {
     const { rows } = await t.pool.query<{ indexdef: string }>(
       "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'sync_runs_started_at_idx'",
@@ -121,6 +159,7 @@ describeDb("migrations on a real database", () => {
     );
     expect(rows).toEqual([
       { table_name: "code_owners", column_name: "id", kind: "identity" },
+      { table_name: "doc_comments", column_name: "id", kind: "identity" },
       { table_name: "documents", column_name: "id", kind: "identity" },
       { table_name: "documents", column_name: "search_vector", kind: "generated" },
       { table_name: "repos", column_name: "id", kind: "identity" },
@@ -230,6 +269,51 @@ describeDb("a failing migration", () => {
       await t.end();
     }
   });
+});
+
+describeDb("the doc_comments migration onto an existing database", () => {
+  let empty: EmptyDatabase;
+  let dir: string;
+  beforeAll(async () => {
+    empty = await createEmptyDatabase();
+    // The migrations before doc_comments, as a database from the previous release has them.
+    dir = mkdtempSync(join(tmpdir(), "docmyrepos-prior-"));
+    mkdirSync(join(dir, "meta"));
+    const journal = JSON.parse(readFileSync(`${drizzleDir}/meta/_journal.json`, "utf8")) as {
+      entries: { tag: string }[];
+    };
+    const prior = journal.entries.filter((e) => !e.tag.includes("_pale_jetstream"));
+    writeFileSync(
+      join(dir, "meta", "_journal.json"),
+      JSON.stringify({ ...journal, entries: prior }),
+    );
+    for (const e of prior) copyFileSync(`${drizzleDir}/${e.tag}.sql`, join(dir, `${e.tag}.sql`));
+  }, 60_000);
+  afterAll(async () => {
+    rmSync(dir, { recursive: true, force: true });
+    await empty?.drop();
+  }, 60_000);
+
+  it("adds the table and leaves existing rows untouched", async () => {
+    const handle = createDb(empty.url.reveal(), { max: 2 });
+    try {
+      await runMigrations(handle, dir);
+      await handle.pool.query(
+        "INSERT INTO users (email, password_hash) VALUES ('old@example.com', 'x')",
+      );
+      const before = await handle.pool.query("SELECT to_regclass('public.doc_comments') AS t");
+      expect(before.rows[0]?.t).toBeNull();
+
+      const result = await runMigrations(handle, drizzleDir);
+      expect(result.total).toBe(journalLength);
+      const after = await handle.pool.query("SELECT to_regclass('public.doc_comments') AS t");
+      expect(after.rows[0]?.t).toBe("doc_comments");
+      const users = await handle.pool.query("SELECT email FROM users");
+      expect(users.rows).toEqual([{ email: "old@example.com" }]);
+    } finally {
+      await handle.close();
+    }
+  }, 60_000);
 });
 
 const run = promisify(execFile);
@@ -343,6 +427,7 @@ describeDb("parallel db:migrate runs on one empty database", () => {
       );
       expect(tables.rows.map((r) => r.table_name)).toEqual([
         "code_owners",
+        "doc_comments",
         "documents",
         "repos",
         "site_branding",

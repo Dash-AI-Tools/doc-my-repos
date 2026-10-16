@@ -80,7 +80,7 @@ What is never logged: the App private key, installation tokens, App JWTs, the we
 
 ## Backups, upgrades and replicas
 
-- **Backups.** Everything in the database is derived from GitHub, so a lost database is rebuilt by a full sync; only the sync history is lost. To keep it: `docker compose exec db pg_dump -U docmyrepos docmyrepos > backup.sql`.
+- **Backups.** Documents and repositories are derived from GitHub, so a lost database is rebuilt by a full sync (the sync history is lost). Users, settings and [comments](../guides/comments.md) are not and cannot be rebuilt. To keep them: `docker compose exec db pg_dump -U docmyrepos docmyrepos > backup.sql`.
 - **Upgrade.** `git pull && docker compose up -d --build`. The new container applies pending migrations before it serves. Migrations are forward-only: to roll back, redeploy the previous image, and take a backup first if the new version added a migration.
 - **Replicas.** Point them all at one database. Migrations are serialized by an advisory lock, only one replica runs each scheduled full sync, and syncs of one repository never overlap. Session-level advisory locks do not work through PgBouncer in transaction mode: connect directly, or through a pooler in session mode.
 - **Stopping.** `docker stop` sends `SIGTERM`. The scheduler stops, a running sync is aborted, and the process exits with status 143, which Docker treats as a normal stop.

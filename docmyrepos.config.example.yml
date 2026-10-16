@@ -46,6 +46,13 @@ sync:
   intervalMinutes: 60
   onStartup: true
 
+# Comments on documents, stored in the portal (not in GitHub). Optional; the
+# value below is the default. `enabled: false` removes the Comments section from
+# document pages and turns the comment APIs off (admins can still purge stored
+# comments from the admin Comments page).
+comments:
+  enabled: true
+
 # Alternative to `repos`: every accessible repository except the listed ones.
 # BEGIN alternative: exclude
 # exclude:

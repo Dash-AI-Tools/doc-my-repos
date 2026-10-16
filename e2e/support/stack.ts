@@ -13,6 +13,8 @@ import { join } from "node:path";
  * | `empty`       | 3102 | `docmyrepos_e2e_<id>_empty`       | migrated, no rows                |
  * | `unreachable` | 3103 | a port nothing listens on         | database error state             |
  * | `starred`     | 3104 | `docmyrepos_e2e_<id>_starred`     | `SEED_REPOS`, for specs that star|
+ * | `comments`    | 3105 | `docmyrepos_e2e_<id>_comments`    | `SEED_REPOS` + users + comments  |
+ * | `commentsoff` | 3106 | `docmyrepos_e2e_<id>_commentsoff` | same, `comments.enabled: false`  |
  *
  * `playwright.config.ts` starts the servers and `global-setup.ts` creates and seeds the databases;
  * Playwright starts web servers BEFORE it runs the global setup, so nothing in a server needs its
@@ -33,10 +35,12 @@ export const STACKS = {
   empty: { port: 3102 },
   unreachable: { port: 3103 },
   starred: { port: 3104 },
+  comments: { port: 3105 },
+  commentsoff: { port: 3106 },
 } as const;
 
 export type StackName = keyof typeof STACKS;
-export type DatabaseKind = "seeded" | "empty" | "starred";
+export type DatabaseKind = "seeded" | "empty" | "starred" | "comments" | "commentsoff";
 
 export function stackUrl(name: StackName): string {
   return `http://127.0.0.1:${STACKS[name].port}`;
@@ -93,10 +97,16 @@ defaults:
     - docs
 `;
 
+const CONFIG_COMMENTS_OFF_YAML = `${CONFIG_YAML}comments:
+  enabled: false
+`;
+
 export interface WorkDir {
   readonly dir: string;
   readonly keyPath: string;
   readonly configPath: string;
+  /** Same as `configPath` with `comments.enabled: false` (the `commentsoff` server). */
+  readonly commentsOffConfigPath: string;
 }
 
 /**
@@ -112,6 +122,7 @@ export function workDir(): WorkDir {
   }
   const keyPath = join(dir, "app-key.pem");
   const configPath = join(dir, "docmyrepos.config.yml");
+  const commentsOffConfigPath = join(dir, "docmyrepos.config.comments-off.yml");
   if (!existsSync(keyPath)) {
     mkdirSync(dir, { recursive: true });
     const { privateKey } = generateKeyPairSync("rsa", {
@@ -121,8 +132,9 @@ export function workDir(): WorkDir {
     });
     writeFileSync(keyPath, privateKey, { mode: 0o600 });
     writeFileSync(configPath, CONFIG_YAML);
+    writeFileSync(commentsOffConfigPath, CONFIG_COMMENTS_OFF_YAML);
   }
-  return { dir, keyPath, configPath };
+  return { dir, keyPath, configPath, commentsOffConfigPath };
 }
 
 /**
@@ -135,12 +147,17 @@ export function workDir(): WorkDir {
  * no spec can see the branding (or anything else) of a developer's database.
  */
 export function serverEnv(name: StackName): Record<string, string> {
-  const { keyPath, configPath } = workDir();
-  const readsDatabase = name === "seeded" || name === "empty" || name === "starred";
+  const { keyPath, configPath, commentsOffConfigPath } = workDir();
+  const readsDatabase =
+    name === "seeded" ||
+    name === "empty" ||
+    name === "starred" ||
+    name === "comments" ||
+    name === "commentsoff";
   return {
     ...(name === "fixtures" ? { E2E_FIXTURES: "1" } : {}),
     DATABASE_URL: readsDatabase ? databaseUrl(name) : UNREACHABLE_DATABASE_URL,
-    CONFIG_PATH: configPath,
+    CONFIG_PATH: name === "commentsoff" ? commentsOffConfigPath : configPath,
     GITHUB_APP_ID: "1",
     GITHUB_APP_INSTALLATION_ID: "1",
     GITHUB_APP_PRIVATE_KEY: "",

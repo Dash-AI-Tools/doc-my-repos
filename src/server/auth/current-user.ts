@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { eq } from "drizzle-orm";
 
 import { getDb, type Db } from "@/server/db/client";
@@ -21,6 +21,18 @@ export async function getCurrentUser(db: Db | null = null): Promise<CurrentUser 
   // Playwright bypass (see proxy.ts): e2e servers run with E2E_AUTH_BYPASS=1 and exercise
   // content without a login dance. Never set it outside the e2e stack.
   if (process.env.E2E_AUTH_BYPASS === "1") {
+    // A spec can act as a seeded user by sending `x-e2e-user: <email>` (document-comments e2e);
+    // without the header the request is the fixed admin that has no row.
+    const email = (await headers()).get("x-e2e-user")?.trim().toLowerCase();
+    if (email) {
+      const found = await (db ?? getDb().db)
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      const row = found[0];
+      return row && !row.disabled ? { id: row.id, email: row.email, role: row.role } : null;
+    }
     return { id: 0, email: "e2e-admin@example.com", role: "admin" };
   }
   const store = await cookies();

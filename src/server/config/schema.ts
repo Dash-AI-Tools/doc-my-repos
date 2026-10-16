@@ -106,6 +106,17 @@ const syncSchedule = z
   })
   .prefault({});
 
+/**
+ * Document comments (document-comments design decision 8). On by default; `enabled: false` removes
+ * the section from document pages and makes the comment APIs answer 404. The admin page still
+ * loads so stored comments can be purged.
+ */
+const comments = z
+  .strictObject({
+    enabled: z.boolean("enabled must be true or false").default(true),
+  })
+  .prefault({});
+
 export const configSchema = z
   .strictObject({
     repos: z.array(repoEntry).min(1, "repos must list at least one repository").optional(),
@@ -113,6 +124,7 @@ export const configSchema = z
     defaults,
     limits,
     sync: syncSchedule,
+    comments,
   })
   .superRefine((cfg, ctx) => {
     if (cfg.repos && cfg.exclude) {

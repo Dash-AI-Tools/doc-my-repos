@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 
 import { ChangeLog } from "@/components/change-log";
+import { CommentCountLink } from "@/components/comment-count-link";
+import { CommentsSection } from "@/components/comments-section";
 import { DocBody } from "@/components/doc-body";
 import { DocBreadcrumb } from "@/components/doc-breadcrumb";
 import { DocNavBar } from "@/components/doc-nav-bar";
@@ -21,6 +23,7 @@ import { buildFilterQuery } from "@/lib/search-params";
 import { buildTocFilterView, parseTocFilters, withFilterQuery } from "@/lib/toc-filters";
 import { formatAbsoluteTime, formatRelativeTime } from "@/lib/time";
 import type { NavView } from "@/lib/reading-prefs";
+import { loadDocComments } from "@/server/doc-comments";
 import { loadDocPage, type DocPageOk } from "@/server/doc-page";
 import { readNavView } from "@/server/nav-view";
 
@@ -51,6 +54,11 @@ import { readNavView } from "@/server/nav-view";
  * document, headings), both rails sticky; from `lg` two (the headings become a dropdown in the
  * document bar); below that one column, with the structure in a slide-in panel opened from the
  * bar. Without JavaScript the headings and the structure stay as lists after the document.
+ *
+ * Comments (document-comments tasks 4.1 and 4.5): the Comments section follows the article in the
+ * document column, and the header carries a count link to it. Both come from `loadDocComments`
+ * (the query layer, never GitHub), render nothing when `comments.enabled` is false, and are hidden
+ * in read mode with `data-read-hide`.
  */
 export const dynamic = "force-dynamic";
 
@@ -189,6 +197,7 @@ export default async function DocPage({
   const noticeMeta = doc.reserved === null ? okfMeta : null;
   const isChangeLog = repo.isOkf && doc.reserved === "log";
   // The card has a Description row, so the header does not repeat it.
+  const comments = await loadDocComments(repo.owner, repo.name, doc.path);
   const description =
     showCard && okfMeta.description !== null ? "" : (doc.description?.trim() ?? "");
 
@@ -254,6 +263,9 @@ export default async function DocPage({
                     </time>
                   </span>
                 ) : null}
+                {comments.status === "ready" ? (
+                  <CommentCountLink count={comments.counts.comments} />
+                ) : null}
                 {sourceUrl !== null ? (
                   <a
                     data-testid="source-link"
@@ -311,6 +323,7 @@ export default async function DocPage({
               )}
             </div>
           </article>
+          <CommentsSection data={comments} />
         </div>
 
         <DocPager previous={pagerLink(data.previous, data)} next={pagerLink(data.next, data)} />

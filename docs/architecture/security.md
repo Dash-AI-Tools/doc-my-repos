@@ -20,7 +20,7 @@ stale_after: 2999-01-01
 
 # Security model
 
-DocMyRepos renders Markdown that comes from repositories you do not fully control: a contributor, a dependency's docs folder, or a compromised account can put anything in a `docs/` file. **Documents are untrusted input.** The portal itself has no login, so the security work goes into two places: keeping hostile content from running in a reader's browser, and keeping credentials away from readers.
+DocMyRepos renders Markdown that comes from repositories you do not fully control: a contributor, a dependency's docs folder, or a compromised account can put anything in a `docs/` file. **Documents are untrusted input.** The portal is behind a login with admin and user roles, but any signed-in user can read every visible repository, so the security work goes into two places: keeping hostile content from running in a reader's browser, and keeping credentials away from readers.
 
 ## Threats and controls
 

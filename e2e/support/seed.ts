@@ -31,7 +31,7 @@ function sha(seed: string): string {
   return createHash("sha1").update(seed).digest("hex");
 }
 
-function metadata(repo: SeedRepo): PersistRepo {
+export function metadata(repo: SeedRepo): PersistRepo {
   return {
     githubId: repo.githubId,
     owner: repo.owner,
@@ -48,7 +48,7 @@ function fetchedDoc(path: string, text: string): PersistFetchedDoc {
   return { path, blobSha: sha(`${path}\n${text}`), size: Buffer.byteLength(text), text };
 }
 
-function planFor(repo: SeedRepo): PersistPlan {
+export function planFor(repo: SeedRepo): PersistPlan {
   const file = (path: string, text: string) => ({
     state: "fetched" as const,
     file: { path, blobSha: sha(`${path}\n${text}`), size: Buffer.byteLength(text) },

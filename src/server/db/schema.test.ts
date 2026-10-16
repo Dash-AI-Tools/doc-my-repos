@@ -1,7 +1,7 @@
 import { getTableConfig, type PgColumn } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
-import { codeOwners, documents, repos, siteBranding, syncRuns } from "./schema";
+import { codeOwners, docComments, documents, repos, siteBranding, syncRuns } from "./schema";
 
 function column(table: Parameters<typeof getTableConfig>[0], name: string): PgColumn {
   const col = getTableConfig(table).columns.find((c) => c.name === name);
@@ -14,7 +14,30 @@ function uniques(table: Parameters<typeof getTableConfig>[0]): string[][] {
 }
 
 describe("db schema", () => {
-  it("defines the five tables", () => {
+  it("keys comments by GitHub repo id and path, with no foreign key to repos or documents", () => {
+    const cfg = getTableConfig(docComments);
+    expect(cfg.name).toBe("doc_comments");
+    expect(
+      cfg.foreignKeys
+        .map((f) => f.reference().foreignTable)
+        .map((t) => getTableConfig(t).name)
+        .sort(),
+    ).toEqual(["doc_comments", "users", "users"]);
+    expect(column(docComments, "github_repo_id").notNull).toBe(true);
+    expect(column(docComments, "path").notNull).toBe(true);
+    expect(column(docComments, "parent_id").notNull).toBe(false);
+    expect(column(docComments, "author_id").notNull).toBe(false);
+    expect(column(docComments, "author_label").notNull).toBe(true);
+    expect(column(docComments, "body").notNull).toBe(true);
+    expect(column(docComments, "as_org").default).toBe(false);
+    expect(column(docComments, "deleted_by_admin").default).toBe(false);
+    expect(cfg.checks.map((c) => c.name).sort()).toEqual([
+      "doc_comments_body_length",
+      "doc_comments_reply_not_resolved",
+    ]);
+  });
+
+  it("defines the core tables", () => {
     expect(
       [repos, documents, codeOwners, syncRuns, siteBranding].map((t) => getTableConfig(t).name),
     ).toEqual(["repos", "documents", "code_owners", "sync_runs", "site_branding"]);

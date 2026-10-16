@@ -94,9 +94,9 @@ Modules under `src/server/` contain no React, and modules under `src/components/
 | GitHub to the app (push)      | Webhook deliveries                     | HMAC-SHA256 signature over the raw body                                                   |
 | Operator to the app           | `POST /api/sync`                       | `Authorization: Bearer` with `SYNC_SECRET`, compared in constant time                     |
 | Repository content to readers | Markdown, frontmatter, images          | Treated as untrusted: sanitized after all transforms, CSP with nonce, Mermaid strict mode |
-| Reader to the app             | Page, search and image reads           | No login in the MVP; one visibility filter in the query layer                             |
+| Reader to the app             | Page, search and image reads           | Signed-in users only; one visibility filter in the query layer                            |
 
-The portal has no login. Anyone who can reach it can read everything it has synced, so a deployment that syncs private repositories must sit behind network rules or an authenticating proxy. The [security model](./security.md) lists each control and what it does not cover.
+The portal is behind a login. Any signed-in user can read every repository an admin has made visible, so make a private repository visible only if all your users may read it. The [security model](./security.md) lists each control and what it does not cover.
 
 ## Related
 

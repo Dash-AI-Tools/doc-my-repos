@@ -14,17 +14,18 @@ DocMyRepos syncs the `docs/` folders of your GitHub repositories into Postgres a
 - New to the project: [Getting started](./guides/getting-started.md), then [Configuration](./guides/configuration.md).
 - Registering the GitHub App: [GitHub App setup](./github-app-setup.md).
 - How it works: [Architecture](./architecture/index.md), beginning with the [system overview](./architecture/overview.md).
+- Discussing a document on its page: [Comments](./guides/comments.md).
 - Looking something up: [Reference](./reference/index.md) (HTTP API, frontmatter, operations).
 - Why it is built this way: [Decisions](./decisions/index.md).
 
 ## Contents
 
-| Folder                          | What it holds                                                     |
-| ------------------------------- | ----------------------------------------------------------------- |
-| [Architecture](./architecture/) | System overview, sync engine, data model and security model.      |
-| [Guides](./guides/)             | Getting started, configuration, webhooks, search and OKF support. |
-| [Reference](./reference/)       | The HTTP API, the frontmatter keys and the operations runbook.    |
-| [Decisions](./decisions/)       | Short records of the choices that shape the design.               |
+| Folder                          | What it holds                                                    |
+| ------------------------------- | ---------------------------------------------------------------- |
+| [Architecture](./architecture/) | System overview, sync engine, data model and security model.     |
+| [Guides](./guides/)             | Getting started, comments, configuration, webhooks, search, OKF. |
+| [Reference](./reference/)       | The HTTP API, the frontmatter keys and the operations runbook.   |
+| [Decisions](./decisions/)       | Short records of the choices that shape the design.              |
 
 Recent changes are listed in the [change log](./log.md).
 

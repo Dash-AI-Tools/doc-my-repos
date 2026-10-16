@@ -1,5 +1,14 @@
 import { findAssetRepo } from "./assets";
 import {
+  countDocComments,
+  getCommentDocument,
+  getCommentStates,
+  getCommentTarget,
+  getCommentThread,
+  listCommentsForModeration,
+  listDocComments,
+} from "./comments";
+import {
   countDocs,
   getAdjacentDocs,
   getDocPaths,
@@ -38,6 +47,13 @@ export const QUERY_FUNCTIONS = {
   getRepoFacets,
   getSyncStatus,
   getRepoSyncInfo,
+  listDocComments,
+  countDocComments,
+  getCommentDocument,
+  getCommentTarget,
+  getCommentThread,
+  listCommentsForModeration,
+  getCommentStates,
 } as const;
 
 /** Registered queries that may read `documents.search_vector` (search only, design decision 2). */
@@ -58,6 +74,8 @@ export const NOT_QUERIES: ReadonlySet<string> = new Set([
   "publicReposOnly",
   "visibleRepos",
   // repo-ref.ts: input checks and the shared repository condition (resolved through the filter).
+  // comments.ts: checks a cursor string, returns no rows.
+  "isCommentCursor",
   "isLookupText",
   "isRowId",
   "ownerNameMatch",
@@ -66,6 +84,33 @@ export const NOT_QUERIES: ReadonlySet<string> = new Set([
 ]);
 
 export { findAssetRepo, type AssetRepo } from "./assets";
+export {
+  COMMENT_STATES_MAX,
+  COMMENTS_PAGE_SIZE,
+  countDocComments,
+  getCommentDocument,
+  getCommentStates,
+  getCommentTarget,
+  getCommentThread,
+  isCommentCursor,
+  listCommentsForModeration,
+  listDocComments,
+  MODERATION_PAGE_MAX,
+  type CommentDocument,
+  type CommentSelector,
+  type CommentStateRow,
+  type CommentState,
+  type CommentTarget,
+  type CommentTargetOptions,
+  type CommentThread,
+  type CommentView,
+  type DocCommentCounts,
+  type DocCommentsPage,
+  type ListCommentsForModerationArgs,
+  type ListDocCommentsArgs,
+  type ModerationComment,
+  type ModerationPage,
+} from "./comments";
 export {
   countDocs,
   getAdjacentDocs,

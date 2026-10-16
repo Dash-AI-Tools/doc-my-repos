@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { codeOwners, documents, repos, siteBranding, syncRuns } from "./schema";
+import { codeOwners, docComments, documents, repos, siteBranding, syncRuns, users } from "./schema";
 import { createTestDatabase, describeDb, pgErrorCode, type TestDatabase } from "./test-db";
 
 let counter = 0;
@@ -230,5 +230,96 @@ describeDb("table constraints on a real database", () => {
     expect(await codeOf(t.db.insert(siteBranding).values({ id: 2, orgName: "Other" }))).toBe(
       "23514",
     );
+  });
+
+  describe("doc_comments", () => {
+    const comment = (
+      over: Partial<typeof docComments.$inferInsert> = {},
+    ): typeof docComments.$inferInsert => ({
+      githubRepoId: 424242,
+      path: "docs/a.md",
+      authorLabel: "ana",
+      body: "hello",
+      ...over,
+    });
+    const newUser = async (email: string) => {
+      const [u] = await t.db.insert(users).values({ email, passwordHash: "x" }).returning();
+      return u!;
+    };
+
+    it("accepts a 4000 character body and rejects 4001 (characters, not bytes)", async () => {
+      await t.db.insert(docComments).values(comment({ body: "x".repeat(4000) }));
+      await t.db.insert(docComments).values(comment({ body: "\u{1F600}".repeat(4000) }));
+      expect(
+        await codeOf(t.db.insert(docComments).values(comment({ body: "x".repeat(4001) }))),
+      ).toBe("23514");
+    });
+
+    it("rejects a resolved reply but allows a resolved root", async () => {
+      const [root] = await t.db
+        .insert(docComments)
+        .values(comment({ resolvedAt: new Date() }))
+        .returning();
+      expect(
+        await codeOf(
+          t.db.insert(docComments).values(comment({ parentId: root!.id, resolvedAt: new Date() })),
+        ),
+      ).toBe("23514");
+    });
+
+    it("deletes replies with their root", async () => {
+      const [root] = await t.db
+        .insert(docComments)
+        .values(comment({ path: "docs/c.md" }))
+        .returning();
+      await t.db
+        .insert(docComments)
+        .values([
+          comment({ path: "docs/c.md", parentId: root!.id }),
+          comment({ path: "docs/other.md" }),
+        ]);
+      await t.db.delete(docComments).where(eq(docComments.id, root!.id));
+      const left = await t.db.select().from(docComments).where(eq(docComments.path, "docs/c.md"));
+      expect(left).toEqual([]);
+      const other = await t.db
+        .select()
+        .from(docComments)
+        .where(eq(docComments.path, "docs/other.md"));
+      expect(other).toHaveLength(1);
+    });
+
+    it("sets author_id and resolved_by to null when the user is removed, keeping the label", async () => {
+      const u = await newUser("gone@example.com");
+      const [c] = await t.db
+        .insert(docComments)
+        .values(comment({ authorId: u.id, resolvedBy: u.id, authorLabel: "gone" }))
+        .returning();
+      await t.db.delete(users).where(eq(users.id, u.id));
+      const [after] = await t.db.select().from(docComments).where(eq(docComments.id, c!.id));
+      expect(after).toMatchObject({ authorId: null, resolvedBy: null, authorLabel: "gone" });
+    });
+
+    it("is untouched when the repo or document row is deleted", async () => {
+      const [r] = await t.db
+        .insert(repos)
+        .values(repoValues({ githubId: 777001 }))
+        .returning();
+      const [d] = await t.db
+        .insert(documents)
+        .values(docValues(r!.id, { path: "docs/x.md" }))
+        .returning();
+      await t.db
+        .insert(docComments)
+        .values([
+          comment({ githubRepoId: 777001, path: "docs/x.md" }),
+          comment({ githubRepoId: 777001, path: "docs/y.md" }),
+        ]);
+      const count = async () =>
+        (await t.db.select().from(docComments).where(eq(docComments.githubRepoId, 777001))).length;
+      await t.db.delete(documents).where(eq(documents.id, d!.id));
+      expect(await count()).toBe(2);
+      await t.db.delete(repos).where(eq(repos.id, r!.id));
+      expect(await count()).toBe(2);
+    });
   });
 });

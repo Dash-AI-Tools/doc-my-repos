@@ -29,8 +29,8 @@ const SRC = fileURLToPath(new URL("../../", import.meta.url));
 const SCHEMA = join(SRC, "server", "db", "schema");
 
 /** The tables every portal read must reach through `src/server/queries`. */
-const PROTECTED_EXPORTS = new Set(["repos", "documents", "codeOwners"]);
-const PROTECTED_SQL_TABLES = ["repos", "documents", "code_owners"];
+const PROTECTED_EXPORTS = new Set(["repos", "documents", "codeOwners", "docComments"]);
+const PROTECTED_SQL_TABLES = ["repos", "documents", "code_owners", "doc_comments"];
 
 /**
  * Where direct access to the protected tables is allowed, and why. Paths are relative to `src/`.
@@ -49,6 +49,10 @@ const ALLOWED_TABLE_ACCESS: readonly { prefix: string; why: string }[] = [
   {
     prefix: "server/admin/",
     why: "admin write side: user management (users table only) and the repo allow/block toggle; admin repo reads go through the query layer with an explicit filter",
+  },
+  {
+    prefix: "server/comments/",
+    why: "comment write side: it writes and reads its own doc_comments rows (cap and rate counts under a lock), never serves them to visitors, and checks that the document is visible through the query layer before every insert",
   },
 ];
 
@@ -267,6 +271,26 @@ describe("scanSource", () => {
     expect(rules("app/page.tsx", "const copy = `Docs from repos across the org`;")).toEqual([]);
   });
 
+  it("protects doc_comments: pages, components and other server modules cannot read it", () => {
+    const named = `import { docComments } from "@/server/db/schema";`;
+    expect(rules("app/x/page.tsx", named)).toContain(
+      "imports the docComments table; read through @/server/queries",
+    );
+    expect(rules("components/comments.tsx", named)).toContain(
+      "imports the docComments table; read through @/server/queries",
+    );
+    expect(rules("server/search/x.ts", named)).toHaveLength(1);
+    expect(rules("server/x.ts", "await db.query.docComments.findMany();")).toHaveLength(1);
+    expect(
+      rules("server/x.ts", 'await db.execute(sql`select * from "doc_comments"`);'),
+    ).toHaveLength(1);
+    expect(
+      rules("app/x/page.tsx", `import type { docComments } from "@/server/db/schema";`),
+    ).toHaveLength(1);
+    expect(rules("server/comments/x.ts", named)).toEqual([]);
+    expect(rules("server/queries/x.ts", named)).toEqual([]);
+  });
+
   it("keeps UI code away from the database layer and components away from data access", () => {
     expect(rules("app/x/page.tsx", `import { getDb } from "@/server/db/client";`)).toHaveLength(1);
     expect(
@@ -290,6 +314,7 @@ describe("scanSource", () => {
     expect(rules("server/sync/x.ts", text)).toEqual([]);
     expect(rules("server/webhooks/store.ts", text)).toEqual([]);
     expect(rules("server/webhooks/router.ts", text)).toHaveLength(2);
+    expect(rules("server/comments/x.ts", text)).toEqual([]);
     expect(rules("server/queries/x.ts", `export { repos } from "../db/schema";`)).toEqual([
       "re-exports the repos table",
     ]);
