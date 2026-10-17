@@ -133,6 +133,19 @@ export function cleanText(input: string, max = MAX_TEXT, keepNewlines = false): 
   return { text, truncated: prefix.length < input.length };
 }
 
+/**
+ * A block of untrusted text made safe to hand on: line breaks normalized to `\n`, invisible and
+ * direction-changing characters removed (the set `cleanText` removes) and lone surrogates replaced.
+ * Unlike `cleanText` it keeps spaces, tabs and blank lines as they are, so indentation and code
+ * blocks survive. Not truncated; the caller cuts it.
+ */
+export function stripInvisible(input: string): string {
+  return input
+    .replace(LINE_BREAKS, "\n")
+    .replace(INVISIBLE, "")
+    .replace(LONE_SURROGATE, REPLACEMENT);
+}
+
 /** The same, as one string with an ellipsis when it was cut. For labels and chips. */
 export function shortText(input: string, max = MAX_KEY): string {
   const { text, truncated } = cleanText(input, max);

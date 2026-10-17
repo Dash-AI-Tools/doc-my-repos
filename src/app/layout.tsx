@@ -13,6 +13,7 @@ import { NONCE_HEADER, isValidNonce } from "@/lib/security-headers";
 import { loadAskPage } from "@/server/ask-page";
 import { getAskState } from "@/server/ask/settings";
 import { getCurrentUser } from "@/server/auth/current-user";
+import { mcpEnabled } from "@/server/workspace";
 import { deriveBrandTokens } from "@/lib/branding/colors";
 import { brandStyleBlock } from "@/lib/branding/style";
 import { DEFAULT_BRANDING, getBranding } from "@/server/branding";
@@ -82,6 +83,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   // Ask is shown to signed-in readers only when an admin turned it on and the provider is usable.
   // Never throws: any failure reads as off.
   const askEnabled = user !== null && (await getAskState()).state === "ready";
+  // The account menu links to the AI agent pages only while an admin has the MCP endpoint on.
+  const agentAccess = user !== null && (await mcpEnabled().catch(() => false));
   const ask = askEnabled ? await loadAskPage({}) : null;
   const { primaryColor, accentColor } = branding;
   const derived =
@@ -119,6 +122,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <SiteHeader
               user={user}
               askEnabled={askEnabled}
+              agentAccess={agentAccess}
               branding={{
                 orgName: branding.orgName,
                 pageTitle: branding.pageTitle,

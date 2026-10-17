@@ -34,7 +34,7 @@ The documentation DocMyRepos collects is most useful at the moment a developer i
 
 ### Modified Capabilities
 
-- None. The related behavior (search, OKF parsing and detection, access control, visibility) is specified in the `docmyrepos-mvp` change specs, which are not yet archived into `openspec/specs/`. These capabilities reuse it and add new entry points; they do not rewrite those requirements.
+- None. The related behavior (search, OKF parsing and detection, access control, visibility) is specified in the main specs under `openspec/specs/`. These capabilities reuse it and add new entry points; they do not rewrite those requirements.
 
 ## Impact
 
@@ -42,7 +42,7 @@ The documentation DocMyRepos collects is most useful at the moment a developer i
 - Dependency: the official `@modelcontextprotocol/sdk` (pinned, at least two weeks old, audited). It is the first dependency added since the stack was fixed in `CLAUDE.md`, so the choice and the alternative (hand-written JSON-RPC) are in `design.md`.
 - Server: new `src/server/mcp/` (tools, auth, limits), pure OKF helpers in `src/lib/okf-authoring/` (validation rules, draft generation, guidelines lookup names) reusing the existing frontmatter parser and `okf-meta` limits, and a route `src/app/api/mcp/route.ts`. New reads (guidelines lookup, vocabulary) go through `src/server/queries/` and are registered in `QUERY_FUNCTIONS`; no other code reads the tables.
 - Auth and headers: `src/proxy.ts` lets exactly `/api/mcp` past the session gate (the route authenticates the bearer token itself); the route rejects requests carrying a foreign `Origin`.
-- Config: `mcp.enabled` in `docmyrepos.config.yml` and its example.
-- UI: `/account/agent-access` (create, list, revoke, connection snippets), an admin token list with revoke, and a link to the page (account menu once `starred-repos` has landed, otherwise the footer).
+- Settings: `mcp.enabled` is a workspace setting (default true) in the settings schema next to `comments.enabled`, stored in the database and edited with a checkbox beside "Allow comments" on Workspace configuration. It applies without a restart.
+- UI: `/account/agent-access` (create, list, revoke, connection snippets), an admin token list with revoke, and a link to the page in the account menu.
 - Tests: unit tests for validation and draft generation, query and enforcement tests, route tests for auth, origin, limits and each tool, token lifecycle tests, a test using the SDK client against the route, component tests, and e2e.
 - Docs: `README.md` (connecting an agent, the tools, the token model, what the server will not do) and `docs/` pages for the tools and the OKF authoring flow, which the app's own docs already publish.

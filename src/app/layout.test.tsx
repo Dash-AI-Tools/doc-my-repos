@@ -56,9 +56,16 @@ vi.mock("next/headers", () => ({
 const session = vi.hoisted(() => ({
   user: null as null | { id: number; email: string; role: "admin" | "user" },
   ask: { state: "off" } as { state: string },
+  mcp: true as boolean | "throws",
 }));
 vi.mock("@/server/auth/current-user", () => ({ getCurrentUser: async () => session.user }));
 vi.mock("@/server/ask/settings", () => ({ getAskState: async () => session.ask }));
+vi.mock("@/server/workspace", () => ({
+  mcpEnabled: async () => {
+    if (session.mcp === "throws") throw new Error("database down");
+    return session.mcp;
+  },
+}));
 vi.mock("@/server/ask-page", () => ({
   loadAskPage: async () =>
     session.ask.state === "ready"
@@ -103,6 +110,34 @@ function propsOf<P>(node: ReactNode, type: unknown): P | null {
   if (node.type === type) return node.props as unknown as P;
   return propsOf<P>(node.props.children, type);
 }
+
+describe("root layout: the AI agent access link", () => {
+  afterEach(() => {
+    session.user = null;
+    session.mcp = true;
+  });
+
+  const agentAccess = async () =>
+    propsOf<{ agentAccess: boolean }>(await renderLayout(), SiteHeader)?.agentAccess;
+
+  it("is on for a signed-in user while the MCP endpoint is on", async () => {
+    session.user = { id: 1, email: "u@example.com", role: "user" };
+    expect(await agentAccess()).toBe(true);
+  });
+
+  it("is off when an admin turned the endpoint off", async () => {
+    session.user = { id: 1, email: "u@example.com", role: "user" };
+    session.mcp = false;
+    expect(await agentAccess()).toBe(false);
+  });
+
+  it("is off for a signed-out visitor, and when the setting cannot be read", async () => {
+    expect(await agentAccess()).toBe(false);
+    session.user = { id: 1, email: "u@example.com", role: "user" };
+    session.mcp = "throws";
+    expect(await agentAccess()).toBe(false);
+  });
+});
 
 describe("root layout: the Ask link", () => {
   afterEach(() => {

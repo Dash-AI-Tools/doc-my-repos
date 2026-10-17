@@ -15,6 +15,8 @@ import { join, resolve } from "node:path";
  * | `starred`     | 3104 | `docmyrepos_e2e_<id>_starred`     | `SEED_REPOS`, for specs that star|
  * | `comments`    | 3105 | `docmyrepos_e2e_<id>_comments`    | `SEED_REPOS` + users + comments  |
  * | `commentsoff` | 3106 | `docmyrepos_e2e_<id>_commentsoff` | same, `comments.enabled: false`  |
+ * | `agent`       | 3109 | `docmyrepos_e2e_<id>_agent`       | users + a repo with guidelines   |
+ * | `agentoff`    | 3110 | `docmyrepos_e2e_<id>_agentoff`    | same, `mcp.enabled: false`       |
  *
  * `playwright.config.ts` starts the servers and `global-setup.ts` creates and seeds the databases;
  * Playwright starts web servers BEFORE it runs the global setup, so nothing in a server needs its
@@ -39,6 +41,8 @@ export const STACKS = {
   commentsoff: { port: 3106 },
   ask: { port: 3107 },
   settings: { port: 3108 },
+  agent: { port: 3109 },
+  agentoff: { port: 3110 },
 } as const;
 
 /** The fake model provider the `ask` server talks to (see `e2e/support/fake-provider-server.ts`). */
@@ -62,7 +66,15 @@ const REDIRECT_GITHUB_MODULE = resolve(__dirname, "redirect-github.cjs");
 
 export type StackName = keyof typeof STACKS;
 export type DatabaseKind =
-  "seeded" | "empty" | "starred" | "comments" | "commentsoff" | "ask" | "settings";
+  | "seeded"
+  | "empty"
+  | "starred"
+  | "comments"
+  | "commentsoff"
+  | "ask"
+  | "settings"
+  | "agent"
+  | "agentoff";
 
 export function stackUrl(name: StackName): string {
   return `http://127.0.0.1:${STACKS[name].port}`;
@@ -148,7 +160,9 @@ export function serverEnv(name: StackName): Record<string, string> {
     name === "comments" ||
     name === "commentsoff" ||
     name === "ask" ||
-    name === "settings";
+    name === "settings" ||
+    name === "agent" ||
+    name === "agentoff";
   return {
     ...(name === "fixtures" ? { E2E_FIXTURES: "1" } : {}),
     DATABASE_URL: readsDatabase ? databaseUrl(name) : UNREACHABLE_DATABASE_URL,

@@ -15,6 +15,7 @@ import { E2E_ENCRYPTION_KEY, fakeProviderUrl, type DatabaseKind } from "./stack"
  * the specs that walk through that setup.
  *
  * - `commentsoff`: comments are off.
+ * - `agentoff`: the MCP endpoint for AI agents is off.
  * - `ask`: small Ask limits so the specs can reach them (per user: 4 questions in ten minutes, 2
  *   answers at once), and the fake model provider as the OpenAI-compatible endpoint, so an admin
  *   can turn Ask on there. No other database has a provider.
@@ -27,12 +28,14 @@ export async function seedSettings(db: Db, kind: DatabaseKind): Promise<void> {
   const extra: Record<string, unknown> =
     kind === "commentsoff"
       ? { comments: { enabled: false } }
-      : kind === "ask"
-        ? {
-            ask: { questionsPerTenMinutes: 4, maxConcurrent: 2 },
-            providers: { openaiBaseUrl: `${fakeProviderUrl}/v1` },
-          }
-        : {};
+      : kind === "agentoff"
+        ? { mcp: { enabled: false } }
+        : kind === "ask"
+          ? {
+              ask: { questionsPerTenMinutes: 4, maxConcurrent: 2 },
+              providers: { openaiBaseUrl: `${fakeProviderUrl}/v1` },
+            }
+          : {};
   const settings = configSchema.parse({ github: { appId: 1, installationId: 1 }, ...extra });
   const { privateKey } = generateKeyPairSync("rsa", {
     modulusLength: 2048,

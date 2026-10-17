@@ -347,6 +347,33 @@ describe("configSchema sync schedule", () => {
   });
 });
 
+describe("configSchema mcp", () => {
+  it("is enabled by default, whether the key is absent or the section is empty", () => {
+    expect(configSchema.parse({}).mcp).toEqual({ enabled: true });
+    expect(configSchema.parse({ mcp: {} }).mcp).toEqual({ enabled: true });
+  });
+
+  it("accepts an explicit true or false", () => {
+    expect(configSchema.parse({ mcp: { enabled: false } }).mcp).toEqual({ enabled: false });
+    expect(configSchema.parse({ mcp: { enabled: true } }).mcp.enabled).toBe(true);
+  });
+
+  it("rejects a non-boolean value, naming the field", () => {
+    for (const value of ["false", "yes", 0, 1, null]) {
+      expect(issues({ mcp: { enabled: value } })).toEqual([
+        "mcp.enabled: enabled must be true or false",
+      ]);
+    }
+  });
+
+  it("rejects an unknown key under mcp and a non-object section", () => {
+    expect(issues({ mcp: { enabled: true, scopes: ["read"] } })).toEqual([
+      "mcp.scopes: unknown field",
+    ]);
+    expect(issues({ mcp: "on" })).toEqual([expect.stringMatching(/^mcp: /)]);
+  });
+});
+
 describe("configSchema comments", () => {
   it("is enabled by default, whether the key is absent or the section is empty", () => {
     expect(configSchema.parse({}).comments).toEqual({ enabled: true });

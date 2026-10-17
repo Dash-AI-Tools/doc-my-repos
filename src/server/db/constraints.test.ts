@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   apiSpecs,
+  apiTokens,
   askSettings,
   askUsage,
   codeOwners,
@@ -301,6 +302,79 @@ describeDb("table constraints on a real database", () => {
     expect(await codeOf(t.db.insert(siteBranding).values({ id: 2, orgName: "Other" }))).toBe(
       "23514",
     );
+  });
+
+  describe("api_tokens", () => {
+    const future = () => new Date(Date.now() + 86_400_000);
+    const tokenValues = (userId: number, over: Partial<typeof apiTokens.$inferInsert> = {}) => ({
+      userId,
+      name: "laptop",
+      tokenHash: `hash-${counter++}`,
+      prefix: "abcd1234",
+      expiresAt: future(),
+      ...over,
+    });
+    const newUser = async (email: string) => {
+      const [u] = await t.db.insert(users).values({ email, passwordHash: "x" }).returning();
+      return u!;
+    };
+
+    it("stores a token with no revoke or last-use time, and no clear-text column", async () => {
+      const u = await newUser("tok-a@example.com");
+      const [row] = await t.db.insert(apiTokens).values(tokenValues(u.id)).returning();
+      expect(row).toMatchObject({ revokedAt: null, lastUsedAt: null, name: "laptop" });
+      expect(Object.keys(row!).sort()).toEqual(
+        [
+          "createdAt",
+          "expiresAt",
+          "id",
+          "lastUsedAt",
+          "name",
+          "prefix",
+          "revokedAt",
+          "tokenHash",
+          "userId",
+        ].sort(),
+      );
+    });
+
+    it("rejects a duplicate token hash", async () => {
+      const u = await newUser("tok-b@example.com");
+      await t.db.insert(apiTokens).values(tokenValues(u.id, { tokenHash: "same-hash" }));
+      expect(
+        await codeOf(t.db.insert(apiTokens).values(tokenValues(u.id, { tokenHash: "same-hash" }))),
+      ).toBe(UNIQUE_VIOLATION);
+    });
+
+    it("requires a name of 1 to 60 characters", async () => {
+      const u = await newUser("tok-c@example.com");
+      expect(await codeOf(t.db.insert(apiTokens).values(tokenValues(u.id, { name: "" })))).toBe(
+        "23514",
+      );
+      expect(
+        await codeOf(t.db.insert(apiTokens).values(tokenValues(u.id, { name: "x".repeat(61) }))),
+      ).toBe("23514");
+      await t.db.insert(apiTokens).values(tokenValues(u.id, { name: "x".repeat(60) }));
+    });
+
+    it("requires an existing user", async () => {
+      expect(await codeOf(t.db.insert(apiTokens).values(tokenValues(999_999)))).toBe("23503");
+    });
+
+    it("is removed with its user and not with another user's removal", async () => {
+      const a = await newUser("tok-d@example.com");
+      const b = await newUser("tok-e@example.com");
+      await t.db.insert(apiTokens).values(tokenValues(a.id));
+      await t.db.insert(apiTokens).values(tokenValues(b.id));
+      await t.db.delete(users).where(eq(users.id, a.id));
+      expect(await t.db.select().from(apiTokens).where(eq(apiTokens.userId, a.id))).toEqual([]);
+      expect(await t.db.select().from(apiTokens).where(eq(apiTokens.userId, b.id))).toHaveLength(1);
+    });
+
+    it("leaves tokens_valid_after null on a new user", async () => {
+      const u = await newUser("tok-f@example.com");
+      expect(u.tokensValidAfter).toBeNull();
+    });
   });
 
   describe("ask_settings and ask_usage", () => {

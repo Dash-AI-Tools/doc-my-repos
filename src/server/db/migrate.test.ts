@@ -13,6 +13,7 @@ import { createDb } from "./client";
 import { MIGRATION_LOCK_KEY, MigrationError, migrateDatabase, runMigrations } from "./migrate";
 import {
   apiSpecs,
+  apiTokens,
   askSettings,
   askUsage,
   codeOwners,
@@ -48,6 +49,7 @@ const tables: AnyPgTable[] = [
   siteBranding,
   docComments,
   apiSpecs,
+  apiTokens,
   askSettings,
   askUsage,
   workspaceSettings,
@@ -152,6 +154,41 @@ describeDb("migrations on a real database", () => {
     ).toEqual(["doc_comments", "users", "users"]);
   });
 
+  it("has the api_tokens unique hash, user index, name check and a cascading user foreign key", async () => {
+    const { rows: idx } = await t.pool.query<{ indexname: string }>(
+      "SELECT indexname FROM pg_indexes WHERE tablename = 'api_tokens' ORDER BY indexname",
+    );
+    expect(idx.map((r) => r.indexname)).toEqual([
+      "api_tokens_pkey",
+      "api_tokens_token_hash_unique",
+      "api_tokens_user_idx",
+    ]);
+    const { rows: cons } = await t.pool.query<{
+      conname: string;
+      contype: string;
+      def: string;
+    }>(
+      `SELECT conname, contype, pg_get_constraintdef(oid) AS def FROM pg_constraint
+       WHERE conrelid = 'public.api_tokens'::regclass AND contype IN ('c', 'f', 'u') ORDER BY conname`,
+    );
+    expect(cons.map((c) => c.conname)).toEqual([
+      "api_tokens_name_length",
+      "api_tokens_token_hash_unique",
+      "api_tokens_user_id_users_id_fk",
+    ]);
+    expect(cons.find((c) => c.contype === "f")?.def).toMatch(
+      /REFERENCES users\(id\) ON DELETE CASCADE/,
+    );
+  });
+
+  it("adds users.tokens_valid_after nullable with no default, so existing users keep working", async () => {
+    const { rows } = await t.pool.query<{ is_nullable: string; column_default: string | null }>(
+      `SELECT is_nullable, column_default FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'tokens_valid_after'`,
+    );
+    expect(rows).toEqual([{ is_nullable: "YES", column_default: null }]);
+  });
+
   it("has the sync_runs started_at index", async () => {
     const { rows } = await t.pool.query<{ indexdef: string }>(
       "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'sync_runs_started_at_idx'",
@@ -179,6 +216,7 @@ describeDb("migrations on a real database", () => {
     );
     expect(rows).toEqual([
       { table_name: "api_specs", column_name: "id", kind: "identity" },
+      { table_name: "api_tokens", column_name: "id", kind: "identity" },
       { table_name: "ask_usage", column_name: "id", kind: "identity" },
       { table_name: "code_owners", column_name: "id", kind: "identity" },
       { table_name: "doc_comments", column_name: "id", kind: "identity" },
@@ -334,6 +372,54 @@ describeDb("the doc_comments migration onto an existing database", () => {
       expect(after.rows[0]?.t).toBe("doc_comments");
       const users = await handle.pool.query("SELECT email FROM users");
       expect(users.rows).toEqual([{ email: "old@example.com" }]);
+    } finally {
+      await handle.close();
+    }
+  }, 60_000);
+});
+
+describeDb("the api token migration onto an existing database", () => {
+  let empty: EmptyDatabase;
+  let dir: string;
+  beforeAll(async () => {
+    empty = await createEmptyDatabase();
+    // The migrations before the token table, as a database from the previous release has them.
+    dir = mkdtempSync(join(tmpdir(), "docmyrepos-prior-tokens-"));
+    mkdirSync(join(dir, "meta"));
+    const journal = JSON.parse(readFileSync(`${drizzleDir}/meta/_journal.json`, "utf8")) as {
+      entries: { tag: string }[];
+    };
+    const tokens = journal.entries.findIndex((e) => e.tag.includes("_parched_young_avengers"));
+    expect(tokens).toBeGreaterThan(0);
+    const prior = journal.entries.slice(0, tokens);
+    writeFileSync(
+      join(dir, "meta", "_journal.json"),
+      JSON.stringify({ ...journal, entries: prior }),
+    );
+    for (const e of prior) copyFileSync(`${drizzleDir}/${e.tag}.sql`, join(dir, `${e.tag}.sql`));
+  }, 60_000);
+  afterAll(async () => {
+    rmSync(dir, { recursive: true, force: true });
+    await empty?.drop();
+  }, 60_000);
+
+  it("adds the table and the column and leaves existing users untouched", async () => {
+    const handle = createDb(empty.url.reveal(), { max: 2 });
+    try {
+      await runMigrations(handle, dir);
+      await handle.pool.query(
+        "INSERT INTO users (email, password_hash) VALUES ('old@example.com', 'x')",
+      );
+      const before = await handle.pool.query("SELECT to_regclass('public.api_tokens') AS t");
+      expect(before.rows[0]?.t).toBeNull();
+
+      await runMigrations(handle, drizzleDir);
+      const after = await handle.pool.query("SELECT to_regclass('public.api_tokens') AS t");
+      expect(after.rows[0]?.t).toBe("api_tokens");
+      const users = await handle.pool.query("SELECT email, tokens_valid_after FROM users");
+      expect(users.rows).toEqual([{ email: "old@example.com", tokens_valid_after: null }]);
+      const tokens = await handle.pool.query("SELECT count(*)::int AS n FROM api_tokens");
+      expect(tokens.rows[0]?.n).toBe(0);
     } finally {
       await handle.close();
     }
@@ -501,6 +587,7 @@ describeDb("parallel db:migrate runs on one empty database", () => {
       );
       expect(tables.rows.map((r) => r.table_name)).toEqual([
         "api_specs",
+        "api_tokens",
         "ask_settings",
         "ask_usage",
         "code_owners",

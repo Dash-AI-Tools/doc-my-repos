@@ -75,8 +75,13 @@ function isJson(contentType: string | null): boolean {
   return media === "application/json";
 }
 
-/** Checks the three rules above. Never throws and never reads the body. */
-export function requireSameOrigin(request: Request): SameOriginResult {
+/**
+ * The first two rules only: a cross-site fetch, or an `Origin` that is not this server's, fails.
+ * Never throws and never reads the body. The MCP endpoint (mcp-agent-access) uses this alone: its
+ * clients are agents, which send no `Origin`, so a request that carries a foreign one is a browser
+ * (a DNS-rebinding or cross-site attempt) and is refused before anything else happens.
+ */
+export function checkOrigin(request: Request): SameOriginResult {
   const site = request.headers.get("sec-fetch-site")?.trim().toLowerCase();
   if (site === "cross-site") return fail("cross_site");
 
@@ -98,7 +103,13 @@ export function requireSameOrigin(request: Request): SameOriginResult {
       return fail("origin_mismatch");
     }
   }
+  return { ok: true };
+}
 
+/** Checks the three rules above. Never throws and never reads the body. */
+export function requireSameOrigin(request: Request): SameOriginResult {
+  const origin = checkOrigin(request);
+  if (!origin.ok) return origin;
   if (!isJson(request.headers.get("content-type"))) return fail("json_required");
   return { ok: true };
 }

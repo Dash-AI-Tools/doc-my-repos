@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { copyText } from "@/lib/copy-text";
+
 /**
  * Adds a "Copy code" button to every code block inside `children` (the server-rendered, already
  * sanitized document HTML; the server never emits a button). Mermaid blocks are skipped.
@@ -19,39 +21,6 @@ const MERMAID_CLASS = "dmr-mermaid";
 interface Target {
   readonly host: HTMLElement;
   readonly code: HTMLElement;
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Fall through to the textarea path (insecure context, denied permission).
-  }
-  return copyWithTextarea(text);
-}
-
-function copyWithTextarea(text: string): boolean {
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  area.setAttribute("aria-hidden", "true");
-  area.style.position = "fixed";
-  area.style.top = "0";
-  area.style.left = "-9999px";
-  document.body.appendChild(area);
-  const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  try {
-    area.select();
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    area.remove();
-    previous?.focus();
-  }
 }
 
 function CopyButton({ code }: { readonly code: HTMLElement }) {

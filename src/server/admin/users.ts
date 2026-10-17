@@ -1,4 +1,4 @@
-import { and, asc, count, eq, ne } from "drizzle-orm";
+import { and, asc, count, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Db } from "@/server/db/client";
@@ -73,7 +73,8 @@ export type UpdateUserResult =
 
 /**
  * Updates role, disabled flag, or password. Password changes and disabling bump `pwVersion`,
- * so outstanding sessions stop working. Enabling does not need a bump. An admin cannot demote or
+ * so outstanding sessions stop working; a password change also invalidates every API token the
+ * user created before it. Enabling does not need a bump. An admin cannot demote or
  * disable themselves (`actorId`), and the last enabled admin can never lose admin access (409).
  */
 export async function updateUser(
@@ -88,6 +89,7 @@ export async function updateUser(
 
   const patch: Partial<typeof users.$inferInsert> = {};
   let bumpVersion = false;
+  let resetTokens = false;
   if (input.role !== undefined) {
     const role = roleSchema.safeParse(input.role);
     if (!role.success) return { ok: false, status: 400, error: "role: must be admin or user" };
@@ -107,6 +109,7 @@ export async function updateUser(
     }
     patch.passwordHash = await hashPassword(password.data);
     bumpVersion = true;
+    resetTokens = true;
   }
   const losesAdmin =
     row.role === "admin" && !row.disabled && (patch.role === "user" || patch.disabled === true);
@@ -126,7 +129,13 @@ export async function updateUser(
 
   const updated = await db
     .update(users)
-    .set({ ...patch, updatedAt: new Date() })
+    .set({
+      ...patch,
+      // API tokens created before a password reset stop working (spec `agent-tokens`). The
+      // database clock sets this, as it stamps `api_tokens.created_at`, so the two compare exactly.
+      ...(resetTokens ? { tokensValidAfter: sql`now()` } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(users.id, id))
     .returning();
   const next = updated[0];

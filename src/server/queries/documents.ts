@@ -8,6 +8,7 @@ import {
   type DocsTreeDoc,
   type DocsTreeRow,
 } from "../../lib/docs-tree";
+import { OKF_GUIDELINES_FILE, OKF_GUIDELINES_FOLDER } from "../../lib/okf-authoring/names";
 import { DOC_EXTENSION } from "../../lib/routes";
 import type { Db } from "../db/client";
 import { documents, repos, type Heading } from "../db/schema";
@@ -293,6 +294,99 @@ export async function getAdjacentDocs(
   const first = rows[0];
   if (first === undefined) return null;
   return adjacentInTree(buildDocsTree(rows.map(toTreeRow), first.docsPath), path);
+}
+
+/** Most rows `getRepoOutline` returns, whatever the caller asks for. */
+export const MAX_OUTLINE_ROWS = 1000;
+const DEFAULT_OUTLINE_ROWS = 100;
+
+/** A repository's documents for an overview: how many exist and the first rows by path. */
+export interface RepoOutline {
+  /** Every stored document of the repository, reserved files included. */
+  readonly total: number;
+  /** At most `limit` rows in byte order of path; fewer than `total` when it was cut. */
+  readonly docs: DocsTreeRow[];
+}
+
+/**
+ * The first `limit` documents of a visible repository by path (default 100, at most
+ * `MAX_OUTLINE_ROWS`; anything else is the default) and the total count: an outline whose size is
+ * bounded in the database, so a repository of thousands of documents costs the same as a small
+ * one. Empty (`total` 0) when the repository is unknown or hidden.
+ */
+export async function getRepoOutline(
+  db: Db,
+  repo: RepoRef,
+  limit: number = DEFAULT_OUTLINE_ROWS,
+  options: QueryOptions = {},
+): Promise<RepoOutline> {
+  const where = await repoCondition(db, repo, options);
+  if (where === null) return { total: 0, docs: [] };
+  const rowsWanted =
+    Number.isSafeInteger(limit) && limit >= 1 && limit <= MAX_OUTLINE_ROWS
+      ? limit
+      : DEFAULT_OUTLINE_ROWS;
+  const [rows, total] = await Promise.all([
+    db
+      .select(treeColumns)
+      .from(documents)
+      .innerJoin(repos, eq(repos.id, documents.repoId))
+      .where(visibleDocuments(where, options))
+      .orderBy(byPath)
+      .limit(rowsWanted),
+    countDocs(db, repo, options),
+  ]);
+  return { total, docs: rows.map(toTreeRow) };
+}
+
+/** A repository's OKF guidelines file as stored. */
+export interface GuidelinesDocument {
+  /** Repo-relative path as stored (`docs/OKF-Guidelines.md`). */
+  readonly path: string;
+  readonly title: string;
+  readonly description: string | null;
+  /** Markdown body without frontmatter. */
+  readonly body: string;
+  readonly updatedAt: Date;
+}
+
+/**
+ * The repository's guidelines file (mcp-agent-access spec `okf-authoring`): `okf-guidelines.md`
+ * with the file name matched case-insensitively, first in the docs folder, else in its `guides`
+ * folder. Folders are matched exactly as the docs folder is stored. When several spellings of the
+ * name sit in one folder the lowest path in byte order wins. Null when there is none, when the
+ * repository has no docs folder, or when it is unknown or hidden.
+ */
+export async function findOkfGuidelines(
+  db: Db,
+  repo: RepoRef,
+  options: QueryOptions = {},
+): Promise<GuidelinesDocument | null> {
+  const where = await repoCondition(db, repo, options);
+  if (where === null) return null;
+  const inRoot = sql`lower(${documents.path}) = lower(${repos.docsPath} || ${`/${OKF_GUIDELINES_FILE}`})`;
+  const inGuides = sql`lower(${documents.path}) = lower(${repos.docsPath} || ${`/${OKF_GUIDELINES_FOLDER}/${OKF_GUIDELINES_FILE}`})`;
+  const rows = await db
+    .select({
+      path: documents.path,
+      title: documents.title,
+      description: documents.description,
+      body: documents.body,
+      updatedAt: documents.updatedAt,
+    })
+    .from(documents)
+    .innerJoin(repos, eq(repos.id, documents.repoId))
+    .where(
+      and(
+        visibleDocuments(where, options),
+        sql`${repos.docsPath} is not null`,
+        or(inRoot, inGuides),
+      ),
+    )
+    .orderBy(sql`case when ${inRoot} then 0 else 1 end`, byPath)
+    .limit(1);
+  const row = rows[0];
+  return row === undefined ? null : { ...row };
 }
 
 /** Number of stored documents of a visible repository (0 when unknown or hidden). */

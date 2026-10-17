@@ -178,7 +178,7 @@ test.describe("branded portal", () => {
     });
     await open(page, "light");
     const credit = page.getByTestId("footer-credit-link");
-    await expect(credit).toHaveText("DocMyRepos");
+    await expect(credit).toHaveAccessibleName("DocMyRepos");
     await expect(credit).toHaveAttribute("href", "https://github.com/Dash-AI-Tools/doc-my-repos");
     await expect(credit).toHaveAttribute("target", "_blank");
     const star = page.getByTestId("footer-star-link");

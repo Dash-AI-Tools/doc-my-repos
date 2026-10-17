@@ -91,6 +91,12 @@ export interface RepoDetail extends RepoSummary {
   readonly syncWarnings: readonly SyncWarningView[];
 }
 
+/** A repository as an agent sees it in a list: the card fields and the docs folder. */
+export interface RepoOverview extends RepoSummary {
+  /** Docs folder in use (`docs`), null when the repository has none. */
+  readonly docsPath: string | null;
+}
+
 export interface ListReposArgs {
   /** At most this many repositories (1 to `MAX_LIST_LIMIT`); all when absent or invalid. */
   readonly limit?: number;
@@ -175,6 +181,15 @@ function pageInt(value: unknown, min: number, max: number): number | null {
  * search bar on the home page is the global document search (group 10), not a repository filter,
  * so there is no name filter here; an empty list is the "nothing synced yet" state.
  */
+/** Byte order ("C") rather than the database's collation: the same order on every server. */
+const repoOrder = [
+  sql`lower(${repos.owner}) collate "C"`,
+  sql`lower(${repos.name}) collate "C"`,
+  sql`${repos.owner} collate "C"`,
+  sql`${repos.name} collate "C"`,
+  asc(repos.id),
+] as const;
+
 export async function listRepos(
   db: Db,
   args: ListReposArgs = {},
@@ -186,18 +201,33 @@ export async function listRepos(
     .select(summaryColumns)
     .from(repos)
     .where(visibleRepos(options))
-    // Byte order ("C") rather than the database's collation, so the order is the same on every
-    // server: case-insensitive first, then exact spelling, then id.
-    .orderBy(
-      sql`lower(${repos.owner}) collate "C"`,
-      sql`lower(${repos.name}) collate "C"`,
-      sql`${repos.owner} collate "C"`,
-      sql`${repos.name} collate "C"`,
-      asc(repos.id),
-    )
+    // Case-insensitive first, then exact spelling, then id.
+    .orderBy(...repoOrder)
     .offset(offset);
   const rows = limit === null ? await base : await base.limit(limit);
   return rows.map(toSummary);
+}
+
+/**
+ * The same list as `listRepos` (same order, same filter) with each repository's docs folder, for
+ * the MCP `list_repositories` tool. A separate query so `RepoSummary`, which many pages build
+ * cards from, does not grow a field only agents need.
+ */
+export async function listRepoOverviews(
+  db: Db,
+  args: ListReposArgs = {},
+  options: QueryOptions = {},
+): Promise<RepoOverview[]> {
+  const limit = pageInt(args.limit, 1, MAX_LIST_LIMIT);
+  const offset = pageInt(args.offset, 0, Number.MAX_SAFE_INTEGER) ?? 0;
+  const base = db
+    .select({ ...summaryColumns, docsPath: repos.docsPath })
+    .from(repos)
+    .where(visibleRepos(options))
+    .orderBy(...repoOrder)
+    .offset(offset);
+  const rows = limit === null ? await base : await base.limit(limit);
+  return rows.map((row) => ({ ...toSummary(row), docsPath: row.docsPath }));
 }
 
 /**

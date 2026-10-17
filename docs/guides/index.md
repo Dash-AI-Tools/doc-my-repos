@@ -8,6 +8,7 @@ description: Task-oriented guides for running DocMyRepos. Getting started, insta
 Step-by-step pages for the things you do with DocMyRepos.
 
 - [Getting started](./getting-started.md): run it with Docker, or develop on the host.
+- [Writing OKF documents with an agent](./okf-authoring.md): the guidelines file, the draft DocMyRepos generates, writing and validating a document through MCP.
 - [Install with the script](./install-script.md): one command that checks Docker, asks a few questions, writes the files and starts it.
 - [Comments](./comments.md): discussing a document on its page, who can do what, limits and moderation.
 - [Ask the docs](./ask.md): the AI assistant: setting up the provider and model, what is sent, limits and privacy.

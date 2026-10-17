@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SetupBanner } from "@/components/setup-banner";
 import { workspaceStatusLine } from "@/lib/workspace-status";
 import { setupNeeded } from "@/server/onboarding";
+import { mcpEnabled } from "@/server/workspace";
 import { currentWorkspaceState } from "@/server/workspace-state";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 /** Admin home: setup state, and links to users, repo access, comments, Ask, GitHub and branding. */
 export default async function AdminPage() {
   const setup = await setupNeeded();
+  const agentAccess = await mcpEnabled().catch(() => false);
   // Names only; if the settings cannot be read the line is left out rather than guessed.
   const state = await currentWorkspaceState()
     .then(workspaceStatusLine)
@@ -70,6 +72,16 @@ export default async function AdminPage() {
               Review, delete and permanently remove document comments.
             </p>
           </li>
+          {agentAccess ? (
+            <li>
+              <Link href="/admin/tokens" className="font-medium underline underline-offset-4">
+                AI agent tokens
+              </Link>
+              <p className="text-sm text-muted-foreground">
+                See and revoke the tokens users created for AI agents.
+              </p>
+            </li>
+          ) : null}
           <li>
             <Link href="/admin/workspace" className="font-medium underline underline-offset-4">
               Workspace configuration

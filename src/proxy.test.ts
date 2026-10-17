@@ -227,8 +227,12 @@ describe("proxy: auth gate (access-control)", () => {
     vi.stubEnv("SESSION_SECRET", SECRET);
   });
 
-  async function gated(path: string, cookie?: string): Promise<NextResponse> {
-    const headers: Record<string, string> = {};
+  async function gated(
+    path: string,
+    cookie?: string,
+    extra: Record<string, string> = {},
+  ): Promise<NextResponse> {
+    const headers: Record<string, string> = { ...extra };
     if (cookie !== undefined) headers.cookie = `${SESSION_COOKIE}=${cookie}`;
     return proxy(request(path, headers));
   }
@@ -261,6 +265,34 @@ describe("proxy: auth gate (access-control)", () => {
     }
   });
 
+  it("lets exactly /api/mcp through without a session, with or without a bearer token", async () => {
+    const bearer = { authorization: "Bearer dmr_" + "A".repeat(43) };
+    for (const extra of [{}, bearer]) {
+      const response = await gated("/api/mcp", undefined, extra);
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+    }
+  });
+
+  it("did not make anything else near /api/mcp public", async () => {
+    for (const path of [
+      "/api/mcp/",
+      "/api/mcp/x",
+      "/api/mcpx",
+      "/api/mcp.json",
+      "/api/mcp%2F",
+      "/api/mcp%2Fx",
+      "/api/MCP",
+      "/api/account/tokens",
+      "/api/admin/tokens",
+      "/account/agent-access",
+      "/admin/tokens",
+    ]) {
+      const response = await gated(path);
+      expect(response.headers.get("x-middleware-next"), path).not.toBe("1");
+      expect([307, 401], path).toContain(response.status);
+    }
+  });
+
   it("lets /api/health through but keeps /api/status behind the login", async () => {
     expect((await gated("/api/health")).headers.get("x-middleware-next")).toBe("1");
     expect((await gated("/api/status")).status).toBe(401);
@@ -279,6 +311,31 @@ describe("proxy: auth gate (access-control)", () => {
       expect((await gated(path)).headers.get("x-middleware-next"), path).toBe("1");
     }
     expect((await gated("/logo-black.png.bak")).status).not.toBe(200);
+  });
+
+  it("treats a bearer API token as no credential on every page and API except the MCP endpoint", async () => {
+    const bearer = { authorization: "Bearer dmr_" + "A".repeat(43) };
+    for (const path of ["/", "/admin", "/account/agent-access", "/search", "/acme/repo"]) {
+      const response = await gated(path, undefined, bearer);
+      expect(response.status, path).toBe(307);
+      expect(response.headers.get("location"), path).toMatch(/\/login$/);
+    }
+    for (const path of [
+      "/api/account/tokens",
+      "/api/account/tokens/1",
+      "/api/admin/tokens",
+      "/api/admin/tokens/1",
+      "/api/admin/users",
+      "/api/admin/settings",
+      "/api/status",
+      "/api/search?q=x",
+      "/api/ask",
+      "/api/comments?repo=a/b&path=x",
+      "/api/asset/acme/repo/x.png",
+    ]) {
+      const response = await gated(path, undefined, bearer);
+      expect(response.status, path).toBe(401);
+    }
   });
 
   it("lets a valid session through and rejects tampered or expired ones", async () => {

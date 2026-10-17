@@ -310,10 +310,41 @@ export const users = pgTable(
     disabled: boolean("disabled").notNull().default(false),
     // Bumped on password reset/disable so outstanding cookies stop working.
     pwVersion: integer("pw_version").notNull().default(0),
+    // Set when an administrator resets the password: API tokens created before it stop working
+    // (mcp-agent-access design decision 2). Null until then.
+    tokensValidAfter: timestamptz("tokens_valid_after"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },
   (t) => [unique("users_email_unique").on(t.email)],
+);
+
+/**
+ * Personal API tokens for the MCP endpoint (mcp-agent-access design decision 2). Only the SHA-256
+ * hash of the token and its first characters (`prefix`, for display) are stored: the full token is
+ * shown once at creation. A token acts as its user, so it is removed with the user. Revoked and
+ * expired rows are kept 30 days for the list, then deleted when a token is created.
+ */
+export const apiTokens = pgTable(
+  "api_tokens",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    prefix: text("prefix").notNull(),
+    expiresAt: timestamptz("expires_at").notNull(),
+    revokedAt: timestamptz("revoked_at"),
+    lastUsedAt: timestamptz("last_used_at"),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique("api_tokens_token_hash_unique").on(t.tokenHash),
+    index("api_tokens_user_idx").on(t.userId),
+    check("api_tokens_name_length", sql`char_length(${t.name}) between 1 and 60`),
+  ],
 );
 
 /** Raw bytes for the branding logo (`bytea`, at most 512 KB by API validation). */

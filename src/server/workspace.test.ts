@@ -203,6 +203,17 @@ describeDb("the workspace", () => {
       expect((await getWorkspace({ handle: h, env: ENV })).github).not.toBeNull();
     });
 
+    it("reads the MCP switch from the saved settings, on by default, without a restart", async () => {
+      expect((await getWorkspace({ handle: h, env: ENV })).config.mcp.enabled).toBe(true);
+      // A save in this process drops the cached workspace (the settings API does the same).
+      await save({ settings: { mcp: { enabled: false } } });
+      invalidateWorkspace();
+      expect((await getWorkspace({ handle: h, env: ENV })).config.mcp.enabled).toBe(false);
+      await save({ settings: { mcp: { enabled: true } } });
+      invalidateWorkspace();
+      expect((await getWorkspace({ handle: h, env: ENV })).config.mcp.enabled).toBe(true);
+    });
+
     it("reads the comments switch from the saved settings", async () => {
       await save({ settings: { comments: { enabled: false } } });
       expect((await getWorkspace({ handle: h, env: ENV })).config.comments.enabled).toBe(false);

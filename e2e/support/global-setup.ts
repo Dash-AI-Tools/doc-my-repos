@@ -5,6 +5,7 @@ import { runMigrations } from "../../src/server/db/migrate";
 import { assertPostgresReachable, createDatabase } from "./db";
 import { seedAskData } from "./ask-seed";
 import { seedSettings } from "./settings-seed";
+import { seedAgentData } from "./agent-seed";
 import { seedCommentData } from "./comment-seed";
 import { seedDatabase } from "./seed";
 import {
@@ -45,9 +46,16 @@ async function prepare(kind: DatabaseKind): Promise<void> {
     await runMigrations(handle, MIGRATIONS_FOLDER);
     if (kind !== "empty" && kind !== "settings") await seedDatabase(handle.db);
     await seedSettings(handle.db, kind);
-    if (kind === "comments" || kind === "commentsoff" || kind === "ask") {
+    if (
+      kind === "comments" ||
+      kind === "commentsoff" ||
+      kind === "ask" ||
+      kind === "agent" ||
+      kind === "agentoff"
+    ) {
       await seedCommentData(handle.db);
     }
+    if (kind === "agent" || kind === "agentoff") await seedAgentData(handle.db);
     if (kind === "ask") await seedAskData(handle.db);
   } finally {
     await handle.close();
@@ -70,6 +78,8 @@ export default async function globalSetup(): Promise<void> {
     await prepare("commentsoff");
     await prepare("ask");
     await prepare("settings");
+    await prepare("agent");
+    await prepare("agentoff");
   } catch (error) {
     await teardown();
     throw error;

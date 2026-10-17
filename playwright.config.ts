@@ -28,7 +28,8 @@ import {
  *   3104 `starred` is a second seeded database for specs that star and reorder repositories, so
  *   they cannot disturb the read-only specs on `seeded`. 3105 `comments` adds seeded users and
  *   comments and is acted on with the `x-e2e-user` header; 3106 `commentsoff` is the same data
- *   with `comments.enabled: false`.)
+ *   with `comments.enabled: false`. 3109 `agent` has the users, a repository with an OKF
+ *   guidelines file and the MCP endpoint on; 3110 `agentoff` is the same with `mcp.enabled: false`.)
  * - 3103 `unreachable`: `DATABASE_URL` points at a port nothing listens on.
  *
  * The last three need Postgres (`docker compose --env-file .env.example up -d --wait db`, or
@@ -71,15 +72,25 @@ export default defineConfig({
     },
     ...(SKIP_DB
       ? []
-      : (["seeded", "empty", "starred", "comments", "commentsoff", "ask", "settings"] as const).map(
-          (name) => ({
-            command: start(STACKS[name].port),
-            url: stackUrl(name),
-            reuseExistingServer: false,
-            timeout: 60_000,
-            env: serverEnv(name),
-          }),
-        )),
+      : (
+          [
+            "seeded",
+            "empty",
+            "starred",
+            "comments",
+            "commentsoff",
+            "ask",
+            "settings",
+            "agent",
+            "agentoff",
+          ] as const
+        ).map((name) => ({
+          command: start(STACKS[name].port),
+          url: stackUrl(name),
+          reuseExistingServer: false,
+          timeout: 60_000,
+          env: serverEnv(name),
+        }))),
     {
       // The fake GitHub API of the `settings` stack (loopback only, no real GitHub).
       command: "pnpm exec tsx e2e/support/fake-github-server.ts",

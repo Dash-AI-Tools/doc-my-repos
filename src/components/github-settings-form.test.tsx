@@ -178,6 +178,35 @@ describe("GithubSettingsForm: saving", () => {
     expect((screen.getByLabelText("Private key (PEM)") as HTMLTextAreaElement).value).toBe("");
   });
 
+  it("shows the AI agent switch on by default and saves it when it is turned off", async () => {
+    fetchMock.mockResolvedValue(json(EMPTY));
+    render(<GithubSettingsForm initial={EMPTY} />);
+    const toggle = screen.getByLabelText(
+      "Allow AI agents to read the documentation over MCP",
+    ) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    expect(screen.getByText(/the \/api\/mcp endpoint, the AI agent access page/)).toBeDefined();
+    click(toggle);
+    save();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(sent().settings.mcp).toEqual({ enabled: false });
+  });
+
+  it("loads the AI agent switch from the stored settings", () => {
+    const off: SettingsView = {
+      ...CONFIGURED,
+      settings: configSchema.parse({ ...CONFIGURED.settings, mcp: { enabled: false } }),
+    };
+    render(<GithubSettingsForm initial={off} />);
+    expect(
+      (
+        screen.getByLabelText(
+          "Allow AI agents to read the documentation over MCP",
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+  });
+
   it("leaves empty secret fields out (keep) and sends null for Clear", async () => {
     // A fresh Response per call: a body can be read only once.
     fetchMock.mockImplementation(async () => json(CONFIGURED));
