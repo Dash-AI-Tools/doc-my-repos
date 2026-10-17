@@ -49,9 +49,9 @@ Write a test with every parser or pipeline change.
 
 ## How we work: specs first
 
-The behavior of DocMyRepos is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) under `openspec/changes/docmyrepos-mvp/`: `proposal.md`, one `specs/<capability>/spec.md` per capability (requirements with WHEN/THEN scenarios), `design.md` (decisions and trade-offs) and `tasks.md`.
+The behavior of DocMyRepos is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) The current requirements are in `openspec/specs/<capability>/spec.md`, one per capability (requirements with WHEN/THEN scenarios). A change to behavior is a change folder under `openspec/changes/<name>/` with `proposal.md`, `specs/` deltas, `design.md` (decisions and trade-offs) and `tasks.md`; it moves to `openspec/changes/archive/` when done.
 
-- **A change in behavior starts in the spec.** Update the matching `specs/*/spec.md` first (and `design.md` if you change a decision), then the code, then run `openspec validate --all`. A pull request that changes behavior without its spec will be asked to add it.
+- **A change in behavior starts in the spec.** Update the matching spec first (the delta in your change) (and `design.md` if you change a decision), then the code, then run `openspec validate --all`. A pull request that changes behavior without its spec will be asked to add it.
 - **Read the spec and the design decision before you implement** anything in that area.
 - Bug fixes that restore specified behavior need a failing test first, not a spec change.
 

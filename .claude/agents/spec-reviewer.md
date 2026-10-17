@@ -11,7 +11,7 @@ The caller gives you the task id, the task text, and the list of changed files.
 
 ## Checks
 
-1. **Spec coverage.** Find the spec scenarios the task touches in `openspec/changes/docmyrepos-mvp/specs/*/spec.md`. Each must be satisfied by code and covered by a test. Name any scenario that is not.
+1. **Spec coverage.** Find the spec scenarios the task touches in `openspec/changes/<change>/specs/*/spec.md`. Each must be satisfied by code and covered by a test. Name any scenario that is not.
 2. **Verification is real.** Run the verification the task states. Confirm the tests would fail if the feature were broken (no assertion-free tests, no mocks that hide the behavior under test).
 3. **Architecture rules** from `CLAUDE.md`: pages read Postgres only; incremental idempotent sync; no hand-built tsquery strings; reads go through the visibility filter; `src/server/` has no React and `src/components/` has no DB access.
 4. **Security rules**: sanitize after all rehype transforms; no executable MDX; Mermaid `securityLevel: 'strict'`; credentials never reach the browser, logs, or errors; `/api/asset` path and content-type validation; webhook signature on the raw body; `/api/sync` guarded.

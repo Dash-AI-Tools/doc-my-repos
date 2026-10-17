@@ -1,6 +1,6 @@
 ---
 name: dev-loop
-description: Run ONE iteration of the DocMyRepos development loop. Picks the next unchecked task in openspec/changes/docmyrepos-mvp/tasks.md, implements it with the task-implementer agent, reviews it with the spec-reviewer agent, ticks it, and reports. Repeat with `/loop /dev-loop` (attended) or `/loop /dev-loop unattended`, or run headless with scripts/dev-loop.sh. Use when the user asks to keep building the repo task by task, including overnight or unattended.
+description: Run ONE iteration of the DocMyRepos development loop. Picks the next unchecked task in openspec/changes/<change>/tasks.md, implements it with the task-implementer agent, reviews it with the spec-reviewer agent, ticks it, and reports. Repeat with `/loop /dev-loop` (attended) or `/loop /dev-loop unattended`, or run headless with scripts/dev-loop.sh. Use when the user asks to keep building the repo task by task, including overnight or unattended.
 ---
 
 # dev-loop
@@ -36,7 +36,8 @@ Read `log.md` first on every run. Count iterations from it.
 
 ## 1. Pick the task
 
-- Read `openspec/changes/docmyrepos-mvp/tasks.md`. Take the first `- [ ]` line in file order that is not listed under `## Parked` in `log.md`.
+- `<change>` is the one active change under `openspec/changes/` (the folder that is not `archive/`). If there is none, stop: `STATUS: stop: no active change`.
+- Read `openspec/changes/<change>/tasks.md`. Take the first `- [ ]` line in file order that is not listed under `## Parked` in `log.md`.
 - None left: run `openspec validate --all`, write the final summary (see Finish), set `STATUS` to `stop: all tasks done or parked`.
 - Announce `Task <id>: <text>`.
 
