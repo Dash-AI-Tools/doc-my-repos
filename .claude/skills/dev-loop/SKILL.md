@@ -37,7 +37,7 @@ Read `log.md` first on every run. Count iterations from it.
 ## 1. Pick the task
 
 - Read `openspec/changes/docmyrepos-mvp/tasks.md`. Take the first `- [ ]` line in file order that is not listed under `## Parked` in `log.md`.
-- None left: run `openspec validate docmyrepos-mvp`, write the final summary (see Finish), set `STATUS` to `stop: all tasks done or parked`.
+- None left: run `openspec validate --all`, write the final summary (see Finish), set `STATUS` to `stop: all tasks done or parked`.
 - Announce `Task <id>: <text>`.
 
 ## 2. Human-gated tasks

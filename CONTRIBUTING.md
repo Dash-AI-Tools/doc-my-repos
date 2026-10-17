@@ -34,7 +34,7 @@ Syncing real repositories needs a GitHub App: see the [setup guide](docs/github-
 | `pnpm db:up`                           | Start only the compose `db` service                                 |
 | `pnpm db:generate` / `pnpm db:migrate` | Create a Drizzle migration after a schema change / apply migrations |
 | `pnpm screenshots`                     | Regenerate `docs-assets/screenshots` (light and dark)               |
-| `openspec validate docmyrepos-mvp`     | Validate the specs (CLI: `npm i -g @fission-ai/openspec`)           |
+| `openspec validate --all`              | Validate the specs (CLI: `npm i -g @fission-ai/openspec`)           |
 
 Before you push, run `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test`. CI runs the same, plus the build, the e2e tests, the Docker image and `openspec validate`.
 
@@ -51,7 +51,7 @@ Write a test with every parser or pipeline change.
 
 The behavior of DocMyRepos is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) under `openspec/changes/docmyrepos-mvp/`: `proposal.md`, one `specs/<capability>/spec.md` per capability (requirements with WHEN/THEN scenarios), `design.md` (decisions and trade-offs) and `tasks.md`.
 
-- **A change in behavior starts in the spec.** Update the matching `specs/*/spec.md` first (and `design.md` if you change a decision), then the code, then run `openspec validate docmyrepos-mvp`. A pull request that changes behavior without its spec will be asked to add it.
+- **A change in behavior starts in the spec.** Update the matching `specs/*/spec.md` first (and `design.md` if you change a decision), then the code, then run `openspec validate --all`. A pull request that changes behavior without its spec will be asked to add it.
 - **Read the spec and the design decision before you implement** anything in that area.
 - Bug fixes that restore specified behavior need a failing test first, not a spec change.
 
@@ -86,7 +86,7 @@ Documentation comes from third-party repositories and is untrusted.
 - Keep a pull request focused on one change. Rebase on `main` rather than merging it in.
 - **Commit messages:** a short imperative subject (about 70 characters), a blank line, then a body that explains **why** the change is needed and anything a reviewer must know. Reference the issue (`Fixes #123`). Small, logical commits are better than one large one.
 - Fill in the pull request template. In short, a pull request is ready when:
-  - the spec is updated for any behavior change and `openspec validate docmyrepos-mvp` passes;
+  - the spec is updated for any behavior change and `openspec validate --all` passes;
   - tests are added or updated, and `pnpm typecheck`, `pnpm lint`, `pnpm format:check` and `pnpm test` pass locally (and `pnpm test:e2e` for UI changes);
   - documentation is updated (README, `docs/` and `.env.example` for new settings);
   - UI changes come with screenshots in light and dark;

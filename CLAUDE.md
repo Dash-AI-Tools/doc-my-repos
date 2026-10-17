@@ -9,7 +9,7 @@ Planning only. There is no application code yet. The source of truth is the Open
 ## Workflow
 
 - Work is driven by OpenSpec. Implement tasks from `tasks.md` in order, with `/opsx:apply`. Tick each `- [ ]` only after its stated verification passes.
-- If behavior changes, update the spec under `openspec/changes/docmyrepos-mvp/specs/` first, then the code, then run `openspec validate docmyrepos-mvp`.
+- If behavior changes, update the spec under `openspec/changes/docmyrepos-mvp/specs/` first, then the code, then run `openspec validate --all`.
 - Do not start implementing during `/opsx:propose` or `/opsx:update`; those only touch planning artifacts.
 
 ## Stack (decided)
@@ -27,7 +27,7 @@ pnpm test:e2e            # Playwright
 pnpm db:generate         # create a Drizzle migration
 pnpm db:migrate          # apply migrations
 docker compose up -d db  # local Postgres
-openspec validate docmyrepos-mvp
+openspec validate --all
 ```
 
 ## Architecture rules

@@ -510,7 +510,7 @@ pnpm test:e2e            # browser tests (Playwright), needs Postgres
 pnpm build               # production build
 pnpm db:generate         # create a Drizzle migration after a schema change
 pnpm screenshots         # demo-data screenshots into docs-assets/screenshots (overwrites the README ones)
-openspec validate docmyrepos-mvp
+openspec validate --all
 ```
 
 **Unit and database tests.** `pnpm test` runs Vitest over `src/**` and `tests/unit/**`. Pure logic (CODEOWNERS, frontmatter, link rewriting, the config schema) is unit-tested; sync, queries and search run against a **real Postgres** and fail loudly when none is reachable: start it with `pnpm db:up`. The database tests create and drop a throwaway database on the server in `TEST_DATABASE_URL` (default: `DATABASE_URL`, then the compose database). Set `SKIP_DB_TESTS=1` to skip them (a warning says so).
