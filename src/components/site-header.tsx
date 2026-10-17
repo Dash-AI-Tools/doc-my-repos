@@ -57,7 +57,8 @@ export function SiteHeader({
           className="flex min-w-0 max-w-full shrink items-center gap-2 text-lg font-bold tracking-tight text-header-foreground no-underline hover:text-header-foreground"
         >
           {branding.hasLogo ? (
-            // Fixed-height box, so the measured header height never depends on the image.
+            // Fixed-height box, so the measured header height never depends on the image. A plain
+            // img: the URL is versioned and served by our own route, and the logo may be an SVG.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={`/api/branding/logo?v=${branding.logoVersion}`}
