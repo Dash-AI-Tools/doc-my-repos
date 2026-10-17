@@ -95,6 +95,18 @@ import {
   parseFrontmatter,
   type FrontmatterData,
 } from "./frontmatter";
+import { MAX_BODY_BYTES as MCP_MAX_BODY_BYTES } from "../mcp/endpoint";
+import { MAX_IN_PROCESS, MAX_PER_TOKEN } from "../mcp/limits";
+import { TOOL_TIMEOUT_MS } from "../mcp/server";
+import {
+  DEFAULT_OUTLINE_ROWS as MCP_DEFAULT_OUTLINE_ROWS,
+  DEFAULT_SEARCH_LIMIT as MCP_DEFAULT_SEARCH_LIMIT,
+  MAX_BODY_CHARACTERS,
+  MAX_LISTED_REPOSITORIES,
+  MAX_OUTLINE_ROWS as MCP_MAX_OUTLINE_ROWS,
+  MAX_SEARCH_LIMIT as MCP_MAX_SEARCH_LIMIT,
+} from "../mcp/tools";
+import { MAX_CONTENT_BYTES } from "./okf-validate";
 
 /**
  * Dogfood check (task 13.5, deployment spec "Dogfooded documentation"): the real `docs/` folder
@@ -168,11 +180,14 @@ const EXPECTED_TYPES: Readonly<Record<string, string>> = {
   "docs/guides/configuration.md": "Guide",
   "docs/guides/getting-started.md": "Guide",
   "docs/guides/install-script.md": "Guide",
+  "docs/guides/okf-authoring.md": "Guide",
   "docs/guides/okf-support.md": "Guide",
   "docs/guides/search.md": "Guide",
   "docs/guides/webhooks.md": "Guide",
   "docs/reference/api.md": "Reference",
   "docs/reference/frontmatter.md": "Reference",
+  "docs/reference/mcp.md": "Reference",
+  "docs/reference/okf-validation.md": "Reference",
   "docs/reference/operations.md": "Runbook",
 };
 
@@ -515,6 +530,28 @@ describe("dogfood docs: the files", () => {
       `At most ${MAX_UNKNOWN} unknown keys`,
       `after ${["zero", "one", "two", "three", "four"][OKF_MAX_DEPTH]} levels`,
     );
+    mentions(
+      "docs/reference/mcp.md",
+      `${MCP_MAX_BODY_BYTES / 1024} KB`,
+      `${MAX_PER_TOKEN} (the fifth answers 429)`,
+      `${MAX_IN_PROCESS} (beyond that, 503)`,
+      `${TOOL_TIMEOUT_MS / 1000} seconds`,
+      `1 to ${MCP_MAX_SEARCH_LIMIT}, default ${MCP_DEFAULT_SEARCH_LIMIT}`,
+      `1 to ${MCP_MAX_OUTLINE_ROWS}, default ${MCP_DEFAULT_OUTLINE_ROWS}`,
+      `Up to ${MAX_LISTED_REPOSITORIES} repositories`,
+      `${MAX_BODY_CHARACTERS.toLocaleString("en-US")} characters`,
+    );
+    mentions(
+      "docs/reference/okf-validation.md",
+      `${MAX_CONTENT_BYTES / 1024} KB`,
+      `${MAX_FACET_CHARS} characters`,
+      `At most ${MAX_TAGS} entries`,
+      `longer than ${MAX_TITLE_CHARS} characters`,
+      `longer than ${MAX_DESCRIPTION_CHARS} characters`,
+      `${MAX_FRONTMATTER_BYTES / 1024} KiB`,
+      `${MAX_FRONTMATTER_DEPTH} levels`,
+      `${MAX_FRONTMATTER_NODES.toLocaleString("en-US")} values`,
+    );
   });
 
   it("uses tables, task lists, footnotes, several code languages and at least four diagrams", () => {
@@ -676,8 +713,15 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
       "OKF support",
       "Search",
       "Webhooks",
+      "Writing OKF documents with an agent",
     ]);
-    expect(titles("reference")).toEqual(["Frontmatter", "HTTP API", "Operations"]);
+    expect(titles("reference")).toEqual([
+      "Frontmatter",
+      "HTTP API",
+      "MCP server",
+      "OKF validation codes",
+      "Operations",
+    ]);
     expect(titles("decisions")).toHaveLength(4);
 
     for (const name of FOLDERS) {
@@ -702,14 +746,14 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
     expect(facets.total).toBe(Object.keys(EXPECTED_TYPES).length);
     // By count, then by value.
     expect(facets.types).toEqual([
-      { value: "Guide", count: 9 },
+      { value: "Guide", count: 10 },
       { value: "Concept", count: 4 },
       { value: "Decision", count: 4 },
-      { value: "Reference", count: 2 },
+      { value: "Reference", count: 4 },
       { value: "Runbook", count: 1 },
     ]);
     expect(facets.statuses).toEqual([
-      { value: "stable", count: 15 },
+      { value: "stable", count: 18 },
       { value: "accepted", count: 4 },
       { value: "draft", count: 1 },
     ]);
@@ -727,10 +771,10 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
 
     // Selecting a type narrows the others' counts the way the UI relies on.
     const guides = await getRepoFacets(h.db, { id: ref.id }, { type: "Guide" });
-    expect(guides.total).toBe(9);
+    expect(guides.total).toBe(10);
     expect(guides.types.map((t) => t.value)).toContain("Decision");
     expect(guides.statuses).toEqual([
-      { value: "stable", count: 8 },
+      { value: "stable", count: 9 },
       { value: "draft", count: 1 },
     ]);
     const both = await getRepoFacets(h.db, { id: ref.id }, { type: "Guide", status: "draft" });

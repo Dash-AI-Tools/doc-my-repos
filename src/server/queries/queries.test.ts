@@ -23,6 +23,7 @@ import {
   countDocComments,
   countDocs,
   findAssetRepo,
+  findOkfGuidelines,
   getAdjacentDocs,
   getApiSpec,
   getCommentDocument,
@@ -34,12 +35,14 @@ import {
   getDocumentByPath,
   getRepo,
   getRepoFacets,
+  getRepoOutline,
   getRepoSyncInfo,
   getSyncStatus,
   listApiSpecs,
   listCodeOwners,
   listCommentsForModeration,
   listDocComments,
+  listRepoOverviews,
   listRepos,
   NOT_QUERIES,
   QUERY_FUNCTIONS,
@@ -201,6 +204,8 @@ async function seed(db: Db): Promise<Seed> {
     doc(handbook, "docs/100%_real\\'quote.md", "Weird name"),
     doc(secret, "documentation/private.md", "Private plan"),
     doc(secret, "documentation/more.md", "More private"),
+    // Agent reads (mcp-agent-access): a guidelines file the private repository must not reveal.
+    doc(secret, "documentation/guides/OKF-Guidelines.md", "Private guidelines"),
   ]);
   // JSONB the sync never writes, to prove reads are defensive.
   await db
@@ -404,8 +409,31 @@ function flipCases(s: Seed): Record<keyof typeof QUERY_FUNCTIONS, FlipCase[]> {
         seen: (r) => (r as { id: number }[]).some((x) => x.id === s.secret),
       },
     ],
+    listRepoOverviews: [
+      {
+        label: "agent list",
+        run: (db, o) => listRepoOverviews(db, {}, o),
+        seen: (r) => (r as { id: number }[]).some((x) => x.id === s.secret),
+      },
+    ],
     getRepo: [
       { label: "by name", run: (db, o) => getRepo(db, "acme", "secret", o), seen: (r) => !!r },
+    ],
+    getRepoOutline: [
+      {
+        label: "by id",
+        run: (db, o) => getRepoOutline(db, byId, 10, o),
+        seen: (r) => (r as { total: number }).total > 0,
+      },
+      {
+        label: "by name",
+        run: (db, o) => getRepoOutline(db, byName, 10, o),
+        seen: (r) => (r as { docs: unknown[] }).docs.length > 0,
+      },
+    ],
+    findOkfGuidelines: [
+      { label: "by id", run: (db, o) => findOkfGuidelines(db, byId, o), seen: (r) => !!r },
+      { label: "by name", run: (db, o) => findOkfGuidelines(db, byName, o), seen: (r) => !!r },
     ],
     listCodeOwners: [
       { label: "by id", run: (db, o) => listCodeOwners(db, byId, o), seen: nonEmpty },
@@ -676,7 +704,7 @@ describeDb("query layer on a real database", () => {
         visibility: "private",
         syncStatus: "error",
         syncError: "GitHub rate limit reached; retry later",
-        docCount: 2,
+        docCount: 3,
       });
       expect(list[2]?.docCount).toBe(0);
       expect(list[3]?.docCount).toBe(BIG_DOCS);

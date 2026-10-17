@@ -13,6 +13,7 @@ DocMyRepos syncs the `docs/` folders of your GitHub repositories into Postgres a
 
 - New to the project: [Getting started](./guides/getting-started.md), then [Configuration](./guides/configuration.md).
 - Installing with one command: [Install with the script](./guides/install-script.md).
+- Writing OKF documents with an AI agent: [Writing OKF documents with an agent](./guides/okf-authoring.md), and the [validation codes](./reference/okf-validation.md).
 - Registering the GitHub App: [GitHub App setup](./github-app-setup.md).
 - How it works: [Architecture](./architecture/index.md), beginning with the [system overview](./architecture/overview.md).
 - Discussing a document on its page: [Comments](./guides/comments.md).

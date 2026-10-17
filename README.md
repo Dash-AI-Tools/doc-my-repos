@@ -48,6 +48,7 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - [API reference](#api-reference)
 - [Comments](#comments)
 - [Ask the docs](#ask-the-docs)
+- [AI agent access](#ai-agent-access)
 - [Reading aids](#reading-aids)
 - [Security](#security)
 - [Development](#development)
@@ -63,6 +64,7 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - **API reference**: OpenAPI 3.0/3.1 and Swagger 2.0 files are found in each repository and shown on a read-only reference page (see [API reference](#api-reference)).
 - **Comments**: signed-in users discuss a document on its page, admins can answer as the organization and moderate. Comments are stored in the portal, not in GitHub (see [Comments](#comments)).
 - **Ask the docs**: an optional assistant answers questions in plain language from the synced documents, with references to the exact sections. Off until an admin sets it up; the operator brings the model (see [Ask the docs](#ask-the-docs)).
+- **AI agent access**: AI agents (Claude Code, Cursor) read the docs through a read-only MCP endpoint with a personal token that a user creates, shows once and can revoke (see [AI agent access](#ai-agent-access)).
 - **Your branding**: admins set the organization name, page title, colors and logo from `/admin/branding` (see [Branding](#branding)).
 - **Light and dark themes**: light, dark, or follow the system, including code blocks and diagrams, without a flash on load.
 - **Fresh content**: GitHub webhooks re-sync a repository when its default branch changes, and a scheduled full sync catches missed deliveries. Syncs are incremental (tree SHA, then blob SHA), idempotent and serialized per repository; a failed sync keeps the previous content.
@@ -243,6 +245,7 @@ Behavior is configured in the app, by admins, and by a few environment variables
 | Largest API spec (bytes)                   | `2097152` (1024 to 2097152)         | Larger spec files are skipped with a warning. See [API reference](#api-reference).                                                                                           |
 | Full sync every (minutes), sync on startup | `60`, on                            | Period of the full sync that catches missed webhooks (`0` turns it off, otherwise `5` to `10080`). **Read when the server starts**: a change applies after a restart.        |
 | Allow comments                             | on                                  | Off removes the Comments section and turns the comment APIs off. Stored comments are kept. See [Comments](#comments).                                                        |
+| AI agent access (MCP)                      | on                                  | Off turns the `/api/mcp` endpoint, the AI agent access page and the token APIs off (they answer 404). Stored tokens are kept. See [AI agent access](#ai-agent-access).       |
 | Ask limits                                 | `100`/day, `20`/10 min, `1000`, `8` | Questions per user per day and per ten minutes, longest answer in tokens, answers at once per server process. See [Ask the docs](#ask-the-docs).                             |
 | Ask provider credentials                   | none                                | Anthropic key; OpenAI-compatible base URL (`https`, or `http` on a loopback address) and key. On the Ask page.                                                               |
 
@@ -376,6 +379,92 @@ Every document page has a **Comments** section where signed-in users start threa
 - **Reverse proxy.** The answer streams as server-sent events from `POST /api/ask`. The app sends `X-Accel-Buffering: no`; in nginx also set `proxy_buffering off;` for `/api/ask` and a `proxy_read_timeout` above 60 seconds. Rate-limit this path in the proxy too.
 - **Prompt injection and accuracy.** Documents are untrusted and may contain instructions for the model. Excerpts are passed as labelled data, the model has no tools, and the answer is rendered without images, HTML or links of its own, so an injected instruction can change the wording of an answer but cannot reach out. That is a reduction, not a guarantee: answers can be wrong or misleading, so check the references.
 - **Failures.** A provider error shows a short fixed message, never provider text or a key. If the saved choice loses its credentials, Ask hides itself, `/status` and the Ask tab name the missing setting, and the rest of the portal keeps working.
+
+## AI agent access
+
+AI agents such as Claude Code and Cursor can read the portal's documentation, with the same visibility as the website, through a read-only MCP endpoint at `/api/mcp`. An agent authenticates with a personal token that a signed-in user creates in the portal.
+
+### Tokens
+
+1. Open **AI agent access** from the account menu (your email in the top bar).
+2. Type a **Token name** (1 to 60 characters, for example the machine or agent it is for), choose **Expires after** (30 days, 90 days or 1 year) and press **Create token**.
+3. Copy the token now. It looks like `dmr_` followed by 43 characters and is shown **once**: the portal keeps only a one-way hash and the first characters, so a lost token cannot be shown again. Revoke it and create a new one.
+4. The same page lists your tokens with their prefix, expiry, last use and status. **Revoke** asks for confirmation and takes effect on the token's next request. Revoked and expired tokens stay listed for 30 days, then disappear.
+
+A user can have **10 active tokens**. Administrators see every user's tokens (owner, name, prefix, expiry, last use) under **Admin > AI agent tokens** and can revoke any of them.
+
+### What a token can do
+
+- It acts as its user and sees exactly the repositories that user sees. Blocking a repository hides it from agents at once.
+- It works **only on the MCP endpoint**, and only to read. It is not accepted on the website or on any other API, it cannot create, list or revoke tokens, and not even an administrator's token grants administration.
+- It stops working when it expires or is revoked, when its user is disabled, and for every token created before an administrator resets that user's password.
+
+### Keeping tokens safe
+
+- Treat a token like a password: do not commit it, paste it in chat or put it in a shared configuration file.
+- Create one token per agent or machine, with the shortest expiry that suits you, so you can revoke one without disturbing the others.
+- If a token may have leaked, revoke it on the same page.
+
+### Connecting an agent
+
+The MCP address is your portal's origin followed by `/api/mcp`, for example `https://docs.example.com/api/mcp`. The AI agent access page shows it with a copy button, and snippets that already carry the token you just created.
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http docmyrepos https://docs.example.com/api/mcp \
+  --header "Authorization: Bearer YOUR_TOKEN"
+```
+
+This stores the token in your own Claude Code configuration (add `--scope user` to use it in every project). Do not use `--scope project` with a real token: it writes `.mcp.json` into the repository, where it can be committed.
+
+**Cursor and other agents configured by file** (for Cursor, `~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "docmyrepos": {
+      "url": "https://docs.example.com/api/mcp",
+      "headers": { "Authorization": "Bearer YOUR_TOKEN" }
+    }
+  }
+}
+```
+
+**Any other client** speaks MCP Streamable HTTP: a `POST` of JSON-RPC to the address, with `Authorization: Bearer YOUR_TOKEN`, `Content-Type: application/json` and `Accept: application/json, text/event-stream`. The endpoint is stateless and answers with plain JSON:
+
+```bash
+curl -s https://docs.example.com/api/mcp \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+### What an agent can ask
+
+| Tool                    | What it does                                                                                                     | Example arguments                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `list_repositories`     | Lists the synced repositories with their OKF state, document counts and docs folders.                            | none                                                                      |
+| `get_repository`        | Describes one repository: an outline of its documents and the types, tags and statuses it already uses.          | `{"repository": "acme/handbook"}`                                         |
+| `search_documents`      | Finds documents by a text query, with filters for repository, type, tag and status.                              | `{"query": "rotate signing keys", "type": "Runbook"}`                     |
+| `get_document`          | Reads a document: Markdown, frontmatter, headings, and links to the portal and to GitHub.                        | `{"repository": "acme/handbook", "path": "docs/runbooks/rotate-keys.md"}` |
+| `get_okf_guidelines`    | Returns the repository's `okf-guidelines.md`, or a generated draft to save in the repository when there is none. | `{"repository": "acme/handbook"}`                                         |
+| `validate_okf_document` | Checks a draft document against OKF and the repository's conventions and reports errors, warnings and notes.     | `{"content": "---\ntype: Runbook\n---\n# Title", "path": "docs/new.md"}`  |
+
+A prompt, `write-okf-doc`, walks an agent through writing a document: find the guidelines, look at related documents, write the file in your checkout, validate it, and leave it for you to commit. The flow is described in [Writing OKF documents with an agent](docs/guides/okf-authoring.md) and every field in the [MCP server reference](docs/reference/mcp.md).
+
+### What the server will not do
+
+- **It never writes.** Every tool is declared read-only. The GitHub App stays read-only, so a document an agent writes is saved in your checkout and committed by you; it shows in the portal after the next sync.
+- **It shows what its user can see.** Everything comes from Postgres through the same visibility filter as the website, and nothing calls GitHub. A blocked repository disappears from every tool at once.
+- **It is bounded.** Requests are limited to 256 KB, a token can run 4 calls at once and the process 16 (beyond that: 429 or 503 with `Retry-After`), a search returns at most 20 hits, a document body at most 100,000 characters.
+- **It treats documents as untrusted.** Text from a repository is cleaned, labelled as untrusted and fenced, and no tool acts on it. This lowers the risk of prompt injection through a document, it does not remove it: an agent decides what to do with what it reads, so only give an agent that reads documentation the other tools you trust it with.
+- **Rate limiting belongs in your reverse proxy.** Limit `/api/mcp` there, as for `/api/search`. The endpoint answers with plain JSON, so it needs no streaming or buffering settings.
+
+### Turning it off
+
+An administrator can clear **Allow AI agents to read the documentation over MCP** on **Admin > Workspace configuration**. Then `/api/mcp`, the AI agent access page and the token APIs answer 404 and the menu links disappear. Stored tokens are kept and work again when the setting is turned back on. It applies without a restart.
 
 ## Reading aids
 

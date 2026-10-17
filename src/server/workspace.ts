@@ -226,6 +226,11 @@ export function invalidateWorkspace(): void {
   delete (globalThis as Cache)[CACHE_KEY];
 }
 
+/** Whether the MCP endpoint is on, from the current settings. May reject when the database is down. */
+export async function mcpEnabled(): Promise<boolean> {
+  return (await getWorkspace()).config.mcp.enabled;
+}
+
 /** Whether comments are on, from the current settings. May reject when the database is down. */
 export async function commentsEnabled(): Promise<boolean> {
   return (await getWorkspace()).config.comments.enabled;

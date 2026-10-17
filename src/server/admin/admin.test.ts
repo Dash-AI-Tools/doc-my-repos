@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { repos, users } from "../db/schema";
+import { createToken, verifyToken } from "../mcp/tokens";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import { createUser, listUsers, updateUser } from "./users";
 import { reorderStarredRepos, setRepoAllowed, setRepoStarred } from "./repos";
@@ -91,6 +92,66 @@ describeDb("admin user management", () => {
       error: "At least one enabled admin must remain",
     });
     await updateUser(t.db, second.id, { disabled: false }, first.id);
+  });
+});
+
+describeDb("admin user changes and API tokens", () => {
+  let t: TestDatabase;
+
+  beforeAll(async () => {
+    t = await createTestDatabase();
+  }, 60_000);
+
+  afterAll(async () => {
+    await t?.drop();
+  }, 60_000);
+
+  async function userWithToken(email: string) {
+    const created = await createUser(t.db, { email, password: "first-pass-1234", role: "user" });
+    if (!created.ok) throw new Error("user not created");
+    const token = await createToken(t.db, created.user.id, { name: "agent", expiryDays: 30 });
+    if (!token.ok) throw new Error("token not created");
+    return { id: created.user.id, token: token.token };
+  }
+
+  it("rejects tokens created before a password reset and accepts tokens created after", async () => {
+    const u = await userWithToken("reset@example.com");
+    expect((await verifyToken(t.db, u.token)).ok).toBe(true);
+
+    const reset = await updateUser(t.db, u.id, { password: "second-pass-1234" });
+    expect(reset.ok).toBe(true);
+    expect(await verifyToken(t.db, u.token)).toEqual({ ok: false, reason: "reset" });
+
+    const fresh = await createToken(t.db, u.id, { name: "after", expiryDays: 30 });
+    if (!fresh.ok) throw new Error("token not created");
+    expect((await verifyToken(t.db, fresh.token)).ok).toBe(true);
+
+    // A second reset invalidates that one too.
+    await updateUser(t.db, u.id, { password: "third-pass-1234" });
+    expect(await verifyToken(t.db, fresh.token)).toEqual({ ok: false, reason: "reset" });
+  });
+
+  it("rejects the tokens of a disabled user at once, and accepts them again when enabled", async () => {
+    const u = await userWithToken("disable@example.com");
+    // A second enabled admin must remain, and this user is not an admin, so no guard applies.
+    expect((await updateUser(t.db, u.id, { disabled: true })).ok).toBe(true);
+    expect(await verifyToken(t.db, u.token)).toEqual({ ok: false, reason: "disabled" });
+    expect((await updateUser(t.db, u.id, { disabled: false })).ok).toBe(true);
+    expect((await verifyToken(t.db, u.token)).ok).toBe(true);
+  });
+
+  it("leaves tokens working when only the role changes", async () => {
+    const u = await userWithToken("role@example.com");
+    expect((await updateUser(t.db, u.id, { role: "admin" })).ok).toBe(true);
+    expect((await verifyToken(t.db, u.token)).ok).toBe(true);
+  });
+
+  it("does not touch another user's tokens when one password is reset", async () => {
+    const a = await userWithToken("a-iso@example.com");
+    const b = await userWithToken("b-iso@example.com");
+    await updateUser(t.db, a.id, { password: "changed-pass-1234" });
+    expect((await verifyToken(t.db, a.token)).ok).toBe(false);
+    expect((await verifyToken(t.db, b.token)).ok).toBe(true);
   });
 });
 

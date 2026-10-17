@@ -116,6 +116,16 @@ describe("formFromSettings / buildSettings", () => {
     });
   });
 
+  it("loads the MCP switch from the settings and sends it back", () => {
+    const off = configSchema.parse({ mcp: { enabled: false } });
+    expect(formFromSettings(off).mcpEnabled).toBe(false);
+    expect(formFromSettings(configSchema.parse({})).mcpEnabled).toBe(true);
+    const built = buildSettings(blank({ mcpEnabled: false }), base);
+    expect(built.ok && configSchema.parse(built.settings).mcp).toEqual({ enabled: false });
+    const on = buildSettings(blank({ mcpEnabled: true }), base);
+    expect(on.ok && configSchema.parse(on.settings).mcp).toEqual({ enabled: true });
+  });
+
   it("carries the App identifiers and toggles", () => {
     const built = buildSettings(
       blank({ appId: "12", installationId: "34", onStartup: false, commentsEnabled: false }),

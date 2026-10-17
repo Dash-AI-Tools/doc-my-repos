@@ -1,0 +1,182 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderGuidelines: the draft > for a repository with documents, lists its own vocabulary 1`] = `
+"---
+type: Guidelines
+title: OKF guidelines
+description: How documents in this repository follow the Open Knowledge Format (OKF), with the types, tags and statuses already in use.
+tags: [guidelines, okf]
+status: draft
+generated: 2026-10-17
+---
+
+# OKF guidelines
+
+These guidelines tell people and AI agents how to write documentation in this repository so that it is valid [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) (OKF) and reads the same everywhere. Follow them, and check a document before you commit it.
+
+## The rules
+
+1. A concept document starts with YAML frontmatter: a block between two lines that contain only \`---\`, on the very first lines of the file.
+2. The frontmatter must have a \`type\`. It is the only required key.
+3. A \`type\` is free-form text. Any wording is allowed, so reuse a type the repository already has (see below) before inventing a new one. Keep its case and spacing exactly as written: \`Runbook\` and \`runbook\` are two different types.
+4. Every other key is optional. Unknown keys are kept and shown as they are, so add keys when they help, not to fill space.
+5. Write for the reader: one level-1 heading, a one or two sentence description, and short sections.
+
+## Frontmatter keys
+
+- \`type\`: text, required. What kind of document this is, for example \`Guide\`.
+- \`title\`: text. Defaults to the first level-1 heading, then to the file name. At most 300 characters.
+- \`description\`: text. One or two sentences, shown in lists and used by search. At most 1000 characters.
+- \`tags\`: a list of text values, for example \`[ops, billing]\`. At most 100, each at most 256 characters.
+- \`status\`: one text value, for example \`draft\`, \`stable\` or \`deprecated\`. \`draft\` and \`deprecated\` are flagged on the page.
+- \`sources\`: where the content came from: text, a mapping such as \`{title: Spec, url: https://example.com}\`, or a list of those.
+- \`generated\`: the date the document was first written.
+- \`verified\`: the date a person last checked that it is still correct.
+- \`stale_after\`: the date after which the document should be treated as out of date. The page is marked stale from that day on.
+- \`okf_version\`: only in the index.md at the root of the docs folder, to declare the OKF version the folder follows.
+
+## Dates
+
+Write dates as \`YYYY-MM-DD\`, or as an ISO date with a time such as \`2026-10-16T09:30:00Z\`. A date that does not exist (for example \`2026-02-29\`) or is written another way is ignored and reported as a problem.
+
+## Reserved files
+
+- \`index.md\` summarizes the folder it is in. It gives the folder its title and description.
+- \`log.md\` is the change log of the folder.
+
+Neither is a concept document: do not give them a \`type\`.
+
+## Links
+
+- Link to other documents with relative paths, for example \`./setup.md\` or \`../reference/api.md\`. The portal turns them into links between pages.
+- Link only to documents that exist in the docs folder. A link to a missing document is reported.
+- Use an anchor (\`./setup.md#install\`) to point at a section.
+
+## Headings
+
+- Use exactly one level-1 heading (\`# Title\`), as the first heading.
+- Use level-2 headings (\`##\`) for sections, and do not skip levels.
+
+## In this repository
+
+- Docs folder: \`docs\`.
+- OKF: this repository already counts as OKF, declaring version \`0.2\`.
+- Folders: \`architecture\`, \`guides\`, \`reference\`.
+
+Prefer the values below before inventing new ones. They are what the documents here already use, most used first.
+
+### Types in use
+
+- \`Runbook\` (12 documents)
+- \`ADR\` (4 documents)
+- \`Concept\` (4 documents)
+- \`Decision\` (1 document)
+
+### Tags in use
+
+- \`ops\` (9 documents)
+- \`billing\` (3 documents)
+
+### Statuses in use
+
+- \`stable\` (14 documents)
+- \`draft\` (2 documents)
+
+## Checking a document
+
+Before you commit a document, check it:
+
+- Every error must be fixed: a missing or non-text \`type\`, frontmatter that is not closed or not valid YAML, or a field the portal cannot use.
+- Read the warnings: invalid dates, a missing description, a missing or second level-1 heading, links to documents that do not exist.
+- If your AI agent has the DocMyRepos MCP server connected, it can run the \`validate_okf_document\` tool on the draft and fix what it reports.
+
+New documents show up in the portal after they are committed and synced.
+"
+`;
+
+exports[`renderGuidelines: the draft > for a repository with no documents, is the generic text with an empty vocabulary 1`] = `
+"---
+type: Guidelines
+title: OKF guidelines
+description: How documents in this repository follow the Open Knowledge Format (OKF), with the types, tags and statuses already in use.
+tags: [guidelines, okf]
+status: draft
+generated: 2026-10-17
+---
+
+# OKF guidelines
+
+These guidelines tell people and AI agents how to write documentation in this repository so that it is valid [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) (OKF) and reads the same everywhere. Follow them, and check a document before you commit it.
+
+## The rules
+
+1. A concept document starts with YAML frontmatter: a block between two lines that contain only \`---\`, on the very first lines of the file.
+2. The frontmatter must have a \`type\`. It is the only required key.
+3. A \`type\` is free-form text. Any wording is allowed, so reuse a type the repository already has (see below) before inventing a new one. Keep its case and spacing exactly as written: \`Runbook\` and \`runbook\` are two different types.
+4. Every other key is optional. Unknown keys are kept and shown as they are, so add keys when they help, not to fill space.
+5. Write for the reader: one level-1 heading, a one or two sentence description, and short sections.
+
+## Frontmatter keys
+
+- \`type\`: text, required. What kind of document this is, for example \`Guide\`.
+- \`title\`: text. Defaults to the first level-1 heading, then to the file name. At most 300 characters.
+- \`description\`: text. One or two sentences, shown in lists and used by search. At most 1000 characters.
+- \`tags\`: a list of text values, for example \`[ops, billing]\`. At most 100, each at most 256 characters.
+- \`status\`: one text value, for example \`draft\`, \`stable\` or \`deprecated\`. \`draft\` and \`deprecated\` are flagged on the page.
+- \`sources\`: where the content came from: text, a mapping such as \`{title: Spec, url: https://example.com}\`, or a list of those.
+- \`generated\`: the date the document was first written.
+- \`verified\`: the date a person last checked that it is still correct.
+- \`stale_after\`: the date after which the document should be treated as out of date. The page is marked stale from that day on.
+- \`okf_version\`: only in the index.md at the root of the docs folder, to declare the OKF version the folder follows.
+
+## Dates
+
+Write dates as \`YYYY-MM-DD\`, or as an ISO date with a time such as \`2026-10-16T09:30:00Z\`. A date that does not exist (for example \`2026-02-29\`) or is written another way is ignored and reported as a problem.
+
+## Reserved files
+
+- \`index.md\` summarizes the folder it is in. It gives the folder its title and description.
+- \`log.md\` is the change log of the folder.
+
+Neither is a concept document: do not give them a \`type\`.
+
+## Links
+
+- Link to other documents with relative paths, for example \`./setup.md\` or \`../reference/api.md\`. The portal turns them into links between pages.
+- Link only to documents that exist in the docs folder. A link to a missing document is reported.
+- Use an anchor (\`./setup.md#install\`) to point at a section.
+
+## Headings
+
+- Use exactly one level-1 heading (\`# Title\`), as the first heading.
+- Use level-2 headings (\`##\`) for sections, and do not skip levels.
+
+## In this repository
+
+- Docs folder: not found yet. Documentation lives in a folder named \`docs\`, \`doc\` or \`documentation\`.
+
+Prefer the values below before inventing new ones. They are what the documents here already use, most used first.
+
+### Types in use
+
+No document declares a type yet. Choose short, clear names for the kinds of document you write, such as \`Concept\`, \`Guide\`, \`Reference\`, \`Runbook\` and \`Decision\`, use the same ones everywhere, and add them here.
+
+### Tags in use
+
+No document has tags yet.
+
+### Statuses in use
+
+No document has a status yet.
+
+## Checking a document
+
+Before you commit a document, check it:
+
+- Every error must be fixed: a missing or non-text \`type\`, frontmatter that is not closed or not valid YAML, or a field the portal cannot use.
+- Read the warnings: invalid dates, a missing description, a missing or second level-1 heading, links to documents that do not exist.
+- If your AI agent has the DocMyRepos MCP server connected, it can run the \`validate_okf_document\` tool on the draft and fix what it reports.
+
+New documents show up in the portal after they are committed and synced.
+"
+`;

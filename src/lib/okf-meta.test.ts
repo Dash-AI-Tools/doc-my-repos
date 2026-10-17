@@ -18,6 +18,7 @@ import {
   shortText,
   staleness,
   statusNotice,
+  stripInvisible,
   toDisplayValue,
   type DisplayValue,
   type OkfColumns,
@@ -799,5 +800,31 @@ describe("buildOkfMeta", () => {
     const meta = buildOkfMeta(frontmatter, cols({ type: "T" }));
     expect(meta.unknown).toHaveLength(MAX_UNKNOWN);
     expect(Date.now() - start).toBeLessThan(500);
+  });
+});
+
+describe("stripInvisible", () => {
+  it("keeps indentation, blank lines and tabs", () => {
+    const text = "  indented\n\n\tcode\n    four spaces  \nend";
+    expect(stripInvisible(text)).toBe(text);
+  });
+
+  it("normalizes every kind of line break to a line feed", () => {
+    expect(stripInvisible("a\r\nb\rc\u2028d\u2029e\u0085f")).toBe("a\nb\nc\nd\ne\nf");
+  });
+
+  it("removes controls and direction-changing or invisible characters", () => {
+    const hostile = "a\u0000b\u0007c\u007fd\u0085e\u061cf\u200bg\u200eh\u202ei\u2066j\ufeffk";
+    expect(stripInvisible(hostile).replace(/\n/g, "")).toBe("abcdefghijk");
+  });
+
+  it("replaces a lone surrogate and keeps a pair", () => {
+    expect(stripInvisible("a\ud800b")).toBe("a\ufffdb");
+    expect(stripInvisible("😀")).toBe("😀");
+  });
+
+  it("leaves ordinary text, Markdown and unicode alone", () => {
+    const text = "# Title\n\n- item `code` **bold** [link](./x.md)\n\nDeutsch: Größe, 日本語.";
+    expect(stripInvisible(text)).toBe(text);
   });
 });

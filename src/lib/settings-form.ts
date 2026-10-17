@@ -23,6 +23,7 @@ export interface SettingsFormState {
   readonly intervalMinutes: string;
   readonly onStartup: boolean;
   readonly commentsEnabled: boolean;
+  readonly mcpEnabled: boolean;
   readonly questionsPerDay: string;
   readonly questionsPerTenMinutes: string;
   readonly maxOutputTokens: string;
@@ -109,6 +110,7 @@ export function formFromSettings(settings: AppConfig): SettingsFormState {
     intervalMinutes: String(settings.sync.intervalMinutes),
     onStartup: settings.sync.onStartup,
     commentsEnabled: settings.comments.enabled,
+    mcpEnabled: settings.mcp.enabled,
     questionsPerDay: String(settings.ask.questionsPerDay),
     questionsPerTenMinutes: String(settings.ask.questionsPerTenMinutes),
     maxOutputTokens: String(settings.ask.maxOutputTokens),
@@ -178,6 +180,7 @@ export function buildSettings(form: SettingsFormState, base: AppConfig): BuildRe
       onStartup: form.onStartup,
     }),
     comments: { enabled: form.commentsEnabled },
+    mcp: { enabled: form.mcpEnabled },
     ask: compact({
       questionsPerDay: number("Questions per day", form.questionsPerDay),
       questionsPerTenMinutes: number("Questions per ten minutes", form.questionsPerTenMinutes),

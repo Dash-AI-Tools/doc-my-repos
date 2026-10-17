@@ -99,7 +99,7 @@ The system SHALL cap request bodies at 256 KB, cap concurrent calls per token an
 - **THEN** the tool returns a fixed "temporarily unavailable" error and the log records the failure without secrets
 
 ### Requirement: Turn it off
-The system SHALL serve the endpoint only when `mcp.enabled` is true in the configuration (default true). When it is false, `/api/mcp` SHALL answer 404 for every request.
+The system SHALL serve the endpoint only when `mcp.enabled` is true in the workspace settings (default true, changed by an administrator without a restart). When it is false, `/api/mcp` SHALL answer 404 for every request.
 
 #### Scenario: Disabled by the operator
 - **WHEN** `mcp.enabled` is false

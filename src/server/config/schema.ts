@@ -171,6 +171,17 @@ const comments = z
   .prefault({});
 
 /**
+ * MCP endpoint for AI agents (mcp-agent-access design decision 9). On by default; `enabled: false`
+ * makes `/api/mcp`, the agent access page and the token APIs answer 404 and hides the links.
+ * Stored tokens are kept.
+ */
+const mcp = z
+  .strictObject({
+    enabled: z.boolean("enabled must be true or false").default(true),
+  })
+  .prefault({});
+
+/**
  * Ask-the-docs limits (ask-the-docs design decision 8). There is no `enabled` key: on/off, provider
  * and model are an admin choice stored in the database; credentials come from the environment.
  */
@@ -245,6 +256,7 @@ export const configSchema = z
     limits,
     sync: syncSchedule,
     comments,
+    mcp,
     ask,
   })
   .superRefine((cfg, ctx) => {

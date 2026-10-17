@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   apiSpecs,
+  apiTokens,
   askSettings,
   askUsage,
   codeOwners,
@@ -11,6 +12,7 @@ import {
   repos,
   siteBranding,
   syncRuns,
+  users,
 } from "./schema";
 
 function column(table: Parameters<typeof getTableConfig>[0], name: string): PgColumn {
@@ -178,6 +180,28 @@ describe("db schema", () => {
     ]);
     expect(column(syncRuns, "started_at").notNull).toBe(true);
     expect(column(syncRuns, "finished_at").notNull).toBe(false);
+  });
+
+  it("keeps only a hash and a short prefix of an API token, unique per hash", () => {
+    expect(getTableConfig(apiTokens).name).toBe("api_tokens");
+    const names = getTableConfig(apiTokens).columns.map((c) => c.name);
+    expect(names).toContain("token_hash");
+    expect(names).toContain("prefix");
+    // Nothing that could hold the token itself.
+    expect(names.filter((n) => /^(token|secret|value|plain|plaintext|raw)$/.test(n))).toEqual([]);
+    expect(uniques(apiTokens)).toContainEqual(["token_hash"]);
+    for (const name of ["user_id", "name", "token_hash", "prefix", "expires_at", "created_at"]) {
+      expect(column(apiTokens, name).notNull, name).toBe(true);
+    }
+    for (const name of ["revoked_at", "last_used_at"]) {
+      expect(column(apiTokens, name).notNull, name).toBe(false);
+    }
+    expect(getTableConfig(apiTokens).checks.map((c) => c.name)).toContain("api_tokens_name_length");
+  });
+
+  it("keeps users.tokens_valid_after nullable with no default", () => {
+    expect(column(users, "tokens_valid_after").notNull).toBe(false);
+    expect(column(users, "tokens_valid_after").default).toBeUndefined();
   });
 
   it("keeps branding to one row with nullable settings and logo bytes", () => {

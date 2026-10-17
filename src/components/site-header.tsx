@@ -25,11 +25,14 @@ export function SiteHeader({
   user,
   branding,
   askEnabled = false,
+  agentAccess = false,
 }: {
   user: HeaderUser | null;
   branding: HeaderBranding;
   /** Ask is on and usable (ask-the-docs): shows the Ask link in the main navigation. */
   askEnabled?: boolean;
+  /** The MCP endpoint is on (mcp-agent-access): the account menu links to the agent pages. */
+  agentAccess?: boolean;
 }) {
   // With a logo the page title names the portal (the org name would repeat the logo). Without
   // one both are shown; with neither, the wordmark. See the org-branding spec.
@@ -87,7 +90,7 @@ export function SiteHeader({
         <div className="ml-auto flex min-h-16 max-w-full flex-wrap items-center justify-end gap-x-3 gap-y-2 py-2 sm:gap-x-5">
           <TextSizeMenu />
           <PaletteTrigger />
-          {user ? <AccountMenu user={user} /> : null}
+          {user ? <AccountMenu user={user} agentAccess={agentAccess} /> : null}
         </div>
       </div>
     </header>

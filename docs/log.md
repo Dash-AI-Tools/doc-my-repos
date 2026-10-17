@@ -26,4 +26,6 @@ Changes to this documentation, oldest first. New entries go at the end.
 ## 2026-10-16 (install script)
 
 - Added the [Install with the script guide](./guides/install-script.md): the one-command installer, its questions, flags and variables, the files it writes, and what to do next in the app.
+- Added [Writing OKF documents with an agent](./guides/okf-authoring.md) and [OKF validation codes](./reference/okf-validation.md): the guidelines file and generated draft, the write-and-validate flow for AI agents, and every finding the validator reports.
+- Added the [MCP server reference](./reference/mcp.md): the endpoint and its authentication, the six tools and the prompt, the limits, the failures, the visibility and untrusted-content rules.
 - Documented `install.sh --upgrade` in the [install script guide](./guides/install-script.md#upgrade): the order of steps, the database backup, the refusal to downgrade and how to go back.

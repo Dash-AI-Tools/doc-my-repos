@@ -467,6 +467,15 @@ export function GithubSettingsForm({ initial }: { readonly initial: SettingsView
             hint="Off removes the Comments section from document pages. Stored comments can still be purged."
           />
         </Section>
+
+        <Section title="AI agent access">
+          <Toggle
+            label="Allow AI agents to read the documentation over MCP"
+            checked={form.mcpEnabled}
+            onChange={(c) => set("mcpEnabled", c)}
+            hint="Off turns the /api/mcp endpoint, the AI agent access page and the token APIs off (they answer 404). Stored tokens are kept."
+          />
+        </Section>
       </div>
 
       <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-foreground bg-background py-4 pr-16">

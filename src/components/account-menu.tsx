@@ -16,13 +16,23 @@ const ADMIN_LINKS = [
   { href: "/admin/branding", label: "Branding" },
 ] as const;
 
+const AGENT_ADMIN_LINK = { href: "/admin/tokens", label: "AI agent tokens" } as const;
+const AGENT_LINK = { href: "/account/agent-access", label: "AI agent access" } as const;
+
 /**
  * The signed-in email as the header's account menu (starred-repos 4.1). The panel holds the admin
  * links for admins, a rule, and Sign out for everyone; it uses the popover tokens, so it stays
  * readable on a colored bar. It closes on Escape (focus back on the button), an outside pointer
  * press, activating an item, or a route change.
  */
-export function AccountMenu({ user }: { user: AccountMenuUser }) {
+export function AccountMenu({
+  user,
+  agentAccess = false,
+}: {
+  user: AccountMenuUser;
+  /** The MCP endpoint is on: offer the AI agent access page (and, to admins, the token list). */
+  agentAccess?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -67,6 +77,20 @@ export function AccountMenu({ user }: { user: AccountMenuUser }) {
     router.refresh();
   }
 
+  const adminLinks: readonly { href: string; label: string }[] =
+    user.role !== "admin" ? [] : agentAccess ? [...ADMIN_LINKS, AGENT_ADMIN_LINK] : ADMIN_LINKS;
+  const menuLink = (link: { href: string; label: string }) => (
+    <Link
+      key={link.href}
+      href={link.href}
+      aria-current={pathname === link.href ? "page" : undefined}
+      onClick={() => setOpen(false)}
+      className="rounded-sm px-3 py-2 text-sm text-popover-foreground no-underline hover:bg-muted hover:text-popover-foreground"
+    >
+      {link.label}
+    </Link>
+  );
+
   return (
     <div
       ref={wrap}
@@ -94,22 +118,11 @@ export function AccountMenu({ user }: { user: AccountMenuUser }) {
         data-testid="account-menu"
         className="absolute top-full right-0 z-30 mt-2 flex w-56 flex-col max-sm:fixed max-sm:inset-x-2 max-sm:top-[calc(var(--site-header-h,4rem)+0.5rem)] max-sm:w-auto rounded-sm border border-border bg-popover p-1 text-popover-foreground shadow-lg"
       >
-        {user.role === "admin"
-          ? ADMIN_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                aria-current={pathname === link.href ? "page" : undefined}
-                onClick={() => setOpen(false)}
-                className="rounded-sm px-3 py-2 text-sm text-popover-foreground no-underline hover:bg-muted hover:text-popover-foreground"
-              >
-                {link.label}
-              </Link>
-            ))
-          : null}
+        {adminLinks.map(menuLink)}
         {user.role === "admin" ? (
           <div role="separator" className="my-1 border-t border-border" />
         ) : null}
+        {agentAccess ? menuLink(AGENT_LINK) : null}
         <button
           type="button"
           onClick={onLogout}

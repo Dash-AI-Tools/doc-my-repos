@@ -11,12 +11,14 @@ import {
 } from "./comments";
 import {
   countDocs,
+  findOkfGuidelines,
   getAdjacentDocs,
   getDocPaths,
   getDocsTree,
   getDocumentByPath,
+  getRepoOutline,
 } from "./documents";
-import { getRepo, listCodeOwners, listRepos } from "./repos";
+import { getRepo, listCodeOwners, listRepoOverviews, listRepos } from "./repos";
 import { getRepoFacets, searchDocuments, searchFacets } from "./search";
 import { getRepoSyncInfo, getSyncStatus } from "./status";
 
@@ -35,6 +37,7 @@ import { getRepoSyncInfo, getSyncStatus } from "./status";
  */
 export const QUERY_FUNCTIONS = {
   listRepos,
+  listRepoOverviews,
   getRepo,
   listCodeOwners,
   listApiSpecs,
@@ -44,6 +47,8 @@ export const QUERY_FUNCTIONS = {
   getDocPaths,
   getAdjacentDocs,
   countDocs,
+  getRepoOutline,
+  findOkfGuidelines,
   findAssetRepo,
   searchDocuments,
   searchFacets,
@@ -117,21 +122,28 @@ export {
 } from "./comments";
 export {
   countDocs,
+  findOkfGuidelines,
   getAdjacentDocs,
   getDocPaths,
   getDocsTree,
   getDocumentByPath,
+  getRepoOutline,
+  MAX_OUTLINE_ROWS,
   type AdjacentDocs,
   type DocumentDetail,
+  type GuidelinesDocument,
+  type RepoOutline,
 } from "./documents";
 export type { RepoRef } from "./repo-ref";
 export {
   getRepo,
   listCodeOwners,
+  listRepoOverviews,
   listRepos,
   type CodeOwnerRule,
   type ListReposArgs,
   type RepoDetail,
+  type RepoOverview,
   type RepoReadme,
   type RepoSummary,
   type RepoSyncStatus,

@@ -34,6 +34,55 @@ function panel(): HTMLElement {
   return screen.getByTestId("account-menu");
 }
 
+describe("AccountMenu: AI agent access", () => {
+  const labels = () =>
+    Array.from(panel().querySelectorAll("a, button")).map((el) => el.textContent);
+
+  it("shows no agent link while the MCP endpoint is off", () => {
+    render(<AccountMenu user={{ email: "u@example.com", role: "user" }} />);
+    expect(labels()).toEqual(["Sign out"]);
+    cleanup();
+    render(<AccountMenu user={{ email: "a@example.com", role: "admin" }} />);
+    expect(labels()).not.toContain("AI agent access");
+    expect(labels()).not.toContain("AI agent tokens");
+  });
+
+  it("offers the agent access page to every signed-in user when it is on", () => {
+    render(<AccountMenu user={{ email: "u@example.com", role: "user" }} agentAccess />);
+    expect(labels()).toEqual(["AI agent access", "Sign out"]);
+    fireEvent.click(screen.getByTestId("account-menu-trigger"));
+    const link = screen.getByRole("link", { name: "AI agent access" });
+    expect(link.getAttribute("href")).toBe("/account/agent-access");
+  });
+
+  it("also offers the token list to an administrator, before Sign out", () => {
+    render(<AccountMenu user={{ email: "a@example.com", role: "admin" }} agentAccess />);
+    expect(labels()).toEqual([
+      "Users",
+      "Workspace configuration",
+      "Branding",
+      "AI agent tokens",
+      "AI agent access",
+      "Sign out",
+    ]);
+    fireEvent.click(screen.getByTestId("account-menu-trigger"));
+    expect(screen.getByRole("link", { name: "AI agent tokens" }).getAttribute("href")).toBe(
+      "/admin/tokens",
+    );
+  });
+
+  it("marks the current page and closes when a link is activated", () => {
+    route.pathname = "/account/agent-access";
+    render(<AccountMenu user={{ email: "u@example.com", role: "user" }} agentAccess />);
+    fireEvent.click(screen.getByTestId("account-menu-trigger"));
+    expect(screen.getByRole("link", { name: "AI agent access" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    fireEvent.click(screen.getByRole("link", { name: "AI agent access" }));
+    expect(screen.getByTestId("account-menu-trigger").getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
 describe("AccountMenu", () => {
   it("opens on the email and reports expanded", () => {
     render(<AccountMenu user={{ email: "admin@example.com", role: "admin" }} />);
