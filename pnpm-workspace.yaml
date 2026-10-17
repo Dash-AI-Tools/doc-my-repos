@@ -3,6 +3,7 @@ allowBuilds:
   "@tree-sitter-grammars/tree-sitter-yaml": false
   core-js-pure: false
   esbuild: false
+  lefthook: false
   tree-sitter: false
   tree-sitter-json: false
   unrs-resolver: true

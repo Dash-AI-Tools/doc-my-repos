@@ -1,0 +1,71 @@
+# Security scans: secrets in the history, known vulnerabilities in production dependencies and
+# CodeQL static analysis. Runs on pull requests, on pushes to main and weekly, because new
+# advisories appear without any change to this repo.
+#
+# - Read-only GITHUB_TOKEN apart from CodeQL's `security-events: write`, which only uploads its
+#   results. No other secrets; safe for fork pull requests. Do not switch to pull_request_target.
+# - Actions are pinned to commit SHAs (the comment names the release); Dependabot keeps them current.
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 5 * * 1"
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # The release image of gitleaks, run directly (the gitleaks action needs a license key for
+      # organizations). Config and allowances: .gitleaks.toml.
+      - name: Scan the history
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git /repo --no-banner --redact --config /repo/.gitleaks.toml
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # Production dependencies only; fails on high and critical advisories.
+      - run: pnpm audit --prod --audit-level=high
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        with:
+          category: /language:javascript-typescript
