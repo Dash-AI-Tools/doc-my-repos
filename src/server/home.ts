@@ -2,7 +2,7 @@ import "server-only";
 
 import { ConfigError } from "./config/errors";
 import { describeDbError, type Db, getDb } from "./db/client";
-import { listRepos, type RepoSummary } from "./queries";
+import { listFolders, listRepos, type FolderSummary, type RepoSummary } from "./queries";
 import { logger, type LogFn } from "./log";
 
 /**
@@ -21,13 +21,38 @@ import { logger, type LogFn } from "./log";
  * errors can name the host, user and database.
  */
 
+/** A folder with the repositories to show under it. */
+export interface HomeFolder {
+  readonly id: number;
+  readonly name: string;
+  readonly description: string | null;
+  readonly repos: readonly RepoSummary[];
+}
+
+export interface HomeTab {
+  readonly id: number;
+  readonly name: string;
+}
+
 export type HomeData =
   | {
       readonly status: "ok";
       /** Starred repositories in the admin-set order (position, then id). */
       readonly starred: readonly RepoSummary[];
-      /** Every other visible repository, in the order `listRepos` returns (owner, then name). */
+      /**
+       * All view: folders with at least one visible, unstarred repository, by name, each with those
+       * repositories. Empty when no folder is in use.
+       */
+      readonly folders: readonly HomeFolder[];
+      /** All view: every other visible repository (in no folder), owner then name. */
       readonly repos: readonly RepoSummary[];
+      /** Starred folders that have a visible repository, in the admin-set order. */
+      readonly tabs: readonly HomeTab[];
+      /**
+       * The selected folder tab with all its visible repositories (starred ones included), or null
+       * for the All view (also when the requested folder is not a tab).
+       */
+      readonly folder: HomeFolder | null;
       /** When the data was read; pages format "x minutes ago" against this, not their own clock. */
       readonly loadedAt: Date;
     }
@@ -53,18 +78,61 @@ export function expectedFailureKind(error: unknown): string | null {
   return kind === UNKNOWN_DB_ERROR ? null : kind;
 }
 
-export async function loadHome(deps: HomeDeps = {}): Promise<HomeData> {
+/** Name order for folder sections: case-insensitive byte order, then id. */
+const byName = (a: HomeTab, b: HomeTab): number => {
+  const [x, y] = [a.name.toLowerCase(), b.name.toLowerCase()];
+  return x < y ? -1 : x > y ? 1 : a.id - b.id;
+};
+
+/**
+ * Splits the visible repositories by folder. Folders only matter when a visible repository is in
+ * them, which is how blocking hides a folder without a second visibility rule.
+ */
+export function groupHome(
+  all: readonly RepoSummary[],
+  folders: readonly FolderSummary[],
+  folderId?: number,
+): Pick<HomeData & { status: "ok" }, "starred" | "folders" | "repos" | "tabs" | "folder"> {
+  const starred = all
+    .filter((r) => r.isStarred)
+    .sort((a, b) => (a.starPosition ?? 0) - (b.starPosition ?? 0) || a.id - b.id);
+  const inFolder = (f: FolderSummary) => all.filter((r) => r.folderId === f.id);
+  const used = folders.filter((f) => inFolder(f).length > 0);
+  const toHome = (f: FolderSummary, repos: readonly RepoSummary[]): HomeFolder => ({
+    id: f.id,
+    name: f.name,
+    description: f.description,
+    repos,
+  });
+  const sections = used
+    .map((f) =>
+      toHome(
+        f,
+        inFolder(f).filter((r) => !r.isStarred),
+      ),
+    )
+    .filter((f) => f.repos.length > 0)
+    .sort((a, b) => byName(a, b));
+  const tabFolders = used.filter((f) => f.isStarred);
+  const selected = tabFolders.find((f) => f.id === folderId);
+  return {
+    starred,
+    folders: sections,
+    repos: all.filter((r) => !r.isStarred && r.folderId === null),
+    tabs: tabFolders.map((f) => ({ id: f.id, name: f.name })),
+    folder: selected ? toHome(selected, inFolder(selected)) : null,
+  };
+}
+
+export async function loadHome(deps: HomeDeps = {}, folderId?: number): Promise<HomeData> {
   const now = deps.now ?? (() => new Date());
   const log = deps.log ?? logger.error;
   const db = deps.db ?? (() => getDb().db);
   try {
     // Visibility is already applied by `listRepos`, so a blocked starred repo never gets here.
     const all = await listRepos(db());
-    const starred = all
-      .filter((r) => r.isStarred)
-      .sort((a, b) => (a.starPosition ?? 0) - (b.starPosition ?? 0) || a.id - b.id);
-    const repos = all.filter((r) => !r.isStarred);
-    return { status: "ok", starred, repos, loadedAt: now() };
+    const folders = await listFolders(db());
+    return { status: "ok", ...groupHome(all, folders, folderId), loadedAt: now() };
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;

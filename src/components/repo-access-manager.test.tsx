@@ -15,6 +15,7 @@ const row = (over: Partial<RepoAccessRow> & Pick<RepoAccessRow, "id" | "name">):
   isAllowed: true,
   starPosition: null,
   isStarred: false,
+  folderId: null,
   syncStatus: "ok",
   ...over,
 });
@@ -263,5 +264,94 @@ describe("RepoAccessManager", () => {
       expect(within(region).getByRole("button", { name: `Reorder ${label}` })).toBeTruthy();
       expect(within(region).getByRole("button", { name: `Star ${label}` })).toBeTruthy();
     }
+  });
+
+  describe("folder control (optional)", () => {
+    const folders = [
+      { id: 5, name: "Payments" },
+      { id: 6, name: "Ops" },
+    ];
+
+    it("shows no folder control when there are no folders", () => {
+      render(<RepoAccessManager initialRepos={repos} />);
+      expect(screen.queryByLabelText(/^Folder for/)).toBeNull();
+    });
+
+    it("offers No folder and each folder, labelled by repo, showing the current one", () => {
+      render(
+        <RepoAccessManager
+          initialRepos={[{ ...repos[0]!, folderId: 6 }, repos[1]!]}
+          folders={folders}
+        />,
+      );
+      const select = screen.getByLabelText("Folder for acme/api") as HTMLSelectElement;
+      expect([...select.options].map((o) => o.textContent)).toEqual([
+        "No folder",
+        "Payments",
+        "Ops",
+      ]);
+      expect(select.value).toBe("6");
+      expect((screen.getByLabelText("Folder for acme/web") as HTMLSelectElement).value).toBe("");
+    });
+
+    it("assigns, moves and clears a folder through PATCH, announcing each", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(ok({ repo: { isAllowed: true, starPosition: null, folderId: 5 } }))
+        .mockResolvedValueOnce(ok({ repo: { isAllowed: true, starPosition: null, folderId: 6 } }))
+        .mockResolvedValueOnce(
+          ok({ repo: { isAllowed: true, starPosition: null, folderId: null } }),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+      render(<RepoAccessManager initialRepos={repos} folders={folders} />);
+      const select = () => screen.getByLabelText("Folder for acme/api") as HTMLSelectElement;
+      fireEvent.change(select(), { target: { value: "5" } });
+      await waitFor(() => expect(screen.getByText("acme/api is in Payments.")).toBeTruthy());
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/api/admin/repos",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ owner: "acme", name: "api", folderId: 5 }),
+        }),
+      );
+      expect(select().value).toBe("5");
+      fireEvent.change(select(), { target: { value: "6" } });
+      await waitFor(() => expect(select().value).toBe("6"));
+      fireEvent.change(select(), { target: { value: "" } });
+      await waitFor(() => expect(screen.getByText("acme/api is in no folder.")).toBeTruthy());
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/api/admin/repos",
+        expect.objectContaining({
+          body: JSON.stringify({ owner: "acme", name: "api", folderId: null }),
+        }),
+      );
+      expect(select().value).toBe("");
+      expect(refresh).toHaveBeenCalledTimes(3);
+    });
+
+    it("keeps the old folder and shows the error when the change fails", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(fail(404, "folder not found")));
+      render(
+        <RepoAccessManager initialRepos={[{ ...repos[0]!, folderId: 5 }]} folders={folders} />,
+      );
+      const select = screen.getByLabelText("Folder for acme/api") as HTMLSelectElement;
+      fireEvent.change(select, { target: { value: "6" } });
+      await waitFor(() => expect(screen.getByText("folder not found")).toBeTruthy());
+      expect(select.value).toBe("5");
+    });
+
+    it("follows the folder list: a folder that is gone shows as No folder, new ones appear", () => {
+      const initial = [{ ...repos[0]!, folderId: 5 }];
+      const { rerender } = render(<RepoAccessManager initialRepos={initial} folders={folders} />);
+      rerender(
+        <RepoAccessManager
+          initialRepos={initial}
+          folders={[folders[1]!, { id: 7, name: "New" }]}
+        />,
+      );
+      const select = screen.getByLabelText("Folder for acme/api") as HTMLSelectElement;
+      expect([...select.options].map((o) => o.textContent)).toEqual(["No folder", "Ops", "New"]);
+      expect(select.value).toBe("");
+    });
   });
 });

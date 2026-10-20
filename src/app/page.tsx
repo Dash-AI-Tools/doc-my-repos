@@ -1,3 +1,4 @@
+import { HomeTabs } from "@/components/home-tabs";
 import { EmptyState } from "@/components/empty-state";
 import { LoadErrorState } from "@/components/load-error";
 import { RepoGrid } from "@/components/repo-grid";
@@ -14,11 +15,25 @@ import { setupNeeded } from "@/server/onboarding";
  * States: grid, empty ("Nothing synced yet") and error (database unreachable or server
  * misconfigured; the layout stays and the response is 200, see `src/server/home.ts`). An
  * unexpected error goes to `src/app/error.tsx`.
+ *
+ * Folders are optional (repo-folders): with starred folders a tab bar (All plus one tab per
+ * folder, selected by `?folder=<id>`) sits under the search bar; a `folder` value that is not a
+ * tab shows All.
  */
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const [home, setup] = await Promise.all([loadHome(), setupNeeded()]);
+/** The `folder` query value as a folder id, or undefined for anything else. */
+function folderParam(value: string | string[] | undefined): number | undefined {
+  return typeof value === "string" && /^[1-9]\d{0,9}$/.test(value) ? Number(value) : undefined;
+}
+
+export default async function HomePage({
+  searchParams,
+}: {
+  readonly searchParams?: Promise<{ folder?: string | string[] }>;
+} = {}) {
+  const folderId = folderParam((await searchParams)?.folder);
+  const [home, setup] = await Promise.all([loadHome({}, folderId), setupNeeded()]);
   return (
     <div className="flex flex-col gap-16">
       {setup ? <SetupBanner /> : null}
@@ -36,12 +51,21 @@ export default async function HomePage() {
         </div>
         <SearchBar />
       </section>
+      {home.status === "ok" && home.tabs.length > 0 ? (
+        <HomeTabs tabs={home.tabs} selected={home.folder?.id ?? null} />
+      ) : null}
       {home.status === "error" ? (
         <LoadErrorState />
-      ) : home.starred.length + home.repos.length === 0 ? (
+      ) : home.starred.length + home.folders.length + home.repos.length === 0 ? (
         <EmptyState />
       ) : (
-        <RepoGrid starred={home.starred} repos={home.repos} now={home.loadedAt} />
+        <RepoGrid
+          starred={home.starred}
+          folders={home.folders}
+          repos={home.repos}
+          folder={home.folder}
+          now={home.loadedAt}
+        />
       )}
     </div>
   );

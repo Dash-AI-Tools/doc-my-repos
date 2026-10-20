@@ -15,6 +15,7 @@ const row = (id: number, name: string): RepoAccessRow => ({
   isAllowed: true,
   starPosition: id,
   isStarred: true,
+  folderId: null,
   syncStatus: "ok",
 });
 const repos = [row(1, "handbook"), row(2, "guide"), row(3, "charter")];

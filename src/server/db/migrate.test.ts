@@ -19,6 +19,7 @@ import {
   codeOwners,
   docComments,
   documents,
+  repoFolders,
   repos,
   settingsAudit,
   siteBranding,
@@ -42,6 +43,7 @@ const journalLength = (
 
 const tables: AnyPgTable[] = [
   repos,
+  repoFolders,
   documents,
   codeOwners,
   syncRuns,
@@ -122,6 +124,35 @@ describeDb("migrations on a real database", () => {
        WHERE table_schema = 'public' AND table_name = 'repos' AND column_name = 'star_position'`,
     );
     expect(rows).toEqual([{ is_nullable: "YES", column_default: null }]);
+  });
+
+  it("adds repos.folder_id nullable with no default, so existing rows stay in no folder", async () => {
+    const { rows } = await t.pool.query<{ is_nullable: string; column_default: string | null }>(
+      `SELECT is_nullable, column_default FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'repos' AND column_name = 'folder_id'`,
+    );
+    expect(rows).toEqual([{ is_nullable: "YES", column_default: null }]);
+  });
+
+  it("keeps folder names unique ignoring case and clears repos.folder_id when a folder is deleted", async () => {
+    const folder = await t.pool.query<{ id: number }>(
+      `INSERT INTO repo_folders (name) VALUES ('Payments') RETURNING id`,
+    );
+    const id = folder.rows[0]?.id;
+    await expect(
+      t.pool.query(`INSERT INTO repo_folders (name) VALUES ('payments')`),
+    ).rejects.toThrow(/repo_folders_name_lower_unique/);
+    await t.pool.query(
+      `INSERT INTO repos (github_id, owner, name, default_branch, visibility, html_url, folder_id)
+       VALUES (9001, 'acme', 'folder-test', 'main', 'public', 'https://example.test/x', $1)`,
+      [id],
+    );
+    await t.pool.query(`DELETE FROM repo_folders WHERE id = $1`, [id]);
+    const { rows } = await t.pool.query<{ folder_id: number | null }>(
+      `SELECT folder_id FROM repos WHERE github_id = 9001`,
+    );
+    expect(rows).toEqual([{ folder_id: null }]);
+    await t.pool.query(`DELETE FROM repos WHERE github_id = 9001`);
   });
 
   it("has the doc_comments indexes, checks and foreign keys, and none to repos or documents", async () => {
@@ -222,6 +253,7 @@ describeDb("migrations on a real database", () => {
       { table_name: "doc_comments", column_name: "id", kind: "identity" },
       { table_name: "documents", column_name: "id", kind: "identity" },
       { table_name: "documents", column_name: "search_vector", kind: "generated" },
+      { table_name: "repo_folders", column_name: "id", kind: "identity" },
       { table_name: "repos", column_name: "id", kind: "identity" },
       { table_name: "settings_audit", column_name: "id", kind: "identity" },
       { table_name: "sync_runs", column_name: "id", kind: "identity" },
@@ -593,6 +625,7 @@ describeDb("parallel db:migrate runs on one empty database", () => {
         "code_owners",
         "doc_comments",
         "documents",
+        "repo_folders",
         "repos",
         "settings_audit",
         "site_branding",

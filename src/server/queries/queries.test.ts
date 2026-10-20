@@ -14,6 +14,7 @@ import {
   codeOwners,
   docComments,
   documents,
+  repoFolders,
   repos,
   syncRuns,
   type SyncRepoResult,
@@ -693,6 +694,7 @@ describeDb("query layer on a real database", () => {
         isAllowed: true,
         starPosition: null,
         isStarred: false,
+        folderId: null,
         isOkf: true,
         okfVersion: "0.2",
         syncStatus: "ok",
@@ -727,6 +729,27 @@ describeDb("query layer on a real database", () => {
         expect(all.find((r) => r.id === id)).toMatchObject({ starPosition: 3, isStarred: true });
       } finally {
         await t.db.delete(repos).where(eq(repos.id, id));
+      }
+    });
+
+    it("returns the folder id; a blocked repo in a folder stays hidden", async () => {
+      const [folder] = await t.db.insert(repoFolders).values({ name: "q-folder" }).returning();
+      const id = await insertRepo(t.db, {
+        githubId: 9002,
+        owner: "folder",
+        name: "kept",
+        visibility: "public",
+        folderId: folder?.id,
+      });
+      try {
+        expect((await listRepos(t.db)).find((r) => r.id === id)?.folderId).toBe(folder?.id);
+        await t.db.update(repos).set({ isAllowed: false }).where(eq(repos.id, id));
+        expect((await listRepos(t.db)).some((r) => r.id === id)).toBe(false);
+        const all = await listRepos(t.db, {}, { visibility: allowAllRepos });
+        expect(all.find((r) => r.id === id)?.folderId).toBe(folder?.id);
+      } finally {
+        await t.db.delete(repos).where(eq(repos.id, id));
+        await t.db.delete(repoFolders).where(eq(repoFolders.id, folder?.id ?? 0));
       }
     });
 
