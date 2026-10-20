@@ -50,6 +50,7 @@ const repo: RepoDetail = {
   isAllowed: true,
   starPosition: null,
   isStarred: false,
+  folderId: null,
   isOkf: false,
   okfVersion: null,
   syncStatus: "ok" as const,

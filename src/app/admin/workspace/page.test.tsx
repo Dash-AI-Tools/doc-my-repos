@@ -42,9 +42,11 @@ vi.mock("@/server/admin/service", () => ({
       isAllowed: true,
       starPosition: null,
       isStarred: false,
+      folderId: null,
       syncStatus: "ok",
     },
   ],
+  getAdminFolders: async () => [],
 }));
 
 vi.mock("@/server/admin/settings", () => ({
@@ -122,5 +124,16 @@ describe("/admin/workspace", () => {
     );
     expect(html).toMatch(/role="tab"[^>]*aria-selected="true"[^>]*data-testid="tab-repos"/);
     expect(html).toContain("acme/api");
+  });
+
+  it("holds Folders in their own tab, opens it for ?tab=folders, and says they are optional", async () => {
+    const html = renderToStaticMarkup(
+      await AdminGithubPage({ searchParams: params({ tab: "folders" }) }),
+    );
+    expect(html).toMatch(/role="tab"[^>]*aria-selected="true"[^>]*data-testid="tab-folders"/);
+    expect(html).toContain("Folders are optional");
+    expect(html).toContain("No folders yet.");
+    // No folder exists, so the repository rows show no folder control.
+    expect(html).not.toContain("Folder for acme/api");
   });
 });

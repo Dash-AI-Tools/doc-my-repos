@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { fieldClass } from "@/lib/ui";
+
 /** Row shape from the admin repos API. Local copy: components take data as props. */
 export interface RepoAccessRow {
   readonly id: number;
@@ -10,7 +12,15 @@ export interface RepoAccessRow {
   /** Place in the admin-set starred order; null when not starred. */
   readonly starPosition: number | null;
   readonly isStarred: boolean;
+  /** The folder it is in (repo-folders); null when in none. */
+  readonly folderId: number | null;
   readonly syncStatus: "pending" | "ok" | "error";
+}
+
+/** A folder to choose in a row's folder control. */
+export interface FolderOption {
+  readonly id: number;
+  readonly name: string;
 }
 
 const SYNC_LABEL: Record<RepoAccessRow["syncStatus"], string> = {
@@ -47,6 +57,9 @@ export interface RepoLineProps {
   readonly busy: boolean;
   readonly onToggleStar: (repo: RepoAccessRow) => void;
   readonly onToggleAllowed: (repo: RepoAccessRow) => void;
+  /** Folders to choose from; the folder control is shown only when there is at least one. */
+  readonly folders?: readonly FolderOption[];
+  readonly onSetFolder?: (repo: RepoAccessRow, folderId: number | null) => void;
   /** Starred rows: the drag handle, shown before the name. */
   readonly handle?: ReactNode;
   /** Starred rows: the Move up / Move down buttons, shown with the actions. */
@@ -59,6 +72,8 @@ export function RepoLine({
   busy,
   onToggleStar,
   onToggleAllowed,
+  folders = [],
+  onSetFolder,
   handle,
   moves,
 }: RepoLineProps) {
@@ -91,6 +106,23 @@ export function RepoLine({
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 md:justify-end">
         {moves}
+        {folders.length > 0 && onSetFolder ? (
+          <select
+            aria-label={`Folder for ${label}`}
+            disabled={busy}
+            // A folder removed elsewhere shows as "No folder" until the list refreshes.
+            value={folders.some((f) => f.id === r.folderId) ? String(r.folderId) : ""}
+            onChange={(e) => onSetFolder(r, e.target.value === "" ? null : Number(e.target.value))}
+            className={`${fieldClass} max-w-44 text-sm`}
+          >
+            <option value="">No folder</option>
+            {folders.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <button
           type="button"
           disabled={busy}

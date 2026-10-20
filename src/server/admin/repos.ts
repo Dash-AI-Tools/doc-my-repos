@@ -1,7 +1,7 @@
 import { eq, max } from "drizzle-orm";
 
 import type { Db } from "@/server/db/client";
-import { repos } from "@/server/db/schema";
+import { repoFolders, repos } from "@/server/db/schema";
 
 type Failure = { ok: false; status: 400 | 404 | 409; error: string };
 
@@ -11,6 +11,7 @@ export type RepoFlags = {
   isAllowed: boolean;
   isStarred: boolean;
   starPosition: number | null;
+  folderId: number | null;
 };
 export type UpdateFlagsResult = ({ ok: true } & RepoFlags) | Failure;
 export type SetAllowedResult =
@@ -26,6 +27,7 @@ type RepoRow = {
   name: string;
   isAllowed: boolean;
   starPosition: number | null;
+  folderId: number | null;
 };
 
 /** What the admin helpers need from a database or a transaction. */
@@ -53,6 +55,7 @@ async function findRepo(
       name: repos.name,
       isAllowed: repos.isAllowed,
       starPosition: repos.starPosition,
+      folderId: repos.folderId,
     })
     .from(repos);
   const repo = all.find((r) => keyOf(r.owner, r.name) === wanted);
@@ -60,30 +63,38 @@ async function findRepo(
 }
 
 /**
- * Admin allow/block and star/unstar in one write. Each present flag (`undefined` = absent) is
+ * Admin allow/block, star/unstar and folder assignment in one write. Each present flag (`undefined` = absent) is
  * validated before anything is written, and at least one must be present. Content is kept when a
  * repo is blocked: the visibility chokepoint hides it from every read, and re-allowing restores it
  * without re-syncing. Starring appends at `max + 1`; starring a starred repo keeps its place;
- * unstarring clears it. Blocking never touches the star or its place.
+ * unstarring clears it. Blocking never touches the star or its place. `folderId` (a folder id, or
+ * null to clear; absent = leave alone) must name an existing folder, else 404.
  */
 export async function updateRepoFlags(
   db: Db,
   owner: unknown,
   name: unknown,
-  flags: { isAllowed?: unknown; isStarred?: unknown },
+  flags: { isAllowed?: unknown; isStarred?: unknown; folderId?: unknown },
 ): Promise<UpdateFlagsResult> {
   if (!nonEmpty(owner) || !nonEmpty(name)) {
     return { ok: false, status: 400, error: "owner and name are required" };
   }
-  const { isAllowed, isStarred } = flags;
+  const { isAllowed, isStarred, folderId } = flags;
   if (isAllowed !== undefined && typeof isAllowed !== "boolean") {
     return { ok: false, status: 400, error: "isAllowed: must be a boolean" };
   }
   if (isStarred !== undefined && typeof isStarred !== "boolean") {
     return { ok: false, status: 400, error: "isStarred: must be a boolean" };
   }
-  if (isAllowed === undefined && isStarred === undefined) {
-    return { ok: false, status: 400, error: "isAllowed or isStarred is required" };
+  if (
+    folderId !== undefined &&
+    folderId !== null &&
+    !(typeof folderId === "number" && Number.isSafeInteger(folderId) && folderId > 0)
+  ) {
+    return { ok: false, status: 400, error: "folderId: must be a folder id or null" };
+  }
+  if (isAllowed === undefined && isStarred === undefined && folderId === undefined) {
+    return { ok: false, status: 400, error: "isAllowed, isStarred or folderId is required" };
   }
   return db.transaction(async (tx): Promise<UpdateFlagsResult> => {
     const found = await findRepo(tx, owner, name);
@@ -91,6 +102,16 @@ export async function updateRepoFlags(
     const { repo } = found;
     const set: Partial<typeof repos.$inferInsert> = { updatedAt: new Date() };
     if (isAllowed !== undefined) set.isAllowed = isAllowed;
+    if (folderId !== undefined) {
+      if (folderId !== null) {
+        const [folder] = await tx
+          .select({ id: repoFolders.id })
+          .from(repoFolders)
+          .where(eq(repoFolders.id, folderId));
+        if (!folder) return { ok: false, status: 404, error: "folder not found" };
+      }
+      set.folderId = folderId;
+    }
     if (isStarred === false) set.starPosition = null;
     if (isStarred === true && repo.starPosition === null) {
       const [row] = await tx.select({ top: max(repos.starPosition) }).from(repos);
@@ -104,6 +125,7 @@ export async function updateRepoFlags(
       isAllowed: set.isAllowed ?? repo.isAllowed,
       isStarred: (set.starPosition === undefined ? repo.starPosition : set.starPosition) !== null,
       starPosition: set.starPosition === undefined ? repo.starPosition : set.starPosition,
+      folderId: set.folderId === undefined ? repo.folderId : set.folderId,
     };
   });
 }

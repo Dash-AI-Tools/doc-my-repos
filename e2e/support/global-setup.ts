@@ -80,6 +80,7 @@ export default async function globalSetup(): Promise<void> {
     await prepare("settings");
     await prepare("agent");
     await prepare("agentoff");
+    await prepare("folders");
   } catch (error) {
     await teardown();
     throw error;

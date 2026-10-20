@@ -22,7 +22,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-import { RepoLine, repoLabel, rowButton, type RepoAccessRow } from "./repo-access-row";
+import {
+  RepoLine,
+  repoLabel,
+  rowButton,
+  type FolderOption,
+  type RepoAccessRow,
+} from "./repo-access-row";
 
 /**
  * The starred repositories of the admin Repository access page, as a sortable list (admin page
@@ -40,6 +46,8 @@ export interface StarredRepoListProps {
   readonly onReorder: (next: RepoAccessRow[]) => void;
   readonly onToggleStar: (repo: RepoAccessRow) => void;
   readonly onToggleAllowed: (repo: RepoAccessRow) => void;
+  readonly folders?: readonly FolderOption[];
+  readonly onSetFolder?: (repo: RepoAccessRow, folderId: number | null) => void;
 }
 
 const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
@@ -122,6 +130,8 @@ function SortableRow({ repo, index, count, onMove, ...actions }: SortableRowProp
         busy={actions.busyId === repo.id}
         onToggleStar={actions.onToggleStar}
         onToggleAllowed={actions.onToggleAllowed}
+        folders={actions.folders}
+        onSetFolder={actions.onSetFolder}
         handle={handle}
         moves={moves}
       />

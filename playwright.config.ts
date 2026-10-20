@@ -83,6 +83,7 @@ export default defineConfig({
             "settings",
             "agent",
             "agentoff",
+            "folders",
           ] as const
         ).map((name) => ({
           command: start(STACKS[name].port),

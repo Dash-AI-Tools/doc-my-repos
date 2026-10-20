@@ -3,9 +3,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ConfigError } from "./config/errors";
 import { createDb, type Db } from "./db/client";
-import { repos } from "./db/schema";
+import { repoFolders, repos } from "./db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "./db/test-db";
-import { expectedFailureKind, loadHome } from "./home";
+import { expectedFailureKind, groupHome, loadHome } from "./home";
+import type { FolderSummary, RepoSummary } from "./queries";
 
 const NOW = new Date("2026-10-10T12:00:00Z");
 
@@ -101,7 +102,10 @@ describeDb("loadHome on a real database", () => {
     expect(await loadHome({ db: () => t.db, now: () => NOW })).toEqual({
       status: "ok",
       starred: [],
+      folders: [],
       repos: [],
+      tabs: [],
+      folder: null,
       loadedAt: NOW,
     });
   });
@@ -166,6 +170,94 @@ describeDb("loadHome on a real database", () => {
     expect(data.starred).toHaveLength(5);
   });
 
+  describe("folders", () => {
+    const folderIds: Record<string, number> = {};
+    const place = async (githubId: number, folder: string | null, set: object = {}) =>
+      t.db
+        .update(repos)
+        .set({ folderId: folder === null ? null : folderIds[folder], ...set })
+        .where(eq(repos.githubId, githubId));
+
+    it("with no folder keeps exactly the previous sections (nothing starred or in folders)", async () => {
+      await t.db.update(repos).set({ starPosition: null });
+      const data = await loadHome({ db: () => t.db, now: () => NOW });
+      if (data.status !== "ok") throw new Error("expected ok");
+      expect(data).toMatchObject({ starred: [], folders: [], tabs: [], folder: null });
+      expect(data.repos.map((r) => r.name)).toEqual(["alpha", "mid", "plain", "tie", "zeta"]);
+    });
+
+    it("groups by folder name, drops empty, blocked-only and starred-only folders, and tabs follow the star order", async () => {
+      const rows = await t.db
+        .insert(repoFolders)
+        .values([
+          { name: "beta", description: "B <b>desc</b>", starPosition: 1 },
+          { name: "Alpha", starPosition: 0 },
+          { name: "Empty" },
+          { name: "BlockedOnly", starPosition: 2 },
+          { name: "StarredOnly" },
+        ])
+        .returning();
+      for (const r of rows) folderIds[r.name] = r.id;
+      // alpha(1) mid(3) -> beta; plain(6) -> Alpha; hidden(5, blocked) -> BlockedOnly; tie(4) starred -> StarredOnly
+      await place(1, "beta");
+      await place(3, "beta");
+      await place(6, "Alpha");
+      await place(5, "BlockedOnly");
+      await place(4, "StarredOnly", { starPosition: 5 });
+      await t.db.update(repos).set({ starPosition: null }).where(eq(repos.githubId, 1));
+      await t.db.update(repos).set({ starPosition: null }).where(eq(repos.githubId, 3));
+
+      const data = await loadHome({ db: () => t.db, now: () => NOW });
+      if (data.status !== "ok") throw new Error("expected ok");
+      expect(data.starred.map((r) => r.name)).toEqual(["tie"]);
+      expect(data.folders.map((f) => f.name)).toEqual(["Alpha", "beta"]);
+      expect(data.folders[1]).toMatchObject({ description: "B <b>desc</b>" });
+      expect(data.folders[1]?.repos.map((r) => r.name)).toEqual(["alpha", "mid"]);
+      expect(data.repos.map((r) => r.name)).toEqual(["zeta"]);
+      // Tabs: starred folders with a visible repo, in star order (BlockedOnly has none visible).
+      expect(data.tabs.map((x) => x.name)).toEqual(["Alpha", "beta"]);
+      expect(data.folder).toBeNull();
+    });
+
+    it("selects a folder tab with all its visible repos (starred included); bad ids fall back to All", async () => {
+      await place(4, "beta"); // starred repo joins beta
+      const pick = async (id?: number) => {
+        const d = await loadHome({ db: () => t.db, now: () => NOW }, id);
+        if (d.status !== "ok") throw new Error("expected ok");
+        return d;
+      };
+      const d = await pick(folderIds.beta);
+      expect(d.folder?.name).toBe("beta");
+      expect(d.folder?.repos.map((r) => r.name)).toEqual(["alpha", "mid", "tie"]);
+      // Starred repo is under Starred only in the All data.
+      expect(d.starred.map((r) => r.name)).toEqual(["tie"]);
+      expect(d.folders.find((f) => f.name === "beta")?.repos.map((r) => r.name)).toEqual([
+        "alpha",
+        "mid",
+      ]);
+      expect((await pick(folderIds.StarredOnly)).folder).toBeNull(); // not starred, no tab
+      expect((await pick(folderIds.BlockedOnly)).folder).toBeNull(); // no visible repo
+      expect((await pick(folderIds.Empty)).folder).toBeNull();
+      expect((await pick(999999)).folder).toBeNull();
+      expect((await pick(undefined)).folder).toBeNull();
+    });
+
+    it("blocking hides the folder, allowing returns it in the same folder", async () => {
+      await t.db
+        .update(repos)
+        .set({ isAllowed: false })
+        .where(eq(repos.folderId, folderIds.Alpha!));
+      let d = await loadHome({ db: () => t.db, now: () => NOW });
+      if (d.status !== "ok") throw new Error("expected ok");
+      expect(d.tabs.map((x) => x.name)).toEqual(["beta"]);
+      expect(d.folders.map((f) => f.name)).toEqual(["beta"]);
+      await t.db.update(repos).set({ isAllowed: true }).where(eq(repos.folderId, folderIds.Alpha!));
+      d = await loadHome({ db: () => t.db, now: () => NOW });
+      if (d.status !== "ok") throw new Error("expected ok");
+      expect(d.folders.map((f) => f.name)).toEqual(["Alpha", "beta"]);
+    });
+  });
+
   it("reports an unreachable database as the error state", async () => {
     const dead = createDb("postgres://u:p@127.0.0.1:1/none", { connectTimeoutMs: 2_000 });
     try {
@@ -180,5 +272,41 @@ describeDb("loadHome on a real database", () => {
     } finally {
       await dead.close();
     }
+  });
+});
+
+describe("groupHome", () => {
+  const summary = (id: number, folderId: number | null, starPosition: number | null = null) =>
+    ({
+      id,
+      owner: "o",
+      name: `r${id}`,
+      folderId,
+      starPosition,
+      isStarred: starPosition !== null,
+    }) as RepoSummary;
+  const folder = (id: number, name: string, starPosition: number | null = null) =>
+    ({
+      id,
+      name,
+      description: null,
+      starPosition,
+      isStarred: starPosition !== null,
+    }) as FolderSummary;
+
+  it("is the plain two-list split when there are no folders", () => {
+    const out = groupHome([summary(1, null), summary(2, null, 0)], []);
+    expect(out.starred.map((r) => r.id)).toEqual([2]);
+    expect(out.repos.map((r) => r.id)).toEqual([1]);
+    expect(out).toMatchObject({ folders: [], tabs: [], folder: null });
+  });
+
+  it("orders sections by name ignoring case, whatever the star order of the folders", () => {
+    const out = groupHome(
+      [summary(1, 10), summary(2, 20), summary(3, 30)],
+      [folder(10, "zeta", 0), folder(20, "Alpha"), folder(30, "beta")],
+    );
+    expect(out.folders.map((f) => f.name)).toEqual(["Alpha", "beta", "zeta"]);
+    expect(out.tabs).toEqual([{ id: 10, name: "zeta" }]);
   });
 });

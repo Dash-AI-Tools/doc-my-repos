@@ -1,3 +1,4 @@
+import { FolderManager } from "@/components/folder-manager";
 import { GithubSettingsForm, type SettingsView } from "@/components/github-settings-form";
 import { RepoAccessManager } from "@/components/repo-access-manager";
 import { AskLimitsForm } from "@/components/ask-limits-form";
@@ -5,7 +6,7 @@ import { AskSettingsForm } from "@/components/ask-settings-form";
 import { SetupGuide } from "@/components/setup-guide";
 import { Tabs } from "@/components/tabs";
 import { getAdminAskView } from "@/server/admin/ask";
-import { getAdminRepos } from "@/server/admin/service";
+import { getAdminFolders, getAdminRepos } from "@/server/admin/service";
 import { getAdminSettingsView } from "@/server/admin/settings";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +17,17 @@ export default async function AdminGithubPage({
 }: {
   readonly searchParams: Promise<{ setup?: string; tab?: string }>;
 }) {
-  const [view, ask, repos] = await Promise.all([
+  const [view, ask, repos, folders] = await Promise.all([
     getAdminSettingsView(),
     getAdminAskView(),
     getAdminRepos(),
+    getAdminFolders(),
   ]);
+  // Repositories per folder, blocked ones included (the admin list is unfiltered).
+  const folderCounts: Record<number, number> = {};
+  for (const r of repos) {
+    if (r.folderId !== null) folderCounts[r.folderId] = (folderCounts[r.folderId] ?? 0) + 1;
+  }
   // The setup banner links here with `?setup=1`, which opens the instructions pop-up.
   const params = await searchParams;
   const openGuide = params.setup === "1";
@@ -82,9 +89,14 @@ export default async function AdminGithubPage({
                   Blocked repositories disappear for all viewers. Their content is kept, so
                   re-allowing restores them without re-syncing.
                 </p>
-                <RepoAccessManager initialRepos={repos} canSync={canSync} />
+                <RepoAccessManager initialRepos={repos} folders={folders} canSync={canSync} />
               </>
             ),
+          },
+          {
+            id: "folders",
+            label: "Folders",
+            panel: <FolderManager initialFolders={folders} counts={folderCounts} />,
           },
           {
             id: "ask",

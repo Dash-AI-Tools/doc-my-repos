@@ -2,6 +2,12 @@ import { getDb, type Db } from "@/server/db/client";
 import { runAuthorizedSync } from "@/server/sync/manual-sync";
 import { getSyncService } from "@/server/sync/service";
 import { authErrorResponse, requireAdmin } from "@/server/auth/current-user";
+import {
+  createFolder,
+  deleteFolder,
+  reorderStarredFolders,
+  updateFolder,
+} from "@/server/admin/folders";
 import { reorderStarredRepos, updateRepoFlags } from "@/server/admin/repos";
 import { createUser, listUsers, updateUser } from "@/server/admin/users";
 import { readBrandingSettings } from "@/server/branding";
@@ -9,6 +15,7 @@ import { siteBranding } from "@/server/db/schema";
 import { sniffImageType } from "@/server/assets/image-types";
 import { parseBrandColor, parseOrgName, parsePageTitle } from "@/lib/branding/validate";
 import { allowAllRepos, type QueryOptions } from "@/server/queries/visibility";
+import { listFolders } from "@/server/queries/folders";
 import { listRepos } from "@/server/queries/repos";
 
 /**
@@ -37,6 +44,12 @@ export async function getAdminRepos(db: Db | null = null) {
   await requireAdmin(db);
   const options: QueryOptions = { visibility: allowAllRepos };
   return listRepos(db ?? getDb().db, {}, options);
+}
+
+/** Folder list for the admin panel (server component). Throws 401/403 errors on denial. */
+export async function getAdminFolders(db: Db | null = null) {
+  await requireAdmin(db);
+  return listFolders(db ?? getDb().db);
 }
 
 async function bodyOf(
@@ -115,7 +128,7 @@ export async function handleListRepos(db: Db | null = null): Promise<Response> {
   }
 }
 
-/** `PATCH /api/admin/repos`: `{owner, name}` plus `isAllowed` and/or `isStarred` (booleans). */
+/** `PATCH /api/admin/repos`: `{owner, name}` plus `isAllowed` and/or `isStarred` (booleans) and/or `folderId` (id or null). */
 export async function handleUpdateRepo(request: Request, db: Db | null = null): Promise<Response> {
   const denied = await guard(db);
   if (denied) return denied;
@@ -125,6 +138,7 @@ export async function handleUpdateRepo(request: Request, db: Db | null = null): 
     const result = await updateRepoFlags(db ?? getDb().db, parsed.body.owner, parsed.body.name, {
       isAllowed: parsed.body.isAllowed,
       isStarred: parsed.body.isStarred,
+      folderId: parsed.body.folderId,
     });
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     return Response.json({ repo: { ...result, ok: undefined } });
@@ -146,6 +160,88 @@ export async function handleReorderStarred(
     const result = await reorderStarredRepos(db ?? getDb().db, parsed.body?.repos);
     if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
     return Response.json({ repos: result.repos });
+  } catch {
+    return Response.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+/** `GET /api/admin/folders`: every folder, starred first in order. */
+export async function handleListFolders(db: Db | null = null): Promise<Response> {
+  try {
+    return Response.json({ folders: await getAdminFolders(db) });
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+}
+
+/** `POST /api/admin/folders` with `{name, description?}`. */
+export async function handleCreateFolder(
+  request: Request,
+  db: Db | null = null,
+): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  const parsed = await bodyOf(request);
+  if ("error" in parsed) return parsed.error;
+  try {
+    const result = await createFolder(db ?? getDb().db, parsed.body ?? {});
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    return Response.json({ folder: result.folder }, { status: 201 });
+  } catch {
+    return Response.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+/** `PATCH /api/admin/folders/:id` with any of `{name, description, isStarred}`. */
+export async function handleUpdateFolder(
+  id: number,
+  request: Request,
+  db: Db | null = null,
+): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  const parsed = await bodyOf(request);
+  if ("error" in parsed) return parsed.error;
+  try {
+    const body = parsed.body ?? {};
+    const result = await updateFolder(db ?? getDb().db, id, {
+      name: body.name,
+      description: body.description,
+      isStarred: body.isStarred,
+    });
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    return Response.json({ folder: result.folder });
+  } catch {
+    return Response.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+/** `DELETE /api/admin/folders/:id`: its repositories are kept and become folderless. */
+export async function handleDeleteFolder(id: number, db: Db | null = null): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  try {
+    const result = await deleteFolder(db ?? getDb().db, id);
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    return Response.json({ ok: true });
+  } catch {
+    return Response.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+/** `PUT /api/admin/folders/starred`: `{folderIds: number[]}`, the whole starred list in order. */
+export async function handleReorderFolders(
+  request: Request,
+  db: Db | null = null,
+): Promise<Response> {
+  const denied = await guard(db);
+  if (denied) return denied;
+  const parsed = await bodyOf(request);
+  if ("error" in parsed) return parsed.error;
+  try {
+    const result = await reorderStarredFolders(db ?? getDb().db, parsed.body?.folderIds);
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    return Response.json({ folderIds: result.folderIds });
   } catch {
     return Response.json({ error: "Internal error" }, { status: 500 });
   }

@@ -5,7 +5,12 @@ import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db
 import { hashPassword } from "../auth/password";
 import { newSessionPayload, SESSION_COOKIE, signSession } from "../auth/session";
 import {
+  handleCreateFolder,
   handleCreateUser,
+  handleDeleteFolder,
+  handleListFolders,
+  handleReorderFolders,
+  handleUpdateFolder,
   handleListRepos,
   handleListUsers,
   handleReorderStarred,
@@ -93,6 +98,11 @@ describeDb("admin routes", () => {
       () => handleListRepos(t.db),
       () => handleUpdateRepo(jsonRequest("/api/admin/repos", "PATCH", {}), t.db),
       () => handleReorderStarred(jsonRequest("/api/admin/repos/starred", "PUT", {}), t.db),
+      () => handleListFolders(t.db),
+      () => handleCreateFolder(jsonRequest("/api/admin/folders", "POST", { name: "x" }), t.db),
+      () => handleUpdateFolder(1, jsonRequest("/api/admin/folders/1", "PATCH", {}), t.db),
+      () => handleDeleteFolder(1, t.db),
+      () => handleReorderFolders(jsonRequest("/api/admin/folders/starred", "PUT", {}), t.db),
       () => handleGetSettings({ db: t.db }),
       () => handleSaveSettings(jsonRequest("/api/admin/settings", "PUT", {}), { db: t.db }),
       () => handleTestGithub(jsonRequest("/api/admin/settings/test", "POST", {}), { db: t.db }),
@@ -111,6 +121,11 @@ describeDb("admin routes", () => {
       () => handleListRepos(t.db),
       () => handleUpdateRepo(jsonRequest("/api/admin/repos", "PATCH", {}), t.db),
       () => handleReorderStarred(jsonRequest("/api/admin/repos/starred", "PUT", {}), t.db),
+      () => handleListFolders(t.db),
+      () => handleCreateFolder(jsonRequest("/api/admin/folders", "POST", { name: "x" }), t.db),
+      () => handleUpdateFolder(1, jsonRequest("/api/admin/folders/1", "PATCH", {}), t.db),
+      () => handleDeleteFolder(1, t.db),
+      () => handleReorderFolders(jsonRequest("/api/admin/folders/starred", "PUT", {}), t.db),
       () => handleGetSettings({ db: t.db }),
       () => handleSaveSettings(jsonRequest("/api/admin/settings", "PUT", {}), { db: t.db }),
       () => handleTestGithub(jsonRequest("/api/admin/settings/test", "POST", {}), { db: t.db }),
@@ -121,6 +136,62 @@ describeDb("admin routes", () => {
     ]) {
       expect((await call()).status).toBe(403);
     }
+  });
+
+  it("creates, lists, edits, stars, reorders and deletes folders, and assigns a repo through PATCH /repos", async () => {
+    signInAs("admin");
+    const created = await handleCreateFolder(
+      jsonRequest("/api/admin/folders", "POST", { name: "Payments", description: "Money" }),
+      t.db,
+    );
+    expect(created.status).toBe(201);
+    const { folder } = (await created.json()) as { folder: { id: number } };
+    const other = (await (
+      await handleCreateFolder(jsonRequest("/api/admin/folders", "POST", { name: "Ops" }), t.db)
+    ).json()) as { folder: { id: number } };
+    expect(
+      (await handleCreateFolder(jsonRequest("/f", "POST", { name: "payments" }), t.db)).status,
+    ).toBe(409);
+    expect((await handleCreateFolder(jsonRequest("/f", "POST", { name: "" }), t.db)).status).toBe(
+      400,
+    );
+    expect((await handleCreateFolder(jsonRequest("/f", "POST"), t.db)).status).toBe(400);
+
+    const patch = (id: number, body: unknown) =>
+      handleUpdateFolder(id, jsonRequest(`/f/${id}`, "PATCH", body), t.db);
+    expect((await patch(folder.id, { name: "Pay", isStarred: true })).status).toBe(200);
+    expect((await patch(other.folder.id, { isStarred: true })).status).toBe(200);
+    expect((await patch(99999, { name: "x" })).status).toBe(404);
+    expect((await patch(Number("abc"), { name: "x" })).status).toBe(404);
+    expect((await patch(folder.id, {})).status).toBe(400);
+
+    const order = (ids: unknown) =>
+      handleReorderFolders(jsonRequest("/f/starred", "PUT", { folderIds: ids }), t.db);
+    expect((await order([other.folder.id, folder.id])).status).toBe(200);
+    expect((await order([folder.id])).status).toBe(409);
+    expect((await order("x")).status).toBe(400);
+    const listed = (await (await handleListFolders(t.db)).json()) as {
+      folders: { name: string }[];
+    };
+    expect(listed.folders.map((f) => f.name)).toEqual(["Ops", "Pay"]);
+
+    const assign = (folderId: unknown) =>
+      handleUpdateRepo(
+        jsonRequest("/api/admin/repos", "PATCH", { owner: "acme", name: "handbook", folderId }),
+        t.db,
+      );
+    expect((await assign(folder.id)).status).toBe(200);
+    expect((await assign(99999)).status).toBe(404);
+    expect((await assign("1")).status).toBe(400);
+    expect((await handleDeleteFolder(folder.id, t.db)).status).toBe(200);
+    expect((await handleDeleteFolder(folder.id, t.db)).status).toBe(404);
+    const repo = (
+      (await (await handleListRepos(t.db)).json()) as {
+        repos: { name: string; folderId: number | null }[];
+      }
+    ).repos.find((r) => r.name === "handbook");
+    expect(repo?.folderId).toBeNull();
+    await handleDeleteFolder(other.folder.id, t.db);
   });
 
   it("lists, creates, and updates users as admin", async () => {

@@ -166,6 +166,13 @@ describe("db schema", () => {
     expect(col.hasDefault).toBe(false);
   });
 
+  it("stores the folder as a nullable integer with no default (null = in no folder)", () => {
+    const col = column(repos, "folder_id");
+    expect(col.getSQLType()).toBe("integer");
+    expect(col.notNull).toBe(false);
+    expect(col.hasDefault).toBe(false);
+  });
+
   it("has no default for repos.visibility so the sync must supply it", () => {
     expect(column(repos, "visibility").hasDefault).toBe(false);
   });

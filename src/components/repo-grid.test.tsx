@@ -101,4 +101,51 @@ describe("RepoGrid", () => {
       expect(screen.queryByText(/Repositories/)).toBeNull();
     });
   });
+
+  describe("folders", () => {
+    const pay = {
+      id: 1,
+      name: "Payments",
+      description: "<i>x</i>",
+      repos: [repo("p1"), repo("p2")],
+    };
+    const ops = { id: 2, name: "Ops", description: null, repos: [repo("o1")] };
+
+    it("puts folder sections between Starred and Repositories, with description as text", () => {
+      render(<RepoGrid now={NOW} starred={[repo("s")]} folders={[pay, ops]} repos={[repo("r")]} />);
+      expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
+        "Starred (1)",
+        "Payments (2)",
+        "Ops (1)",
+        "Repositories (1)",
+      ]);
+      expect(screen.getByText("<i>x</i>")).toBeTruthy();
+      expect(document.querySelector("section i")).toBeNull();
+      // Only folders with a description show a paragraph.
+      expect(document.querySelectorAll("section > p")).toHaveLength(1);
+    });
+
+    it("omits Repositories when everything is in a folder", () => {
+      render(<RepoGrid now={NOW} folders={[pay]} repos={[]} />);
+      expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
+        "Payments (2)",
+      ]);
+    });
+
+    it("shows only the selected folder in the tab view", () => {
+      render(
+        <RepoGrid
+          now={NOW}
+          starred={[repo("s")]}
+          folders={[ops]}
+          repos={[repo("r")]}
+          folder={pay}
+        />,
+      );
+      expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
+        "Payments (2)",
+      ]);
+      expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    });
+  });
 });

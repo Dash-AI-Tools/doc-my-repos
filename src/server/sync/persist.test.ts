@@ -1,7 +1,7 @@
 import { asc, eq, getTableColumns, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { codeOwners, documents, repos, SEARCH_TEXT_CONFIG } from "../db/schema";
+import { codeOwners, documents, repoFolders, repos, SEARCH_TEXT_CONFIG } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import { markRepoPrivate } from "../webhooks/store";
 import type { RepoLevelResult } from "./blobs";
@@ -704,6 +704,32 @@ describeDb("persistRepoSync on a real database", () => {
       expect(await repoRow(id)).toMatchObject({ isAllowed: false, starPosition: 4 });
       await t.db.update(repos).set({ isAllowed: true }).where(eq(repos.githubId, id));
       expect(await repoRow(id)).toMatchObject({ isAllowed: true, starPosition: 4 });
+    });
+
+    it("keeps the folder across content syncs, renames, blocking and re-allowing", async () => {
+      const id = 701;
+      const [folder] = await t.db.insert(repoFolders).values({ name: "persist-test" }).returning();
+      try {
+        await persist({ repo: repoMeta(id), plan: content({ fetched: [A] }) });
+        await t.db.update(repos).set({ folderId: folder!.id }).where(eq(repos.githubId, id));
+        await persist({ repo: repoMeta(id), plan: content({ treeSha: sha("f2"), fetched: [B] }) });
+        expect((await repoRow(id))?.folderId).toBe(folder!.id);
+        await persist({
+          repo: repoMeta(id, { name: "renamed-f", htmlUrl: "https://github.com/acme/renamed-f" }),
+          plan: content({ treeSha: sha("f3") }),
+        });
+        expect(await repoRow(id)).toMatchObject({ name: "renamed-f", folderId: folder!.id });
+        await t.db.update(repos).set({ isAllowed: false }).where(eq(repos.githubId, id));
+        await persist({
+          repo: repoMeta(id, { name: "renamed-f" }),
+          plan: content({ treeSha: sha("f4") }),
+        });
+        await t.db.update(repos).set({ isAllowed: true }).where(eq(repos.githubId, id));
+        expect(await repoRow(id)).toMatchObject({ isAllowed: true, folderId: folder!.id });
+      } finally {
+        await t.db.delete(repos).where(eq(repos.githubId, id));
+        await t.db.delete(repoFolders).where(eq(repoFolders.id, folder!.id));
+      }
     });
 
     it("deletes a stale row holding the new name under another id, ignoring case", async () => {

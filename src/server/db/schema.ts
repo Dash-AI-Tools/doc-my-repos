@@ -14,6 +14,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const repoVisibility = pgEnum("repo_visibility", ["public", "private"]);
@@ -126,6 +127,25 @@ export type SyncRepoResult = {
   replacedRepos: string[];
 };
 
+/**
+ * Admin-managed folders that group repositories on the home page (repo-folders). Optional: no row
+ * exists until an admin creates one. `star_position` follows the same scheme as
+ * `repos.star_position` (null = not starred, otherwise the place in the tab order). Names are
+ * unique ignoring case.
+ */
+export const repoFolders = pgTable(
+  "repo_folders",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    name: text("name").notNull(),
+    description: text("description"),
+    starPosition: integer("star_position"),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("repo_folders_name_lower_unique").on(sql`lower(${t.name})`)],
+);
+
 export const repos = pgTable(
   "repos",
   {
@@ -175,6 +195,9 @@ export const repos = pgTable(
     // order. Written only by star/unstar/reorder (never by the sync's explicit-column upsert), so
     // blocking and syncing keep it. Not unique or contiguous: reads order by it then id.
     starPosition: integer("star_position"),
+    // Admin-chosen folder (repo-folders); null = in no folder. Written only by the admin folder
+    // actions (never by the sync's explicit-column upsert). Deleting a folder clears it.
+    folderId: integer("folder_id").references(() => repoFolders.id, { onDelete: "set null" }),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },

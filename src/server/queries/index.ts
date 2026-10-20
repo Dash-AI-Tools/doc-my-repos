@@ -82,6 +82,8 @@ export const NOT_QUERIES: ReadonlySet<string> = new Set([
   "publicReposOnly",
   "visibleRepos",
   // repo-ref.ts: input checks and the shared repository condition (resolved through the filter).
+  // folders.ts: folder names and descriptions only, no repository data (nothing to filter).
+  "listFolders",
   // comments.ts: checks a cursor string, returns no rows.
   "isCommentCursor",
   "isLookupText",
@@ -93,6 +95,7 @@ export const NOT_QUERIES: ReadonlySet<string> = new Set([
 
 export { getApiSpec, listApiSpecs, type ApiSpecDetail, type ApiSpecSummary } from "./api-specs";
 export { findAssetRepo, type AssetRepo } from "./assets";
+export { listFolders, type FolderSummary } from "./folders";
 export {
   COMMENT_STATES_MAX,
   COMMENTS_PAGE_SIZE,

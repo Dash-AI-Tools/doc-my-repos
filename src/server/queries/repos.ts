@@ -39,6 +39,8 @@ export interface RepoSummary {
   readonly starPosition: number | null;
   /** Starred by an admin (portal-wide); derived from `starPosition`. */
   readonly isStarred: boolean;
+  /** The admin-chosen folder (repo-folders); null when in no folder. */
+  readonly folderId: number | null;
   readonly isOkf: boolean;
   readonly okfVersion: string | null;
   /** `error` when the last sync failed; previously stored content is still served. */
@@ -120,6 +122,7 @@ const summaryColumns = {
   visibility: repos.visibility,
   isAllowed: repos.isAllowed,
   starPosition: repos.starPosition,
+  folderId: repos.folderId,
   isOkf: repos.isOkf,
   okfVersion: repos.okfVersion,
   syncStatus: repos.syncStatus,
@@ -137,6 +140,7 @@ type SummaryRow = {
   visibility: RepoVisibility;
   isAllowed: boolean;
   starPosition: number | null;
+  folderId: number | null;
   isOkf: boolean;
   okfVersion: string | null;
   syncStatus: RepoSyncStatus;
@@ -160,6 +164,7 @@ function toSummary(row: SummaryRow): RepoSummary {
     isAllowed: row.isAllowed,
     starPosition: row.starPosition,
     isStarred: row.starPosition !== null,
+    folderId: row.folderId,
     isOkf: row.isOkf,
     okfVersion: row.okfVersion,
     syncStatus: row.syncStatus,

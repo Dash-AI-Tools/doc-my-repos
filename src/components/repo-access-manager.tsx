@@ -3,9 +3,10 @@
 import { useId, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { failureText } from "@/lib/fetch-error";
 import { fieldClass } from "@/lib/ui";
 
-import { RepoLine, repoLabel, type RepoAccessRow } from "./repo-access-row";
+import { RepoLine, repoLabel, type FolderOption, type RepoAccessRow } from "./repo-access-row";
 import { RunSyncButton } from "./run-sync-button";
 import { StarredRepoList } from "./starred-repo-list";
 
@@ -25,15 +26,6 @@ interface Notice {
   readonly text: string;
 }
 
-/** The server's error text for a failed request, or a generic one. */
-async function failureText(response: Response): Promise<string> {
-  try {
-    const data = (await response.json()) as { error?: unknown };
-    if (typeof data.error === "string") return data.error;
-  } catch {}
-  return `Request failed (${response.status})`;
-}
-
 /** Starred rows in the admin order (place, then id: the same order the server uses). */
 function starredInOrder(repos: readonly RepoAccessRow[]): RepoAccessRow[] {
   return repos
@@ -43,9 +35,12 @@ function starredInOrder(repos: readonly RepoAccessRow[]): RepoAccessRow[] {
 
 export function RepoAccessManager({
   initialRepos,
+  folders = [],
   canSync = false,
 }: {
   initialRepos: RepoAccessRow[];
+  /** Folders to choose from (optional feature): no folder control is shown when empty. */
+  folders?: readonly FolderOption[];
   /** Whether the saved GitHub settings are complete enough to sync. */
   canSync?: boolean;
 }) {
@@ -86,8 +81,8 @@ export function RepoAccessManager({
   /** PATCH one repo; on failure the list is left as it was and the error is shown. */
   async function patch(
     r: RepoAccessRow,
-    body: { isAllowed: boolean } | { isStarred: boolean },
-  ): Promise<{ isAllowed: boolean; starPosition: number | null } | null> {
+    body: { isAllowed: boolean } | { isStarred: boolean } | { folderId: number | null },
+  ): Promise<{ isAllowed: boolean; starPosition: number | null; folderId: number | null } | null> {
     setBusyId(r.id);
     setNotice(null);
     try {
@@ -101,7 +96,7 @@ export function RepoAccessManager({
         return null;
       }
       const data = (await response.json()) as {
-        repo: { isAllowed: boolean; starPosition: number | null };
+        repo: { isAllowed: boolean; starPosition: number | null; folderId: number | null };
       };
       return data.repo;
     } catch {
@@ -119,6 +114,18 @@ export function RepoAccessManager({
     setNotice({
       tone: "ok",
       text: `${repoLabel(r)} is ${saved.isAllowed ? "visible again" : "blocked"}.`,
+    });
+    router.refresh();
+  }
+
+  async function onSetFolder(r: RepoAccessRow, folderId: number | null) {
+    const saved = await patch(r, { folderId });
+    if (!saved) return;
+    setRepos((prev) => prev.map((p) => (p.id === r.id ? { ...p, folderId: saved.folderId } : p)));
+    const name = folders.find((f) => f.id === saved.folderId)?.name;
+    setNotice({
+      tone: "ok",
+      text: name ? `${repoLabel(r)} is in ${name}.` : `${repoLabel(r)} is in no folder.`,
     });
     router.refresh();
   }
@@ -190,6 +197,8 @@ export function RepoAccessManager({
               onReorder={(next) => void onReorder(next)}
               onToggleStar={(r) => void onToggleStar(r)}
               onToggleAllowed={(r) => void onToggle(r)}
+              folders={folders}
+              onSetFolder={(r, id) => void onSetFolder(r, id)}
             />
           </div>
         </section>
@@ -253,6 +262,8 @@ export function RepoAccessManager({
                   busy={busyId === r.id}
                   onToggleStar={(row) => void onToggleStar(row)}
                   onToggleAllowed={(row) => void onToggle(row)}
+                  folders={folders}
+                  onSetFolder={(row, id) => void onSetFolder(row, id)}
                 />
               </li>
             ))}
