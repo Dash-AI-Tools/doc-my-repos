@@ -96,7 +96,8 @@ grep -qx "DOCMYREPOS_IMAGE=$next" "$dir/.env" || fail ".env does not name the ne
 [ "$(cksum "$dir/docker-compose.yml")" = "$compose_before" ] || fail "the upgrade changed the compose file"
 [ -n "$(find "$dir/.env" -prune -type f -perm 600)" ] || fail ".env is not owner-only after the upgrade"
 backup=$(find "$dir" -maxdepth 1 -name 'backup-*.sql' -type f)
-[ -n "$backup" ] && [ "$(printf '%s\n' "$backup" | wc -l | tr -d ' ')" = 1 ] || fail "expected exactly one backup file"
+[ -n "$backup" ] || fail "expected exactly one backup file"
+[ "$(printf '%s\n' "$backup" | wc -l | tr -d ' ')" = 1 ] || fail "expected exactly one backup file"
 [ -s "$backup" ] || fail "the backup is empty"
 [ -n "$(find "$backup" -prune -type f -perm 600)" ] || fail "the backup is not owner-only"
 grep -q 'CREATE TABLE' "$backup" || fail "the backup holds no schema"

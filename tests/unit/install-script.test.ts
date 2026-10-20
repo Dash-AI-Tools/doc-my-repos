@@ -194,7 +194,8 @@ describe("install.sh usage", () => {
 
 describe("install.sh prerequisites", () => {
   it("stops when Docker is missing, writing nothing", () => {
-    const r = run(GOOD, { without: ["docker"], env: PASSWORD });
+    // minimalPath: a docker installed in /usr/bin (CI runners have one) must not be found.
+    const r = run(GOOD, { without: ["docker"], env: PASSWORD, minimalPath: true });
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("Docker is not installed");
     expect(emptyWork(r)).toBe(true);
