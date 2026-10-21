@@ -1,6 +1,6 @@
 allowBuilds:
-  '@scarf/scarf': false
-  '@tree-sitter-grammars/tree-sitter-yaml': false
+  "@scarf/scarf": false
+  "@tree-sitter-grammars/tree-sitter-yaml": false
   core-js-pure: false
   esbuild: false
   tree-sitter: false
