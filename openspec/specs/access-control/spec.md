@@ -13,6 +13,9 @@ Authenticated access to the portal with admin-managed users and per-repo allow/b
 - **SHALL** return generic 401 on invalid credentials with no session set.
 - **SHALL** clear the session cookie on logout.
 - **SHALL NOT** apply the session gate to the machine endpoints `POST /api/sync` and `POST /api/webhooks/github`. They have their own authentication (`SYNC_SECRET` bearer token, webhook HMAC signature) and callers (GitHub, cron) have no session cookie.
+- **SHALL** confirm the session's user in the database (exists, enabled, same password version and role) on every page and API behind the session gate before reading content, not only check the cookie signature.
+- **SHALL** accept a session only for the tenant it was issued for; a cookie that names no tenant is valid only for the built-in tenant.
+- **SHALL NOT** apply the session gate to plugin paths under a `public/` segment (`/-/<id>/public/…`, `/api/plugins/<id>/public/…`) or to extra public paths a host app configures; every other plugin path is gated like a core page or API.
 
 #### Scenario: Unauthenticated page visit redirects to login
 - **WHEN** an unauthenticated visitor requests `/`
@@ -39,6 +42,18 @@ Authenticated access to the portal with admin-managed users and per-repo allow/b
 #### Scenario: Logout clears the session
 - **WHEN** the user visits logout
 - **THEN** the session cookie is cleared.
+
+#### Scenario: Disabled user's cookie stops working on content pages
+- **WHEN** an admin disables a user and that user, with an unexpired cookie, opens the home page or a document
+- **THEN** they are redirected to `/login`, and an API call answers 401.
+
+#### Scenario: Cookie from another tenant
+- **WHEN** a valid cookie issued for tenant `a` is sent with a request resolved to tenant `b`
+- **THEN** the request is treated as unauthenticated.
+
+#### Scenario: Plugin public path
+- **WHEN** an unauthenticated request reaches `/-/billing/public/pricing`
+- **THEN** the proxy passes it through, and the plugin dispatcher serves it only if the plugin declared that page public.
 
 ### Requirement: 2. Roles
 

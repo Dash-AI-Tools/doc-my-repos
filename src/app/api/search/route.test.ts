@@ -1,6 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import * as route from "./route";
+
+// These tests check the route wiring. A gated route confirms the signed-in user in the tenant's
+// database first; the e2e switch makes that the fixed admin without a database.
+beforeAll(() => {
+  vi.stubEnv("E2E_AUTH_BYPASS", "1");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("/api/search route", () => {
   it("is dynamic and runs on the Node.js runtime", () => {
@@ -18,7 +27,7 @@ describe("/api/search route", () => {
   it.each(["POST", "PUT", "PATCH", "DELETE", "HEAD"] as const)(
     "refuses %s with Allow: GET",
     async (method) => {
-      const res = route[method]();
+      const res = await route[method]();
       expect(res.status).toBe(405);
       expect(res.headers.get("allow")).toBe("GET");
     },

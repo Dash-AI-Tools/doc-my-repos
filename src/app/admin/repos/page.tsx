@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
+import { app } from "@/docmyrepos";
+import { bindPage } from "@docmyrepos/ui";
+import { AdminReposRedirect } from "@docmyrepos/ui/pages/admin-repos-redirect";
 
 export const dynamic = "force-dynamic";
 
-/** Repository access moved into a tab of the Workspace configuration page; old links still work. */
-export default function AdminReposRedirect(): never {
-  redirect("/admin/workspace?tab=repos");
-}
+export default bindPage(AdminReposRedirect, app);

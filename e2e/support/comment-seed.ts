@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { Db } from "../../src/server/db/client";
-import { createDb } from "../../src/server/db/client";
-import { docComments, users } from "../../src/server/db/schema";
-import { persistRepoSync } from "../../src/server/sync/persist";
+import type { Db } from "../../packages/server/src/db/client";
+import { createDb } from "../../packages/server/src/db/client";
+import { docComments, users } from "../../packages/server/src/db/schema";
+import { persistRepoSync } from "../../packages/server/src/sync/persist";
 import {
   COMMENT_DOCS,
   COMMENT_USERS,
@@ -26,12 +26,17 @@ export async function seedCommentData(db: Db): Promise<void> {
   const rows = await db
     .insert(users)
     .values(
-      (Object.keys(COMMENT_USERS) as CommentUser[]).map((key) => ({
-        email: COMMENT_USERS[key].email,
-        // Never a real hash: nobody signs in with these users, the header selects them.
-        passwordHash: "e2e-not-a-password-hash",
-        role: COMMENT_USERS[key].role,
-      })),
+      (Object.keys(COMMENT_USERS) as CommentUser[]).map((key) => {
+        const user: { email: string; role: "admin" | "user"; disabled?: boolean } =
+          COMMENT_USERS[key];
+        return {
+          email: user.email,
+          // Never a real hash: nobody signs in with these users, the header selects them.
+          passwordHash: "e2e-not-a-password-hash",
+          role: user.role,
+          disabled: user.disabled ?? false,
+        };
+      }),
     )
     .returning({ id: users.id, email: users.email });
   const id = (key: CommentUser): number => {

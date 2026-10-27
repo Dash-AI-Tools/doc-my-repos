@@ -1,0 +1,109 @@
+{
+  ".": {
+    "AppProps": "interface { app: App }",
+    "bindPage": "function <P extends object, R>(Page: (props: P) => R, app: App) => (props: Omit<P, \"app\">) => R"
+  },
+  "./pages/admin-ask-redirect": {
+    "AdminAskRedirect": "function () => never"
+  },
+  "./pages/admin-branding": {
+    "AdminBrandingPage": "function ({ app }: AppProps) => Promise<Element>"
+  },
+  "./pages/admin-comments": {
+    "AdminCommentsPage": "function ({ app, searchParams, }: AppProps & { searchParams: SearchParams; }) => Promise<Element>"
+  },
+  "./pages/admin-github-redirect": {
+    "AdminGithubRedirect": "function () => never"
+  },
+  "./pages/admin-home": {
+    "AdminHomePage": "function ({ app }: AppProps) => Promise<Element>"
+  },
+  "./pages/admin-layout": {
+    "AdminLayout": "function ({ app, children }: AppProps & { children: ReactNode; }) => Promise<Element>"
+  },
+  "./pages/admin-repos-redirect": {
+    "AdminReposRedirect": "function () => never"
+  },
+  "./pages/admin-tokens": {
+    "AdminTokensPage": "function ({ app }: AppProps) => Promise<Element>",
+    "metadata": "const Metadata"
+  },
+  "./pages/admin-users": {
+    "AdminUsersPage": "function ({ app }: AppProps) => Promise<Element>"
+  },
+  "./pages/admin-workspace": {
+    "AdminWorkspacePage": "function ({ app, searchParams, }: AppProps & { readonly searchParams: Promise<{ setup?: string | undefined; tab?: string | undefined; }>; }) => Promise<Element>"
+  },
+  "./pages/agent-access": {
+    "AgentAccessPage": "function ({ app }: AppProps) => Promise<Element>",
+    "metadata": "const Metadata"
+  },
+  "./pages/api-reference": {
+    "ApiReferencePage": "function ({ app, params }: AppProps & { params: Params; }) => Promise<Element>",
+    "generateMetadata": "function ({ app, params, }: AppProps & { params: Params; }) => Promise<Metadata>"
+  },
+  "./pages/ask": {
+    "AskPage": "function ({ app, searchParams, }: AppProps & { searchParams: PageSearchParams; }) => Promise<Element>",
+    "metadata": "const Metadata"
+  },
+  "./pages/doc-not-found": {
+    "DocNotFoundPage": "function () => Element",
+    "metadata": "const Metadata"
+  },
+  "./pages/doc": {
+    "DocPage": "function ({ app, params, searchParams, }: AppProps & { params: Params; searchParams: SearchParams; }) => Promise<Element>",
+    "generateMetadata": "function ({ app, params, searchParams, }: AppProps & { params: Params; searchParams: SearchParams; }) => Promise<Metadata>"
+  },
+  "./pages/e2e-mermaid": {
+    "E2eMermaidPage": "function ({ searchParams, }: { readonly searchParams: Promise<Record<string, string | string[] | undefined>>; }) => Promise<Element>"
+  },
+  "./pages/e2e-plugin": {
+    "e2eFixturePlugin": "const Plugin"
+  },
+  "./pages/e2e-theme": {
+    "E2eThemePage": "function () => Promise<Element>"
+  },
+  "./pages/error": {
+    "ErrorPage": "function ({ error, reset, }: { error: Error & { digest?: string | undefined; }; reset: () => void; }) => Element"
+  },
+  "./pages/global-error": {
+    "GlobalErrorPage": "function ({ error, reset, }: { error: Error & { digest?: string | undefined; }; reset: () => void; }) => Element"
+  },
+  "./pages/home": {
+    "HomePage": "function ({ app, searchParams, }: AppProps & { readonly searchParams?: Promise<{ folder?: string | string[] | undefined; }> | undefined; }) => Promise<Element>"
+  },
+  "./pages/login": {
+    "LoginPage": "function ({ app }: AppProps) => Promise<Element>"
+  },
+  "./pages/plugin": {
+    "generateMetadata": "function ({ app, params, }: AppProps & PluginRouteProps) => Promise<Metadata>",
+    "PluginPage": "function ({ app, params, searchParams }: AppProps & PluginRouteProps) => Promise<ReactElement<unknown, string | JSXElementConstructor<any>> | Iterable<ReactNode> | AwaitedReactNode>"
+  },
+  "./pages/repo-docs-redirect": {
+    "RepoDocsRedirect": "function ({ params, }: { params: Promise<{ owner: string; repo: string; }>; }) => Promise<void>"
+  },
+  "./pages/repo-not-found": {
+    "metadata": "const Metadata",
+    "RepoNotFoundPage": "function () => Element"
+  },
+  "./pages/repo": {
+    "generateMetadata": "function ({ app, params, searchParams, }: AppProps & { params: Params; searchParams: SearchParams; }) => Promise<Metadata>",
+    "RepoPage": "function ({ app, params, searchParams, }: AppProps & { params: Params; searchParams: SearchParams; }) => Promise<Element>"
+  },
+  "./pages/root-layout": {
+    "generateMetadata": "function ({ app }: AppProps) => Promise<Metadata>",
+    "RootLayout": "function ({ app, children }: AppProps & { children: ReactNode; }) => Promise<Element>",
+    "viewport": "const Viewport"
+  },
+  "./pages/search-loading": {
+    "SearchLoading": "function () => Element"
+  },
+  "./pages/search": {
+    "generateMetadata": "function ({ searchParams, }: { searchParams: PageSearchParams; }) => Promise<Metadata>",
+    "SearchPage": "function ({ app, searchParams, }: AppProps & { searchParams: PageSearchParams; }) => Promise<Element>"
+  },
+  "./pages/status": {
+    "metadata": "const Metadata",
+    "StatusPage": "function ({ app }: AppProps) => Promise<Element>"
+  }
+}

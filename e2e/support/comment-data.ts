@@ -16,6 +16,8 @@ export const COMMENT_USERS = {
   otto: { email: "otto@example.com", role: "admin" },
   /** A 60-character local part: the display name is one unbroken word. */
   long: { email: `${"x".repeat(60)}@example.com`, role: "user" },
+  /** Disabled by an admin: a request acting as her is signed out (tenant-context 5.3). */
+  dora: { email: "dora@example.com", role: "user", disabled: true },
 } as const;
 
 export type CommentUser = keyof typeof COMMENT_USERS;

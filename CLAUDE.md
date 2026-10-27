@@ -37,7 +37,7 @@ openspec validate --all
 - Workspace settings (GitHub App, repository scope, limits, provider credentials) live in the database, are edited by admins, and are validated with zod when saved. Secrets among them are encrypted at rest with `SETTINGS_ENCRYPTION_KEY`, are write-only, and never reach logs or responses. Startup secrets (`DATABASE_URL`, `SESSION_SECRET`, `SYNC_SECRET`, the encryption key) come only from environment variables.
 - GitHub access is a GitHub App installation (`@octokit/auth-app`), never a personal access token. Installation tokens are short-lived, cached, and refreshed. Repo discovery uses the installation's accessible repos, narrowed by config.
 - Every read of repos, documents, search, facets, and assets goes through the single visibility filter in the shared query layer. Do not query those tables around it.
-- Keep modules under `src/server/` free of React (the one allowed import is `cache` from `react`, to memoize a read per request) and under `src/components/` free of database access.
+- Keep modules under `packages/server/src/` free of React (the one allowed import is `cache` from `react`, to memoize a read per request) and under `packages/ui/src/components/` free of database access.
 
 ## Security rules
 

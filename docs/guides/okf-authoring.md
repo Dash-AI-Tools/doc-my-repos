@@ -5,10 +5,10 @@ description: How an AI agent connected to DocMyRepos finds or drafts a repositor
 tags: [guides, okf, ai, mcp]
 status: stable
 sources:
-  - src/server/docs/okf-validate.ts
-  - src/lib/okf-authoring/guidelines.ts
-  - src/lib/okf-authoring/names.ts
-  - src/server/queries/documents.ts
+  - packages/server/src/docs/okf-validate.ts
+  - packages/core/src/okf-authoring/guidelines.ts
+  - packages/core/src/okf-authoring/names.ts
+  - packages/server/src/queries/documents.ts
 generated: 2026-10-16
 verified: 2026-10-16
 stale_after: 2999-01-01

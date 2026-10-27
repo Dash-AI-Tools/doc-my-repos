@@ -1,0 +1,37 @@
+{
+  "name": "@docmyrepos/core",
+  "version": "0.1.0",
+  "description": "Contracts, extension types and shared pure code of DocMyRepos.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dash-AI-Tools/doc-my-repos.git",
+    "directory": "packages/core"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./internal/*": "./src/*.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "./internal/*": {
+        "types": "./dist/*.d.ts",
+        "default": "./dist/*.js"
+      },
+      "./package.json": "./package.json"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "zod": "^4.6.7"
+  }
+}

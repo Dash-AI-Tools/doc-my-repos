@@ -14,7 +14,7 @@ import { SKIP_DB, SKIP_DB_REASON, stackUrl } from "./support/stack";
  * state the one before left (api-service, knowledge-base, search-lab starred in that order).
  *
  * Authorization (401/403), validation and the 409 are covered with a real database in
- * `src/server/admin/service.test.ts`; component behaviour in the `*.test.tsx` files next to the
+ * `packages/server/src/admin/service.test.ts`; component behaviour in the `*.test.tsx` files next to the
  * components. This file covers what needs a real browser: pointer dragging, the keyboard on a
  * real layout, the home page, the account menu and axe.
  */

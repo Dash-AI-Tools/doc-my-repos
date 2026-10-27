@@ -486,7 +486,7 @@ Docs come from third-party repositories and are treated as untrusted. See [SECUR
 - **Login, no per-repository access.** The portal is single-tenant and behind a login with the `admin` and `user` roles. Every signed-in user can read every repository an admin has made visible, including private ones, so install the App only on repositories you want shown and block the rest under **Admin**. Private repositories are marked with a badge, and the app records each repository's visibility so per-user access can be added later.
 - **Sanitized rendering.** HTML is sanitized after every rehype transform; `.mdx` is never executed; Mermaid runs with `securityLevel: 'strict'`.
 - **Verified inputs.** Webhook signatures are checked against the raw body; `/api/sync` needs `SYNC_SECRET`; `/api/asset` only serves image content types from inside a configured repository and blocks path traversal.
-- **Security headers and CSP** are set by the app (`src/proxy.ts`, values in `src/lib/security-headers.ts`) and need no help from the proxy:
+- **Security headers and CSP** are set by the app (`src/proxy.ts`, values in `packages/core/src/security-headers.ts`) and need no help from the proxy:
   - `Content-Security-Policy` per request: `default-src 'none'`; scripts only with that request's nonce (`'strict-dynamic'`, no `'unsafe-inline'`, no `eval`); `img-src 'self' https:`; `connect-src 'self'`; no frames, plugins, `base-uri` or foreign form targets; `frame-ancestors 'none'`.
   - **Styles allow `'unsafe-inline'`.** Shiki colours code with `style` attributes and Mermaid draws diagrams with their own `<style>` elements in the browser, where no nonce can be attached. Injected CSS cannot run script, but it could restyle a page. Markdown is sanitized, so documents cannot add `<style>` elements, and `style` attributes are limited to code colours.
   - **External images load directly** from any `https:` host, without a referrer; that host then sees the reader's IP address. To forbid them, change `img-src` to `'self'` in `buildContentSecurityPolicy`. Plain `http:` images are blocked.
@@ -519,7 +519,7 @@ openspec validate --all
 
 **CI** (`.github/workflows/ci.yml`) runs lint, format check, type check, unit tests, the production build, the e2e tests with a Postgres 17 service, a Docker image build on linux/amd64 with a smoke test, and `openspec validate`, on every pull request and on pushes to `main`. It uses no secrets, so it also runs for pull requests from forks. Actions are pinned to commit SHAs and kept current by Dependabot.
 
-**Layout.** `src/server/` holds everything that touches GitHub, Postgres or the filesystem and has no React; `src/components/` has no database access; `src/app/` is routing. Every read of repos, documents, search, facets and assets goes through the one visibility filter in `src/server/queries/`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the pull request checklist.
+**Layout.** `packages/server/src/` holds everything that touches GitHub, Postgres or the filesystem and has no React; `packages/ui/src/components/` has no database access; `src/app/` is routing. Every read of repos, documents, search, facets and assets goes through the one visibility filter in `packages/server/src/queries/`. See [CONTRIBUTING.md](CONTRIBUTING.md) for the conventions and the pull request checklist.
 
 ## Project status and roadmap
 

@@ -1,0 +1,687 @@
+@import "tailwindcss";
+
+/* Class names used by the UI package, wherever the package is installed (Tailwind skips node_modules
+   when it detects sources on its own). */
+@source "./";
+
+/* Dark mode follows the `dark` class on <html> (next-themes, attribute="class"). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens (task 8.1, design decision 10). Semantic CSS variables for the light palette on
+ * :root and the dark palette on .dark. packages/core/src/theme-tokens.ts mirrors every value (a unit test
+ * fails if they drift) and checks the WCAG AA contrast of each pairing. These two blocks are the
+ * only place raw colors are written; everything else uses the tokens.
+ */
+:root {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #111111;
+  --muted: #f5f5f5;
+  --muted-foreground: #5c5c5c;
+  --card: #ffffff;
+  --card-foreground: #111111;
+  --popover: #ffffff;
+  --popover-foreground: #111111;
+  --border: #e4e4e4;
+  --input: #858585;
+  --ring: #2b59ff;
+  --primary: #2b59ff;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #111111;
+  --accent: #eaf0ff;
+  --accent-foreground: #1a3bc4;
+  --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
+  --destructive-muted: #fef2f2;
+  --destructive-muted-foreground: #7f1d1d;
+  --destructive-muted-border: #fca5a5;
+  --success: #dcfce7;
+  --success-foreground: #14532d;
+  --warning: #fef3c7;
+  --warning-foreground: #78350f;
+  --link: #2b59ff;
+  --link-hover: #1a3bc4;
+  --code-background: #f5f5f5;
+  --code-foreground: #111111;
+  --selection: #cddaff;
+  --selection-foreground: #0a1030;
+  --private-badge: #efefef;
+  --private-badge-foreground: #3a3a3a;
+  --okf-badge: #eaf0ff;
+  --okf-badge-foreground: #1a3bc4;
+  --header: #ffffff;
+  --header-foreground: #111111;
+  --header-border: #e4e4e4;
+  --header-ring: #2b59ff;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: #0c0c0d;
+  --foreground: #ececec;
+  --muted: #151516;
+  --muted-foreground: #a1a1a6;
+  --card: #0c0c0d;
+  --card-foreground: #ececec;
+  --popover: #161617;
+  --popover-foreground: #ececec;
+  --border: #262628;
+  --input: #7d7d83;
+  --ring: #7c9bff;
+  --primary: #7c9bff;
+  --primary-foreground: #0c0c0d;
+  --secondary: #1d1d1f;
+  --secondary-foreground: #ececec;
+  --accent: #172250;
+  --accent-foreground: #dbe4ff;
+  --destructive: #f87171;
+  --destructive-foreground: #09090b;
+  --destructive-muted: #450a0a;
+  --destructive-muted-foreground: #fecaca;
+  --destructive-muted-border: #991b1b;
+  --success: #052e16;
+  --success-foreground: #bbf7d0;
+  --warning: #422006;
+  --warning-foreground: #fde68a;
+  --link: #8aa6ff;
+  --link-hover: #c2d0ff;
+  --code-background: #151516;
+  --code-foreground: #e4e4e7;
+  --selection: #2b59ff;
+  --selection-foreground: #ffffff;
+  --private-badge: #232325;
+  --private-badge-foreground: #d4d4d8;
+  --okf-badge: #172250;
+  --okf-badge-foreground: #c2d0ff;
+  --header: #0c0c0d;
+  --header-foreground: #ececec;
+  --header-border: #262628;
+  --header-ring: #7c9bff;
+}
+
+/* Tailwind utilities: bg-background, text-foreground, border-border, ring-ring, text-link, ... */
+@theme inline {
+  --font-sans:
+    "Hanken Grotesk Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius-sm: 0.125rem;
+  --radius-md: 0.1875rem;
+  --radius-lg: 0.25rem;
+  --radius-xl: 0.375rem;
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-muted: var(--destructive-muted);
+  --color-destructive-muted-foreground: var(--destructive-muted-foreground);
+  --color-destructive-muted-border: var(--destructive-muted-border);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
+  --color-code-background: var(--code-background);
+  --color-code-foreground: var(--code-foreground);
+  --color-selection: var(--selection);
+  --color-selection-foreground: var(--selection-foreground);
+  --color-private-badge: var(--private-badge);
+  --color-private-badge-foreground: var(--private-badge-foreground);
+  --color-okf-badge: var(--okf-badge);
+  --color-okf-badge-foreground: var(--okf-badge-foreground);
+  --color-header: var(--header);
+  --color-header-foreground: var(--header-foreground);
+  --color-header-border: var(--header-border);
+  --color-header-ring: var(--header-ring);
+}
+
+@layer base {
+  html {
+    background-color: var(--background);
+  }
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  :where(h1, h2, h3) {
+    text-wrap: balance;
+  }
+  html {
+    scrollbar-color: var(--input) transparent;
+    /* The sticky header, plus the document bar where there is one, plus a little air. The two
+       heights are measured and published by `HeaderHeight` and `DocNavBar`; the fallbacks are the
+       header's usual heights (one row from 640px, two rows on a phone). */
+    --site-header-h: 4rem;
+    scroll-padding-top: calc(var(--site-header-h) + var(--doc-bar-h, 0px) + 1rem);
+  }
+  input,
+  textarea {
+    caret-color: var(--primary);
+  }
+  * {
+    border-color: var(--border);
+  }
+  ::selection {
+    background-color: var(--selection);
+    color: var(--selection-foreground);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* Text fields show focus on their own edge (ink border, thickened underline), not with the ring. */
+  input:not([type="checkbox"], [type="radio"], [type="button"], [type="submit"]):focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: none;
+    border-color: var(--foreground);
+    box-shadow: 0 1px 0 0 var(--foreground);
+  }
+  a {
+    color: var(--link);
+    text-underline-offset: 0.2em;
+  }
+  a:hover {
+    color: var(--link-hover);
+  }
+  /* Links inside running text must not rely on color alone (WCAG 1.4.1, axe link-in-text-block). */
+  :where(p, li, td, dd, blockquote) a {
+    text-decoration: underline;
+  }
+  :where(input, textarea, select)::placeholder {
+    color: var(--muted-foreground);
+  }
+}
+
+/*
+ * Shiki dual themes (task 7.3). The server emits both palettes as custom properties
+ * (--shiki-light / --shiki-dark, -bg on the pre, -font-style etc. where a theme sets them);
+ * these rules pick one set, so a theme switch needs no re-render. The block background and border
+ * come from the tokens (the Shiki themes only supply the token colors).
+ */
+pre.shiki {
+  color: var(--shiki-light);
+  background-color: var(--code-background);
+  overflow-x: auto;
+  padding: 1rem 1.125rem;
+  border-radius: 0.125rem;
+}
+pre.shiki span {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style, inherit);
+  font-weight: var(--shiki-light-font-weight, inherit);
+  text-decoration: var(--shiki-light-text-decoration, inherit);
+}
+.dark pre.shiki {
+  color: var(--shiki-dark);
+}
+.dark pre.shiki span {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style, inherit);
+  font-weight: var(--shiki-dark-font-weight, inherit);
+  text-decoration: var(--shiki-dark-text-decoration, inherit);
+}
+
+/* Copy button host (packages/ui/src/components/code-copy.tsx): top right of the block. */
+@media (max-width: 639px) {
+  html {
+    --site-header-h: 6rem;
+  }
+}
+pre:has(> .dmr-copy-host) {
+  position: relative;
+  padding-right: 4.5rem;
+}
+@media (max-width: 639px) {
+  pre:has(> .dmr-copy-host) {
+    padding-top: 2.75rem;
+    padding-right: 1.125rem;
+  }
+}
+.dmr-copy-host {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+}
+
+/*
+ * Enlarged Mermaid diagram (packages/ui/src/components/mermaid-viewer.tsx). Mermaid sets a max-width in
+ * `style` on the svg, so the overrides need !important; the svg then fits the panel and the
+ * pan/zoom transform scales it from there.
+ */
+.dmr-mermaid-stage-content > svg {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+}
+
+/*
+ * Rendered Markdown (the sanitized output of packages/server/src/markdown/pipeline.ts). Wrap the HTML in
+ * <div class="markdown-body">. Tokens only. Heading anchors are empty links the pipeline emits
+ * (`a.heading-anchor`); the icon is drawn here and shown on hover or keyboard focus.
+ */
+.markdown-body {
+  font-size: 1.125rem;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+/* A document page shows its title as its own h1; a body that opens with the same h1 hides it
+   (display: none also removes it from the accessibility tree). */
+.markdown-body[data-hide-title] > h1:first-child {
+  display: none;
+}
+.markdown-body[data-hide-title] > h1:first-child + * {
+  margin-top: 0;
+}
+.markdown-body :is(p, ul, ol, pre, table, blockquote, details, figure, hr, dl) {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+.markdown-body :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  margin-top: 2.25rem;
+  margin-bottom: 0.75rem;
+  scroll-margin-top: 1rem;
+}
+.markdown-body h1 {
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+}
+.markdown-body h2 {
+  font-size: 1.625rem;
+  margin-top: 2.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+.markdown-body > h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.markdown-body h3 {
+  font-size: 1.25rem;
+  letter-spacing: -0.015em;
+}
+.markdown-body h4 {
+  font-size: 1.05rem;
+}
+.markdown-body :is(h5, h6) {
+  font-size: 0.95rem;
+  color: var(--muted-foreground);
+}
+.markdown-body :is(h1, h2, h3, h4, h5, h6) > .heading-anchor {
+  margin-left: 0.4rem;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  font-weight: 400;
+  opacity: 0;
+}
+.markdown-body :is(h1, h2, h3, h4, h5, h6) > .heading-anchor::before {
+  content: "#";
+}
+.markdown-body :is(h1, h2, h3, h4, h5, h6):hover > .heading-anchor,
+.markdown-body .heading-anchor:focus-visible {
+  opacity: 1;
+}
+.markdown-body a {
+  text-decoration: underline;
+}
+.markdown-body a.heading-anchor {
+  text-decoration: none;
+}
+.markdown-body a:not([href]),
+.markdown-body a.dmr-broken-link {
+  color: var(--muted-foreground);
+  text-decoration: underline dashed;
+  cursor: not-allowed;
+}
+.markdown-body :is(ul, ol) {
+  padding-left: 1.6rem;
+}
+.markdown-body ul {
+  list-style: disc;
+}
+.markdown-body ol {
+  list-style: decimal;
+}
+.markdown-body li + li {
+  margin-top: 0.25rem;
+}
+.markdown-body li > :is(ul, ol) {
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+.markdown-body ::marker {
+  color: var(--muted-foreground);
+}
+.markdown-body ul.contains-task-list {
+  list-style: none;
+  padding-left: 0.25rem;
+}
+.markdown-body ul.contains-task-list ul.contains-task-list {
+  padding-left: 1.5rem;
+}
+.markdown-body li.task-list-item > input[type="checkbox"] {
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  accent-color: var(--primary);
+}
+.markdown-body blockquote {
+  border-left: 2px solid var(--input);
+  padding: 0.1rem 1rem;
+  color: var(--muted-foreground);
+}
+.markdown-body blockquote > :is(p, ul, ol) {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.markdown-body hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.25rem;
+}
+.markdown-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+.markdown-body :is(th, td) {
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 1rem 0.5rem 0;
+  text-align: left;
+  vertical-align: top;
+}
+.markdown-body th {
+  border-bottom-color: var(--foreground);
+  font-weight: 700;
+}
+.markdown-body :not(pre) > code {
+  background-color: var(--code-background);
+  color: var(--code-foreground);
+  border-radius: 0.125rem;
+  padding: 0.12em 0.35em;
+  font-size: 0.875em;
+}
+.markdown-body pre:not(.shiki) {
+  background-color: var(--code-background);
+  color: var(--code-foreground);
+  border-radius: 0.125rem;
+  padding: 1rem 1.125rem;
+  overflow-x: auto;
+}
+.markdown-body pre code {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.markdown-body kbd {
+  background-color: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 0.25rem;
+  padding: 0.05em 0.4em;
+  font-size: 0.85em;
+}
+.markdown-body details {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 0;
+}
+.markdown-body details[open] > summary {
+  margin-bottom: 0.5rem;
+}
+.markdown-body summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.markdown-body mark {
+  background-color: var(--selection);
+  color: var(--selection-foreground);
+}
+.markdown-body section.footnotes {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+.markdown-body section.footnotes ol {
+  margin: 0;
+}
+.markdown-body sup > a {
+  text-decoration: none;
+  padding: 0 0.1em;
+}
+
+/*
+ * Change log (task 11.6): the document page of an OKF repository's reserved `log.md` is wrapped in
+ * <div class="change-log"> with a left rule; each entry heading (`##`, usually a date) gets a dot
+ * on the rule. Tokens only. The entries stay in the order the author wrote them.
+ */
+.change-log .markdown-body h2 {
+  position: relative;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.change-log .markdown-body h2::before {
+  content: "";
+  position: absolute;
+  top: 0.55em;
+  left: calc(-1.25rem - 1px - 0.3125rem);
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+/*
+ * The docs structure of a document page (`DocNavPanel`, spec "docs-reader-layout"). A column from
+ * 1024px (placement and stickiness are utilities on the element). Below it, once scripts have run
+ * (`data-enhanced` on `.doc-reader`), a panel that slides in from the left over a backdrop; before
+ * that it is a plain block after the article, so nothing depends on a button that cannot work yet.
+ */
+.doc-panel__backdrop,
+.doc-panel__close {
+  display: none;
+}
+@media (max-width: 1023.98px) {
+  .doc-reader[data-enhanced="true"] .doc-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    visibility: hidden;
+    transition: visibility 0s linear 0.2s;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel[data-open="true"] {
+    visibility: visible;
+    transition-delay: 0s;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel__backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: rgb(0 0 0 / 0.45);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel[data-open="true"] .doc-panel__backdrop {
+    opacity: 1;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel__sheet {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: min(20rem, 85vw);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 1.25rem;
+    background: var(--background);
+    border-right: 1px solid var(--border);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel[data-open="true"] .doc-panel__sheet {
+    transform: none;
+  }
+  .doc-reader[data-enhanced="true"] .doc-panel__close {
+    display: inline-block;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .doc-reader .doc-panel,
+  .doc-reader .doc-panel__backdrop,
+  .doc-reader .doc-panel__sheet {
+    transition: none !important;
+  }
+}
+
+/*
+ * Full-width reading pages (spec "docs-reader-layout", "Full viewport width"). The header, `main`
+ * and footer share `.site-shell` (a centred 88rem column). A page that contains `.doc-reader`, the
+ * document page and the repository page, lifts the cap for all three from 1024px, so the columns
+ * reach the viewport edges with the header's own padding and the three stay aligned. Other pages
+ * never contain `.doc-reader` and keep the cap.
+ */
+@media (min-width: 1024px) {
+  body:has(.doc-reader) .site-shell {
+    max-width: none;
+  }
+}
+
+/*
+ * Text size (specs "text-size", reading-accessibility 1.3). The layout sets `data-text-size` on
+ * <html> for every choice other than Default (which has no rules: the browser's own size applies).
+ * A percentage multiplies the browser default, and everything sized in rem follows. `--text-scale`
+ * lets the few things that keep a constant pixel width divide it out (the reader's side tracks in
+ * `ReaderGrid`). The steps mirror `TEXT_SIZE_STEPS` in packages/core/src/reading-prefs.ts; a unit test keeps
+ * them equal.
+ */
+html[data-text-size="small"] {
+  font-size: 87.5%;
+  --text-scale: 0.875;
+}
+html[data-text-size="large"] {
+  font-size: 112.5%;
+  --text-scale: 1.125;
+}
+html[data-text-size="larger"] {
+  font-size: 125%;
+  --text-scale: 1.25;
+}
+html[data-text-size="largest"] {
+  font-size: 150%;
+  --text-scale: 1.5;
+}
+
+/*
+ * Read mode (specs "read-mode", reading-accessibility 3.2). `data-read-mode` on <html> is set by
+ * ReadModeProvider. Hidden parts carry `data-read-hide` (display: none also takes them out of the
+ * tab order and the accessibility tree). The grid collapses to the one centred column, capped near
+ * 70 characters, with a larger body measure. Wide code and tables scroll inside the column. The
+ * header and bar heights (`--site-header-h`, `--doc-bar-h`) fall to zero on their own: they are
+ * measured, and a hidden element measures zero.
+ */
+/*
+ * Read mode paper (reading-accessibility, specs "read-mode", "Paper and serif"). Read mode re-points
+ * the surface tokens to a warm beige, so the page, the floating controls, code and tables all follow
+ * without any component knowing; the dark theme gets a warm dark sepia instead of the cool near
+ * black. These are the only raw colors outside the two palettes above; a unit test checks the
+ * contrast of each pairing. The document text is serif (system faces, nothing to download); code
+ * keeps its monospace face from the base styles.
+ */
+html[data-read-mode="true"] {
+  --font-serif: Charter, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --background: #f5eedc;
+  --foreground: #2b2418;
+  --muted: #ebe2cb;
+  --muted-foreground: #5d5240;
+  --card: #f5eedc;
+  --card-foreground: #2b2418;
+  --popover: #faf5e8;
+  --popover-foreground: #2b2418;
+  --border: #d8ccaf;
+  --secondary: #ebe2cb;
+  --secondary-foreground: #2b2418;
+  --code-background: #ebe2cb;
+  --code-foreground: #2b2418;
+  --link: #1a3bc4;
+  --link-hover: #12298a;
+}
+html.dark[data-read-mode="true"] {
+  --background: #1d1912;
+  --foreground: #e8dfca;
+  --muted: #272219;
+  --muted-foreground: #b5a98f;
+  --card: #1d1912;
+  --card-foreground: #e8dfca;
+  --popover: #272219;
+  --popover-foreground: #e8dfca;
+  --border: #3a3326;
+  --secondary: #272219;
+  --secondary-foreground: #e8dfca;
+  --code-background: #272219;
+  --code-foreground: #e8dfca;
+  --link: #a9bdff;
+  --link-hover: #cfdaff;
+}
+html[data-read-mode="true"] .reader-content {
+  font-family: var(--font-serif);
+}
+html[data-read-mode="true"] [data-read-hide] {
+  display: none;
+}
+html[data-read-mode="true"] .reader-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+html[data-read-mode="true"] .reader-content {
+  grid-column: 1 / -1;
+  grid-row: auto;
+  width: 100%;
+  max-width: 44rem;
+  padding-top: 3.5rem;
+}
+html[data-read-mode="true"] .markdown-body {
+  font-size: 1.125rem;
+  line-height: 1.75;
+}
+html[data-read-mode="true"] .reader-content :is(pre, table) {
+  max-width: 100%;
+  overflow-x: auto;
+}

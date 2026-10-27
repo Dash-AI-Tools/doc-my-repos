@@ -1,9 +1,6 @@
-import { handleTestAsk } from "@/server/admin/ask";
+import { app } from "@/docmyrepos";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/** `POST /api/admin/ask/test` with `{ provider, model }`: one fixed request, one fixed result word. */
-export function POST(request: Request): Promise<Response> {
-  return handleTestAsk(request);
-}
+export const { POST } = app.routes.adminAskTest;

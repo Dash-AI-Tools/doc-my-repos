@@ -1,17 +1,6 @@
-import { commentResponse, commentsMethodNotAllowed } from "@/server/comments/results";
-import { adminPurge } from "@/server/comments/service";
-
-/** `POST /api/admin/comments/purge` with `{ ids }` or `{ githubRepoId, path }`. */
+import { app } from "@/docmyrepos";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request): Promise<Response> {
-  return commentResponse(await adminPurge(request));
-}
-
-export const GET = () => commentsMethodNotAllowed("POST");
-export const HEAD = () => commentsMethodNotAllowed("POST");
-export const PUT = () => commentsMethodNotAllowed("POST");
-export const PATCH = () => commentsMethodNotAllowed("POST");
-export const DELETE = () => commentsMethodNotAllowed("POST");
+export const { GET, HEAD, POST, PUT, PATCH, DELETE } = app.routes.adminCommentsPurge;

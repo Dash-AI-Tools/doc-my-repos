@@ -2,8 +2,10 @@
 
 # Dependencies and build output are produced inside the image.
 node_modules
+**/node_modules
 .next
 dist
+**/dist
 out
 coverage
 *.tsbuildinfo

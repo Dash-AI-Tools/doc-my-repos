@@ -1,6 +1,6 @@
 import type { Browser, Locator, Page } from "@playwright/test";
 
-import { THEME_TOKENS, type ThemeName } from "../src/lib/theme-tokens";
+import { THEME_TOKENS, type ThemeName } from "../packages/core/src/theme-tokens";
 import { expect, test } from "./support/csp";
 import { openReadingPanel, readingButton } from "./support/reading-panel";
 
@@ -10,8 +10,8 @@ import { openReadingPanel, readingButton } from "./support/reading-panel";
  * Covers the theming spec: system preference on a first visit, a manual choice that survives a
  * reload, no flash of the wrong theme before first paint, the header toggle on every page and its
  * keyboard operation, and live updates of code blocks and Mermaid diagrams. The key is
- * `docmyrepos-theme` (src/components/theme-provider.tsx). Fixture pages (`/e2e/*`, see
- * src/lib/e2e-fixtures.ts) stand in for document pages until group 10. Screenshots go to
+ * `docmyrepos-theme` (packages/ui/src/components/theme-provider.tsx). Fixture pages (`/e2e/*`, see
+ * packages/core/src/e2e-fixtures.ts) stand in for document pages until group 10. Screenshots go to
  * `test-results/` for inspection.
  */
 

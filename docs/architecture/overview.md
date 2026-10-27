@@ -5,10 +5,10 @@ description: One Next.js app and one Postgres database. A sync engine copies par
 tags: [architecture, overview]
 status: stable
 sources:
-  - src/server/workspace.ts
-  - src/server/sync/engine.ts
-  - src/server/queries/visibility.ts
-  - src/server/queries/enforcement.test.ts
+  - packages/server/src/workspace.ts
+  - packages/server/src/sync/engine.ts
+  - packages/server/src/queries/visibility.ts
+  - packages/server/src/queries/enforcement.test.ts
   - src/proxy.ts
 generated: 2026-10-10
 verified: 2026-10-10
@@ -70,21 +70,21 @@ The page reads three things: the repository, the document, and every document ro
 
 ## Modules
 
-| Path                   | Responsibility                                                                                 |
-| ---------------------- | ---------------------------------------------------------------------------------------------- |
-| `src/app/`             | Routes: pages and the five API routes.                                                         |
-| `src/components/`      | React components. They never touch the database.                                               |
-| `src/lib/`             | Pure helpers shared by server and browser: URLs, search params, tree building, OKF display.    |
-| `src/server/sync/`     | The sync engine: discovery, tree planning, blob fetching, persistence, runs, scheduler.        |
-| `src/server/github/`   | The GitHub client and the App installation token provider.                                     |
-| `src/server/docs/`     | Pure parsers: frontmatter, titles and headings, OKF detection, CODEOWNERS, docs folder.        |
-| `src/server/markdown/` | The render pipeline: parse, link and image rewriting, highlighting, Mermaid tagging, sanitize. |
-| `src/server/queries/`  | Every read of repositories, documents, search and assets, behind one visibility filter.        |
-| `src/server/db/`       | Drizzle schema, migrations, advisory locks, the connection pool.                               |
-| `src/server/webhooks/` | Signature verification and the event router.                                                   |
-| `src/server/assets/`   | The image proxy.                                                                               |
+| Path                            | Responsibility                                                                                 |
+| ------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `src/app/`                      | Routes: pages and the five API routes.                                                         |
+| `packages/ui/src/components/`   | React components. They never touch the database.                                               |
+| `packages/core/src/`            | Pure helpers shared by server and browser: URLs, search params, tree building, OKF display.    |
+| `packages/server/src/sync/`     | The sync engine: discovery, tree planning, blob fetching, persistence, runs, scheduler.        |
+| `packages/server/src/github/`   | The GitHub client and the App installation token provider.                                     |
+| `packages/server/src/docs/`     | Pure parsers: frontmatter, titles and headings, OKF detection, CODEOWNERS, docs folder.        |
+| `packages/server/src/markdown/` | The render pipeline: parse, link and image rewriting, highlighting, Mermaid tagging, sanitize. |
+| `packages/server/src/queries/`  | Every read of repositories, documents, search and assets, behind one visibility filter.        |
+| `packages/server/src/db/`       | Drizzle schema, migrations, advisory locks, the connection pool.                               |
+| `packages/server/src/webhooks/` | Signature verification and the event router.                                                   |
+| `packages/server/src/assets/`   | The image proxy.                                                                               |
 
-Modules under `src/server/` contain no React, and modules under `src/components/` contain no database access. A static test, `src/server/queries/enforcement.test.ts`, fails when `src/app`, `src/components` or `src/lib` import the database layer, when `src/components` or `src/lib` import the query layer, or when code outside the sync write side reads the `repos`, `documents` or `code_owners` tables around the query layer.
+Modules under `packages/server/src/` contain no React, and modules under `packages/ui/src/components/` contain no database access. A static test, `packages/server/src/queries/enforcement.test.ts`, fails when `src/app`, `packages/ui/src/components` or `src/lib` import the database layer, when `packages/ui/src/components` or `src/lib` import the query layer, or when code outside the sync write side reads the `repos`, `documents` or `code_owners` tables around the query layer.
 
 ## Trust boundaries
 

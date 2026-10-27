@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 
-import type { Db } from "../../src/server/db/client";
-import { repos } from "../../src/server/db/schema";
-import { persistRepoSync } from "../../src/server/sync/persist";
+import type { Db } from "../../packages/server/src/db/client";
+import { repos } from "../../packages/server/src/db/schema";
+import { persistRepoSync } from "../../packages/server/src/sync/persist";
 import { ASK_REPO } from "./ask-data";
 import { metadata, planFor } from "./seed";
 

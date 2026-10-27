@@ -1,8 +1,7 @@
-import { redirect } from "next/navigation";
+import { app } from "@/docmyrepos";
+import { bindPage } from "@docmyrepos/ui";
+import { AdminGithubRedirect } from "@docmyrepos/ui/pages/admin-github-redirect";
 
 export const dynamic = "force-dynamic";
 
-/** The page moved to `/admin/workspace` when it was renamed; old links and bookmarks still work. */
-export default function AdminGithubRedirect(): never {
-  redirect("/admin/workspace");
-}
+export default bindPage(AdminGithubRedirect, app);

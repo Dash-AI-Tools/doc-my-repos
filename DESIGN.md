@@ -194,7 +194,7 @@ A monochrome ink-on-paper palette with a single electric blue; dark mode swaps t
 
 **The One Voice Rule.** Signal Blue means "you are here, or you can act here." It is never decoration, never a fill behind body copy, and never a second accent.
 
-**The Contrast Gate Rule.** Raw colors live only in the `:root` and `.dark` blocks of `globals.css`, mirrored in `src/lib/theme-tokens.ts`. Every pairing used is listed in `CONTRAST_PAIRS` and fails the unit test below 4.5:1 (text) or 3:1 (UI). A new color enters both files and the pair list, or it does not ship.
+**The Contrast Gate Rule.** Raw colors live only in the `:root` and `.dark` blocks of `globals.css`, mirrored in `packages/core/src/theme-tokens.ts`. Every pairing used is listed in `CONTRAST_PAIRS` and fails the unit test below 4.5:1 (text) or 3:1 (UI). A new color enters both files and the pair list, or it does not ship.
 
 ## Typography
 
@@ -256,7 +256,7 @@ When branding is set, the bar uses the `header` tokens (`header`, `header-foregr
 
 ### Branding derivation
 
-Two `#rrggbb` inputs, everything else derived (`src/lib/branding/`): text on a fill is black or white, whichever contrasts more; link, hover and ring are the primary shifted in lightness until they pass on every surface of the theme; the dark fill is the lightened primary; the dark page and its card, muted, popover, secondary and code surfaces are the primary's hue at fixed dark lightness steps (darkened further when a bright hue would break AA), with the dark text tones re-derived against them; accent, badge and selection pairs follow the same construction. The layout renders the overrides as one server-side `<style>` (nothing emitted for defaults), validated twice: rejected on write, ignored on read.
+Two `#rrggbb` inputs, everything else derived (`packages/core/src/branding/`): text on a fill is black or white, whichever contrasts more; link, hover and ring are the primary shifted in lightness until they pass on every surface of the theme; the dark fill is the lightened primary; the dark page and its card, muted, popover, secondary and code surfaces are the primary's hue at fixed dark lightness steps (darkened further when a bright hue would break AA), with the dark text tones re-derived against them; accent, badge and selection pairs follow the same construction. The layout renders the overrides as one server-side `<style>` (nothing emitted for defaults), validated twice: rejected on write, ignored on read.
 
 ### Search / Palette Trigger
 

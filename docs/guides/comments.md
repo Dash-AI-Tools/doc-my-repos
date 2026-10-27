@@ -5,11 +5,11 @@ description: How comments on documents work. Who can read, post, edit, delete an
 tags: [guides, comments]
 status: stable
 sources:
-  - src/server/comments/service.ts
-  - src/server/queries/comments.ts
-  - src/lib/comments.ts
-  - src/server/admin/comments.ts
-  - src/server/config/schema.ts
+  - packages/server/src/comments/service.ts
+  - packages/server/src/queries/comments.ts
+  - packages/core/src/comments.ts
+  - packages/server/src/admin/comments.ts
+  - packages/core/src/config/schema.ts
 generated: 2026-10-15
 verified: 2026-10-15
 stale_after: 2999-01-01

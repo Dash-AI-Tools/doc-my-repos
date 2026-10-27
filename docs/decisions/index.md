@@ -11,5 +11,6 @@ Each record states the context, the decision, what follows from it and what was 
 - [Serialize syncs with advisory locks, no job queue](./0002-advisory-locks-no-queue.md)
 - [Store parsed documents, not rendered HTML](./0003-store-parsed-documents.md)
 - [Render Mermaid diagrams in the browser](./0004-mermaid-client-side.md)
+- [Compose a host app from packages](./0005-host-app-composition.md)
 
 A new decision goes in a new file with the next number, `type: Decision` and `status: accepted`. When a decision is replaced, mark the old one `status: deprecated` and link to the new one.

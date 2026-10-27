@@ -2,14 +2,14 @@ import { createHash } from "node:crypto";
 
 import { eq } from "drizzle-orm";
 
-import type { Db } from "../../src/server/db/client";
-import { repos, syncRuns, type SyncRepoResult } from "../../src/server/db/schema";
+import type { Db } from "../../packages/server/src/db/client";
+import { repos, syncRuns, type SyncRepoResult } from "../../packages/server/src/db/schema";
 import {
   persistRepoSync,
   type PersistFetchedDoc,
   type PersistPlan,
   type PersistRepo,
-} from "../../src/server/sync/persist";
+} from "../../packages/server/src/sync/persist";
 import { SEED_REPOS, SEED_RUNS, type SeedRepo } from "./seed-data";
 
 /**

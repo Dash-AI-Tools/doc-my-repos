@@ -6,11 +6,11 @@ tags: [guides, okf]
 status: stable
 resource: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
 sources:
-  - src/server/docs/okf.ts
-  - src/server/docs/frontmatter.ts
-  - src/lib/okf-meta.ts
-  - src/lib/toc-filters.ts
-  - src/server/queries/search.ts
+  - packages/server/src/docs/okf.ts
+  - packages/server/src/docs/frontmatter.ts
+  - packages/core/src/okf-meta.ts
+  - packages/core/src/toc-filters.ts
+  - packages/server/src/queries/search.ts
 generated: 2026-10-10
 verified: 2026-10-10
 stale_after: 2999-01-01
@@ -79,4 +79,4 @@ A date in the future raises nothing, and the card just shows it. A date alone is
 
 ## This repository
 
-The `docs/` folder you are reading is an OKF bundle. It uses five types (Concept, Guide, Reference, Runbook, Decision), declares `okf_version: "0.2"` in its root [index](../index.md), and keeps a [change log](../log.md). A test, `src/server/docs/dogfood.test.ts`, syncs this folder into a throwaway database and checks the detection, the type counts, every link and the search results, so the documentation cannot silently drift from what the portal can display.
+The `docs/` folder you are reading is an OKF bundle. It uses five types (Concept, Guide, Reference, Runbook, Decision), declares `okf_version: "0.2"` in its root [index](../index.md), and keeps a [change log](../log.md). A test, `packages/server/src/docs/dogfood.test.ts`, syncs this folder into a throwaway database and checks the detection, the type counts, every link and the search results, so the documentation cannot silently drift from what the portal can display.

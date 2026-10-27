@@ -5,10 +5,10 @@ description: Which GitHub App events DocMyRepos handles, how a delivery is verif
 tags: [guides, webhooks, sync]
 status: stable
 sources:
-  - src/server/webhooks/endpoint.ts
-  - src/server/webhooks/verify.ts
-  - src/server/webhooks/router.ts
-  - src/server/webhooks/service.ts
+  - packages/server/src/webhooks/endpoint.ts
+  - packages/server/src/webhooks/verify.ts
+  - packages/server/src/webhooks/router.ts
+  - packages/server/src/webhooks/service.ts
 generated: 2026-10-10
 verified: 2026-10-10
 stale_after: 2999-01-01

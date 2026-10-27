@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "incremental": false,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "plugins": [],
+    "paths": {
+      "@docmyrepos/core": ["../core/dist/index.d.ts"],
+      "@docmyrepos/core/internal/*": ["../core/dist/*.d.ts"],
+      "@docmyrepos/server": ["../server/dist/index.d.ts"],
+      "@docmyrepos/server/internal/*": ["../server/dist/*.d.ts"],
+      "@docmyrepos/server/next": ["../server/dist/next.d.ts"],
+      "@docmyrepos/server/proxy": ["../server/dist/proxy.d.ts"],
+      "@docmyrepos/server/migrate": ["../server/dist/migrate.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/fixtures/**",
+    "src/test-logger.ts",
+    "src/db/test-db.ts",
+    "src/pages/test-app.ts"
+  ]
+}

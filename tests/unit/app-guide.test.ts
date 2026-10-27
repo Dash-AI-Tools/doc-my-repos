@@ -30,7 +30,7 @@ describe("docs/github-app-setup.md", () => {
   });
 
   it("names the four subscribed events, and the webhook router handles each of them", () => {
-    const router = read("src/server/webhooks/router.ts");
+    const router = read("packages/server/src/webhooks/router.ts");
     for (const event of ["push", "repository", "installation_repositories", "installation"]) {
       expect(guide, event).toMatch(new RegExp(`\\|\\s*\`${event}\`\\s*\\|`));
       expect(router, event).toContain(`"${event}"`);

@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 
-import { createDb } from "../../src/server/db/client";
-import { runMigrations } from "../../src/server/db/migrate";
+import { createDb } from "../../packages/server/src/db/client";
+import { runMigrations } from "../../packages/server/src/db/migrate";
 import { assertPostgresReachable, createDatabase } from "./db";
 import { seedAskData } from "./ask-seed";
 import { seedSettings } from "./settings-seed";

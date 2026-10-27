@@ -14,7 +14,7 @@ import { SKIP_DB, SKIP_DB_REASON } from "./support/stack";
  * The tests are serial: the first block builds one conversation on `main` (ana posts, replies and
  * edits; ben reads it; and so on). The layout and axe checks are in `comments-layout.spec.ts`.
  * Authorization matrices, validation and the limits are covered with a real database in
- * `src/server/comments/*.test.ts`; this file covers the browser and the whole stack.
+ * `packages/server/src/comments/*.test.ts`; this file covers the browser and the whole stack.
  */
 
 test.skip(SKIP_DB, SKIP_DB_REASON);

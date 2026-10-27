@@ -81,11 +81,13 @@ describe("workflow files", () => {
   // the workflow token. Nothing else, and nowhere else (tests/unit/release-workflow.test.ts).
   const ALLOWED_WRITES: Record<string, string[]> = {
     "release.yml/image": ["packages"],
+    // npm trusted publishing: an OIDC token npm exchanges for a one-time publish token.
+    "release.yml/packages": ["id-token"],
     // CodeQL uploads its results as code scanning alerts; it cannot do that without this scope.
     "security.yml/codeql": ["security-events"],
   };
 
-  it("never grant a job write permissions, except the release image push", () => {
+  it("never grant a job write permissions, except the release image push and npm publish", () => {
     for (const { file, doc } of workflowTexts) {
       for (const [name, job] of Object.entries(doc.jobs)) {
         if (job.permissions === undefined) continue;

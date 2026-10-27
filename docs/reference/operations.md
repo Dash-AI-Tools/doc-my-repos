@@ -5,9 +5,9 @@ description: Health checks, the structured log format and LOG_LEVEL, and what to
 tags: [reference, operations, runbook]
 status: stable
 sources:
-  - src/server/log.ts
-  - src/server/status-api.ts
-  - src/server/sync/runs.ts
+  - packages/server/src/log.ts
+  - packages/server/src/status-api.ts
+  - packages/server/src/sync/runs.ts
   - Dockerfile
   - docker-compose.yml
 generated: 2026-10-10

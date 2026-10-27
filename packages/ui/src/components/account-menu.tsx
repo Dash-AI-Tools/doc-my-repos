@@ -1,0 +1,150 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useId, useRef, useState } from "react";
+
+import type { AccountMenuItem } from "@docmyrepos/core";
+
+export interface AccountMenuUser {
+  readonly email: string;
+  /** Whether the user administers the workspace, as the server's `authorize` hook decided. */
+  readonly admin: boolean;
+}
+
+/**
+ * The signed-in email as the header's account menu (starred-repos 4.1). The panel holds the admin
+ * links for admins, a rule, and Sign out for everyone; it uses the popover tokens, so it stays
+ * readable on a colored bar. It closes on Escape (focus back on the button), an outside pointer
+ * press, activating an item, or a route change.
+ */
+export function AccountMenu({
+  user,
+  items,
+}: {
+  user: AccountMenuUser;
+  /**
+   * The links: the `account.menu` slot. Admin-only ones (the admin pages, starred-repos
+   * "Administration links") come first and show to admins only; the rest to everyone.
+   */
+  items: readonly AccountMenuItem[];
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  // The path the menu was opened on: a later path closes it, without a setState in an effect.
+  const [openedAt, setOpenedAt] = useState(pathname);
+  const visible = open && openedAt === pathname;
+  const wrap = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const panelId = `account-menu-${useId().replace(/[^A-Za-z0-9_-]/g, "")}`;
+
+  function toggle(): void {
+    if (visible) {
+      setOpen(false);
+      return;
+    }
+    setOpenedAt(pathname);
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!visible) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!wrap.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      button.current?.focus();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [visible]);
+
+  async function onLogout(): Promise<void> {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setOpen(false);
+    router.push("/login");
+    router.refresh();
+  }
+
+  const adminLinks = user.admin ? items.filter((item) => item.adminOnly === true) : [];
+  const links = items.filter((item) => item.adminOnly !== true);
+  const menuLink = (link: { href: string; label: string }) => (
+    <Link
+      key={link.href}
+      href={link.href}
+      aria-current={pathname === link.href ? "page" : undefined}
+      onClick={() => setOpen(false)}
+      className="rounded-sm px-3 py-2 text-sm text-popover-foreground no-underline hover:bg-muted hover:text-popover-foreground"
+    >
+      {link.label}
+    </Link>
+  );
+
+  return (
+    <div
+      ref={wrap}
+      className="relative"
+      onBlur={(event) => {
+        const next = event.relatedTarget;
+        if (next instanceof Node && !event.currentTarget.contains(next)) setOpen(false);
+      }}
+    >
+      <button
+        ref={button}
+        type="button"
+        aria-expanded={visible}
+        aria-controls={panelId}
+        data-testid="account-menu-trigger"
+        onClick={toggle}
+        className="flex min-h-6 max-w-[12rem] cursor-pointer items-center gap-1.5 text-sm text-header-foreground hover:text-header-foreground hover:underline"
+      >
+        <span className="truncate">{user.email}</span>
+        <Chevron />
+      </button>
+      <div
+        id={panelId}
+        hidden={!visible}
+        data-testid="account-menu"
+        className="absolute top-full right-0 z-30 mt-2 flex w-56 flex-col max-sm:fixed max-sm:inset-x-2 max-sm:top-[calc(var(--site-header-h,4rem)+0.5rem)] max-sm:w-auto rounded-sm border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+      >
+        {adminLinks.map(menuLink)}
+        {user.admin ? <div role="separator" className="my-1 border-t border-border" /> : null}
+        {links.map(menuLink)}
+        <button
+          type="button"
+          onClick={onLogout}
+          className="cursor-pointer rounded-sm px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Chevron() {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}

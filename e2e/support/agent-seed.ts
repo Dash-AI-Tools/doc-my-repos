@@ -1,5 +1,5 @@
-import type { Db } from "../../src/server/db/client";
-import { documents, repos } from "../../src/server/db/schema";
+import type { Db } from "../../packages/server/src/db/client";
+import { documents, repos } from "../../packages/server/src/db/schema";
 
 /**
  * Data for the MCP e2e stacks (`agent` and `agentoff`), on top of the shared seed and the comment

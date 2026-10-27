@@ -9,6 +9,7 @@ description: Exact facts to look up. The HTTP API with its status codes, the fro
 - [Frontmatter](./frontmatter.md): the keys DocMyRepos reads and how each is displayed.
 - [MCP server](./mcp.md): the read-only endpoint AI agents use: authentication, the six tools, the prompt, limits, failures and safety rules.
 - [OKF validation codes](./okf-validation.md): every finding of the OKF validator, with its severity, meaning and fix.
+- [Extension API](./extension-api.md): the packages a host app is built from, their dependencies and which entrypoints are public.
 - [Operations](./operations.md): health checks, logs, `LOG_LEVEL` and what to do when something is wrong.
 
 For explanations rather than lookups, see [Guides](../guides/index.md).

@@ -26,9 +26,9 @@ import { inArray, isNotNull, sql } from "drizzle-orm";
 import { assertPostgresReachable, createDatabase, dropDatabase } from "../e2e/support/db";
 import { seedDatabase } from "../e2e/support/seed";
 import { databaseName, databaseUrl, runId, serverEnv, workDir } from "../e2e/support/stack";
-import { createDb } from "../src/server/db/client";
-import { runMigrations } from "../src/server/db/migrate";
-import { repos, syncRuns } from "../src/server/db/schema";
+import { createDb } from "../packages/server/src/db/client";
+import { runMigrations } from "../packages/server/src/db/migrate";
+import { repos, syncRuns } from "../packages/server/src/db/schema";
 
 const ROOT = resolve(__dirname, "..");
 const OUT_DIR = resolve(ROOT, "docs-assets/screenshots");

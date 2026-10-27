@@ -1,9 +1,9 @@
 import type { APIRequestContext, Browser, PlaywrightWorkerArgs } from "@playwright/test";
 import { eq } from "drizzle-orm";
 
-import { createDb } from "../src/server/db/client";
-import { users } from "../src/server/db/schema";
-import { createToken } from "../src/server/mcp/tokens";
+import { createDb } from "../packages/server/src/db/client";
+import { users } from "../packages/server/src/db/schema";
+import { createToken } from "../packages/server/src/mcp/tokens";
 import {
   AGENT_GUIDELINES_PATH,
   AGENT_REPO,
@@ -20,7 +20,7 @@ import { SKIP_DB, SKIP_DB_REASON, databaseUrl, stackUrl } from "./support/stack"
  * server (the users, the seeded repositories and `acme/agent-guidelines`, which has an OKF
  * guidelines file) and on `agentoff` (`mcp.enabled: false`). The requests use exactly the headers
  * the README documents. The protocol details, limits and safety rules are covered with a real
- * database in `src/server/mcp/*.test.ts`; this file covers the browser, the whole stack and the
+ * database in `packages/server/src/mcp/*.test.ts`; this file covers the browser, the whole stack and the
  * documented commands.
  *
  * Serial: one token is created through the page and the later tests use it.

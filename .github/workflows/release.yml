@@ -1,11 +1,12 @@
-# Release: on a version tag, check that the tag, package.json and install.sh agree, run the whole
-# CI set on the tagged commit, then build and push the container image to GHCR for amd64 and arm64
-# with build provenance and an SBOM.
+# Release: on a version tag, check that the tag, package.json, install.sh and the packages agree,
+# run the whole CI set on the tagged commit, then build and push the container image to GHCR for
+# amd64 and arm64 with build provenance and an SBOM, and publish the npm packages with provenance.
 #
 # - Runs only in Dash-AI-Tools/doc-my-repos: a fork that pushes a tag publishes nothing.
-# - The only credential is the workflow's GITHUB_TOKEN, with `packages: write` on the image job
-#   alone. There is no long-lived registry secret and no npm publish.
-# - A version that is already published is never overwritten: the job fails first.
+# - No long-lived credential: the image job uses the workflow's GITHUB_TOKEN (`packages: write`),
+#   the packages job npm trusted publishing (`id-token: write`, an OIDC token npm exchanges for a
+#   one-time publish token; each package's trusted publisher is registered on npmjs.com).
+# - A version that is already published is never overwritten: each job fails first.
 # - The `release` environment can require a reviewer before the image job runs (repository
 #   settings > Environments). Actions are pinned to commit SHAs (the comment names the release).
 name: Release
@@ -95,3 +96,33 @@ jobs:
           sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  packages:
+    name: Publish the packages
+    needs: [versions, ci]
+    if: github.repository == 'Dash-AI-Tools/doc-my-repos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Refuse to overwrite a published version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          for name in core server ui; do
+            if npm view "@docmyrepos/$name@$version" version >/dev/null 2>&1; then
+              echo "::error::@docmyrepos/$name@$version is already published; versions are never overwritten."
+              exit 1
+            fi
+          done
+      - run: pnpm build:packages
+      - name: Publish @docmyrepos/core, server and ui with provenance
+        run: pnpm -r publish --provenance --access public --no-git-checks

@@ -21,13 +21,17 @@ const service = {
   syncOne: vi.fn(),
 };
 
-vi.mock("@/server/sync/service", () => ({
-  readConfiguredSyncSecret: vi.fn(() => SECRET),
-  getSyncService: vi.fn(() => service),
-}));
+// The secret comes from the app's startup configuration (the environment here).
+vi.stubEnv("SYNC_SECRET", SECRET);
+// A database URL for the pool the context creates; nothing connects to it here.
+vi.stubEnv("DATABASE_URL", "postgres://u:p@127.0.0.1:1/unused");
+
+// The service is built over the request's tenant's workspace; it touches no database here.
+const contextSyncService = vi.hoisted(() => vi.fn());
+vi.mock("@docmyrepos/server/internal/sync/service", () => ({ contextSyncService }));
 
 const { DELETE, GET, PATCH, POST, PUT, dynamic, runtime } = await import("./route");
-const { getSyncService, readConfiguredSyncSecret } = await import("@/server/sync/service");
+const getSyncService = contextSyncService;
 
 function request(method: string, headers: Record<string, string> = {}, body?: string) {
   return new Request("http://localhost/api/sync", { method, headers, body });
@@ -35,6 +39,7 @@ function request(method: string, headers: Record<string, string> = {}, body?: st
 
 beforeEach(() => {
   vi.clearAllMocks();
+  contextSyncService.mockResolvedValue(service);
 });
 
 describe("/api/sync route", () => {
@@ -59,12 +64,11 @@ describe("/api/sync route", () => {
       expect(response.status).toBe(401);
       expect(response.headers.get("www-authenticate")).toBe("Bearer");
     }
-    expect(readConfiguredSyncSecret).toHaveBeenCalled();
     expect(getSyncService).not.toHaveBeenCalled();
     expect(service.syncAll).not.toHaveBeenCalled();
   });
 
-  it.each<[string, (request: Request) => Response]>([
+  it.each<[string, (request: Request) => Promise<Response>]>([
     ["GET", GET],
     ["PUT", PUT],
     ["PATCH", PATCH],

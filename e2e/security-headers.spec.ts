@@ -4,7 +4,7 @@ import {
   BASELINE_HEADERS,
   HSTS_VALUE,
   buildContentSecurityPolicy,
-} from "../src/lib/security-headers";
+} from "../packages/core/src/security-headers";
 import { PNG, stubAssets } from "./support/assets";
 import { expect, expectNoCspViolations, test, watchCsp, type CspWatch } from "./support/csp";
 import { openReadingPanel } from "./support/reading-panel";
@@ -16,7 +16,7 @@ import { SKIP_DB, SKIP_DB_REASON, stackUrl } from "./support/stack";
  *
  * 1. Headers: Playwright's API client reads the raw responses of pages, route handlers, the image
  *    proxy, a build file, a not-found page and a malformed URL on the database-free `fixtures`
- *    server, and compares them with the builders in `src/lib/security-headers.ts`.
+ *    server, and compares them with the builders in `packages/core/src/security-headers.ts`.
  * 2. No violations: a visitor walks every kind of page on the seeded database, in light and dark,
  *    using the features that need the CSP's allowances (Shiki code with the copy button, a Mermaid
  *    diagram and its enlarge dialog, an image, the command palette with live results, the theme

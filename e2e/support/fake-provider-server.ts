@@ -1,4 +1,4 @@
-import { startFakeProvider } from "../../src/server/ask/testing/fake-provider";
+import { startFakeProvider } from "../../tests/support/fake-provider";
 import { FAKE_PROVIDER_PORT } from "./stack";
 
 /**

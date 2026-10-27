@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +16,13 @@ afterEach(() => {
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
 });
 
-function check(options: { tag?: string; package?: string; installer?: string; root?: string }) {
+function check(options: {
+  tag?: string;
+  package?: string;
+  installer?: string;
+  packages?: Record<string, string>;
+  root?: string;
+}) {
   let root = options.root;
   if (!root) {
     root = mkdtempSync(join(tmpdir(), "dmr-versions-"));
@@ -29,6 +35,13 @@ function check(options: { tag?: string; package?: string; installer?: string; ro
       join(root, "install.sh"),
       `#!/bin/sh\nDOCMYREPOS_VERSION="${options.installer ?? "1.2.3"}"\n`,
     );
+    for (const [name, version] of Object.entries(options.packages ?? {})) {
+      mkdirSync(join(root, "packages", name), { recursive: true });
+      writeFileSync(
+        join(root, "packages", name, "package.json"),
+        `{\n  "name": "@docmyrepos/${name}",\n  "version": "${version}",\n  "type": "module"\n}\n`,
+      );
+    }
   }
   const result = spawnSync("sh", [SCRIPT, ...(options.tag ? [options.tag] : [])], {
     encoding: "utf8",
@@ -38,6 +51,13 @@ function check(options: { tag?: string; package?: string; installer?: string; ro
 }
 
 describe("check-release-versions.sh", () => {
+  it("checks every package under packages/ against the app's version", () => {
+    expect(check({ tag: "v1.2.3", packages: { core: "1.2.3", server: "1.2.3" } }).status).toBe(0);
+    const r = check({ tag: "v1.2.3", packages: { core: "1.2.3", server: "1.2.4" } });
+    expect(r.status).toBe(1);
+    expect(r.err).toContain("packages/server/package.json='1.2.4'");
+  });
+
   it("passes when the tag, package.json and install.sh agree", () => {
     const r = check({ tag: "v1.2.3" });
     expect(r.status).toBe(0);

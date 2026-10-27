@@ -10,8 +10,8 @@
 // containers may start at once.
 import { resolve } from "node:path";
 
-import { MigrationError, migrateDatabase } from "../src/server/db/migrate";
-import { parseWaitSeconds } from "../src/server/db/wait";
+import { MigrationError, migrateDatabase } from "../packages/server/src/db/migrate";
+import { parseWaitSeconds } from "../packages/server/src/db/wait";
 
 async function main(): Promise<void> {
   const folder = resolve(process.env.MIGRATIONS_DIR?.trim() || "drizzle");
