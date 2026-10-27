@@ -67,7 +67,7 @@ describe("known languages", () => {
     expect(html).not.toContain("<script");
     expect(html).not.toContain("<b>");
     expect(html).toContain("&#x3C;script>");
-    const text = html.replace(/<[^>]*>/g, "");
+    const text = html.split(/<[^>]*>/).join("");
     expect(text).toContain("alert(1)");
   });
 

@@ -24,6 +24,27 @@ function rgb(hex: string): string {
   return `rgb(${n(1)}, ${n(3)}, ${n(5)})`;
 }
 
+/** `html` without its inline scripts that touch `classList`, i.e. the theme script. */
+function withoutThemeScript(html: string): string {
+  let out = "";
+  let from = 0;
+  for (let open = html.indexOf("<script"); open !== -1; open = html.indexOf("<script", from)) {
+    const tagEnd = html.indexOf(">", open);
+    const close = html.indexOf("</script>", tagEnd);
+    if (tagEnd === -1 || close === -1) break;
+    const inline = !/\bsrc=/.test(html.slice(open, tagEnd));
+    const end = close + "</script>".length;
+    if (inline && html.slice(tagEnd, close).includes("classList")) {
+      out += html.slice(from, open);
+      from = end;
+    } else {
+      out += html.slice(from, end);
+      from = end;
+    }
+  }
+  return out + html.slice(from);
+}
+
 function isDark(page: Page): Promise<boolean> {
   return page.evaluate(() => document.documentElement.classList.contains("dark"));
 }
@@ -280,10 +301,7 @@ test.describe("no flash of the wrong theme", () => {
         (url) => url.pathname === HOME,
         async (route) => {
           const response = await route.fetch();
-          const body = (await response.text()).replace(
-            /<script(?![^>]*\bsrc=)[^>]*>(?:(?!<\/script>)[\s\S])*?classList(?:(?!<\/script>)[\s\S])*?<\/script>/g,
-            "",
-          );
+          const body = withoutThemeScript(await response.text());
           await route.fulfill({ response, body });
         },
       );
