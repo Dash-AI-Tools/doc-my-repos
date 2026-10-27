@@ -13,6 +13,7 @@ import { NONCE_HEADER, isValidNonce } from "@/lib/security-headers";
 import { loadAskPage } from "@/server/ask-page";
 import { getAskState } from "@/server/ask/settings";
 import { getCurrentUser } from "@/server/auth/current-user";
+import { logger } from "@/server/log";
 import { mcpEnabled } from "@/server/workspace";
 import { deriveBrandTokens } from "@/lib/branding/colors";
 import { brandStyleBlock } from "@/lib/branding/style";
@@ -74,17 +75,26 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     throw new Error("e2e: forced root layout crash");
   }
   const nonce = requestNonce(requestHeaders);
-  // Logged-out on failure: the proxy already keeps unauthenticated visitors off every page
-  // except /login, so null here only means the login page or a forged cookie mid-redirect.
-  const user = await getCurrentUser().catch(() => null);
-  // Branding (org-branding 3.1): same derivation as the admin preview; a bad row or a down
-  // database falls back to the defaults, so the page still renders.
-  const branding = await getBranding().catch(() => DEFAULT_BRANDING);
-  // Ask is shown to signed-in readers only when an admin turned it on and the provider is usable.
-  // Never throws: any failure reads as off.
-  const askEnabled = user !== null && (await getAskState()).state === "ready";
-  // The account menu links to the AI agent pages only while an admin has the MCP endpoint on.
-  const agentAccess = user !== null && (await mcpEnabled().catch(() => false));
+  // Branding does not depend on the user, so it loads alongside the session. Both fall back so the
+  // page still renders: branding to the defaults (org-branding 3.1: same derivation as the admin
+  // preview; a bad row or a down database), the user to logged-out. A user failure is logged: a
+  // broken database (for example a missing migration) must not look like a plain signed-out
+  // visitor. A missing or forged session is not an error: `getCurrentUser` returns null for it.
+  const [user, branding] = await Promise.all([
+    getCurrentUser().catch((error: unknown) => {
+      logger.error("auth.current_user.failed", { error });
+      return null;
+    }),
+    getBranding().catch(() => DEFAULT_BRANDING),
+  ]);
+  // Ask is shown to signed-in readers only when an admin turned it on and the provider is usable
+  // (`getAskState` never throws: any failure reads as off). The account menu links to the AI agent
+  // pages only while an admin has the MCP endpoint on. Neither is read for a signed-out visitor.
+  const [askState, agentAccess] =
+    user === null
+      ? [null, false]
+      : await Promise.all([getAskState(), mcpEnabled().catch(() => false)]);
+  const askEnabled = askState?.state === "ready";
   const ask = askEnabled ? await loadAskPage({}) : null;
   const { primaryColor, accentColor } = branding;
   const derived =

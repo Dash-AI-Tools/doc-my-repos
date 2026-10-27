@@ -14,3 +14,5 @@ test-results
 .agents
 .impeccable/hook.cache.json
 src/server/docs/__fixtures__
+# pnpm rewrites this file itself (single quotes) on every add and approve-builds
+pnpm-workspace.yaml

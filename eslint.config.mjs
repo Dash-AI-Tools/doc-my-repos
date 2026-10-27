@@ -45,5 +45,47 @@ export default defineConfig([
       "no-console": "error",
     },
   },
+  // Architecture rules from CLAUDE.md. Components never touch the database, and server modules stay
+  // free of React except `cache`, which memoizes a read per request.
+  {
+    files: ["src/components/**/*.{ts,tsx}"],
+    ignores: ["src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/server/db", "@/server/db/*", "**/server/db", "**/server/db/*"],
+              message: "Components do not access the database; read through src/server.",
+            },
+          ],
+          paths: [
+            { name: "drizzle-orm", message: "Components do not access the database." },
+            { name: "pg", message: "Components do not access the database." },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/server/**/*.{ts,tsx}"],
+    ignores: ["src/**/*.test.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "react",
+              allowImportNames: ["cache"],
+              message: "src/server stays free of React; only `cache` is allowed.",
+            },
+            { name: "react-dom", message: "src/server stays free of React." },
+          ],
+        },
+      ],
+    },
+  },
   prettier,
 ]);

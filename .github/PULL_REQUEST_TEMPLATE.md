@@ -4,7 +4,7 @@
 
 ## Checklist
 
-- [ ] The spec is updated for any change in behavior (`openspec/changes/docmyrepos-mvp/specs/`, and `design.md` for a changed decision), and `openspec validate docmyrepos-mvp` passes. Not needed for a bug fix that restores specified behavior.
+- [ ] The spec is updated for any change in behavior (the spec delta in `openspec/changes/<name>/specs/`, and `design.md` for a changed decision), and `openspec validate --all` passes. Not needed for a bug fix that restores specified behavior.
 - [ ] Tests are added or updated (unit for pure logic, a real Postgres for sync and search, Playwright for UI).
 - [ ] `pnpm typecheck`, `pnpm lint`, `pnpm format:check` and `pnpm test` pass locally. For UI changes `pnpm test:e2e` passes too.
 - [ ] Documentation is updated: README, `docs/` and `.env.example` for new settings.

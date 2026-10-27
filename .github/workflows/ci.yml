@@ -190,7 +190,8 @@ jobs:
       - run: shellcheck -s sh -S style install.sh scripts/check-release-versions.sh scripts/install-e2e.sh
 
   openspec:
-    # The change under openspec/ is the source of truth; a spec that no longer validates fails here.
+    # The specs and changes under openspec/ are the source of truth; one that no longer validates fails
+    # here. `--all` keeps working as changes are archived.
     name: OpenSpec validate
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,0 +1,20 @@
+# Pre-commit checks on the staged files, so problems show up before CI does. Installed by
+# `pnpm install` (the `prepare` script). Skip once with `LEFTHOOK=0 git commit`; CI runs the same
+# checks anyway.
+pre-commit:
+  parallel: true
+  commands:
+    format:
+      glob: "*.{ts,tsx,js,jsx,mjs,cjs,json,md,yml,yaml,css}"
+      run: pnpm exec prettier --check {staged_files}
+    lint:
+      glob: "*.{ts,tsx,js,jsx,mjs,cjs}"
+      run: pnpm exec eslint --max-warnings=0 {staged_files}
+    secrets:
+      # Needs the gitleaks binary (`brew install gitleaks`); skipped when it is not installed.
+      run: |
+        if command -v gitleaks >/dev/null 2>&1; then
+          gitleaks git --staged --no-banner --redact --config .gitleaks.toml
+        else
+          echo "gitleaks not installed, skipping the secret scan"
+        fi

@@ -1,0 +1,23 @@
+# Secret scanning (CI and the pre-commit hook). Default rules plus the allowances below.
+# The tests deliberately contain fake credentials to prove that logs and errors redact them, and
+# the setup docs show placeholder commands; nothing here is a real secret. Anything new that
+# looks like one still fails the scan.
+title = "DocMyRepos gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake credentials in tests and test support"
+paths = [
+  '''\.test\.tsx?$''',
+  '''(^|/)test-support[^/]*\.ts$''',
+]
+
+[[allowlists]]
+description = "Placeholder commands and key descriptions in the docs"
+targetRules = ["curl-auth-header", "private-key"]
+paths = [
+  '''^README\.md$''',
+  '''^docs/github-app-setup\.md$''',
+]

@@ -44,7 +44,7 @@ Name: DocMyRepos. No logo, color, or voice commitments recorded; none to be assu
 ## Evidence on Hand
 
 - Real screenshots of the current UI in `docs-assets/screenshots/` (light and dark), generated from seeded demo data.
-- README, `docs/`, and the OpenSpec change `openspec/changes/docmyrepos-mvp/` describe behavior.
+- README, `docs/`, and the OpenSpec specs in `openspec/specs/` describe behavior.
 - No customer logos, testimonials, benchmarks, or usage numbers exist; do not fabricate them.
 
 ## Product Principles

@@ -58,6 +58,8 @@ function BrandPreview({
         style={{ backgroundColor: bar.background, color: bar.foreground }}
       >
         {logoSrc ? (
+          // A plain img: this previews the logo as stored or as picked, a blob or data URL that
+          // next/image cannot optimize.
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={logoSrc}

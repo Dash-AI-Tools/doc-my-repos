@@ -79,7 +79,11 @@ describe("workflow files", () => {
 
   // The only write grants in the repository: the release workflow's image job pushes to GHCR with
   // the workflow token. Nothing else, and nowhere else (tests/unit/release-workflow.test.ts).
-  const ALLOWED_WRITES: Record<string, string[]> = { "release.yml/image": ["packages"] };
+  const ALLOWED_WRITES: Record<string, string[]> = {
+    "release.yml/image": ["packages"],
+    // CodeQL uploads its results as code scanning alerts; it cannot do that without this scope.
+    "security.yml/codeql": ["security-events"],
+  };
 
   it("never grant a job write permissions, except the release image push", () => {
     for (const { file, doc } of workflowTexts) {
@@ -291,9 +295,9 @@ describe("ci.yml", () => {
     expect(runs).toContain("shellcheck -s sh");
   });
 
-  it("validates the OpenSpec change with a pinned CLI version", () => {
+  it("validates every OpenSpec spec and change with a pinned CLI version", () => {
     expect(allRuns(jobs.openspec as Job)).toMatch(
-      /@fission-ai\/openspec@\d+\.\d+\.\d+ validate docmyrepos-mvp/,
+      /@fission-ai\/openspec@\d+\.\d+\.\d+ validate --all/,
     );
   });
 

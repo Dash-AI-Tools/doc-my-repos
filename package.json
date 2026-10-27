@@ -4,6 +4,7 @@
   "private": true,
   "license": "MIT",
   "scripts": {
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && lefthook install || true",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -71,6 +72,7 @@
     "eslint-config-next": "^16.4.2",
     "eslint-config-prettier": "^10.1.8",
     "jsdom": "^30.1.3",
+    "lefthook": "^2.2.2",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",

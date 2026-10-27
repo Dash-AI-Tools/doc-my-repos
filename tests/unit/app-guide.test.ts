@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
  * Static checks of the GitHub App setup guide (spec deployment-and-oss, "GitHub App setup guide",
  * scenario "Operator follows the guide"). Whether an operator really ends with a working App needs
  * a real GitHub organization: that part is the manual check in
- * `openspec/changes/docmyrepos-mvp/scenario-coverage.md` (task 6.5). What can be checked without
+ * `openspec/changes/archive/2026-10-14-docmyrepos-mvp/scenario-coverage.md` (task 6.5). What can be checked without
  * GitHub is that the guide says what the spec requires and agrees with the code: read-only
  * permissions, the four subscribed events (each one handled by the webhook router), the webhook
  * URL (a route that exists) and secret, and the three App credentials (variables the example

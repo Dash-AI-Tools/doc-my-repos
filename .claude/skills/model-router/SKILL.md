@@ -5,7 +5,7 @@ description: Pick the model (haiku, sonnet, or opus) and reasoning effort (mediu
 
 # model-router
 
-Input: task id and text (from `openspec/changes/docmyrepos-mvp/tasks.md`), the role (`implementer` or `reviewer`), and the attempt number (0 for the first try).
+Input: task id and text (from `openspec/changes/<change>/tasks.md`), the role (`implementer` or `reviewer`), and the attempt number (0 for the first try).
 
 Output: one line, `model=<haiku|sonnet|opus> effort=<medium|high>`. The caller passes these as the `model` and `effort` parameters of the Agent tool. They override the model in the agent's frontmatter.
 

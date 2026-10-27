@@ -4,21 +4,19 @@ Open-source web app that syncs the `docs/` folders of a GitHub org's repos into 
 
 ## Status
 
-Planning only. There is no application code yet. The source of truth is the OpenSpec change `openspec/changes/docmyrepos-mvp/` (`proposal.md`, `specs/*/spec.md`, `design.md`, `tasks.md`). Read the relevant spec and the design decision before implementing anything.
+The app is built. The source of truth for behavior is the OpenSpec specs in `openspec/specs/<capability>/spec.md`. New work is an OpenSpec change under `openspec/changes/<name>/` (`proposal.md`, `specs/*/spec.md` deltas, `design.md`, `tasks.md`), moved to `openspec/changes/archive/` when done. Read the relevant spec and the design decision before changing anything.
 
 ## Workflow
 
-- Work is driven by OpenSpec. Implement tasks from `tasks.md` in order, with `/opsx:apply`. Tick each `- [ ]` only after its stated verification passes.
-- If behavior changes, update the spec under `openspec/changes/docmyrepos-mvp/specs/` first, then the code, then run `openspec validate docmyrepos-mvp`.
+- Work is driven by OpenSpec. Start a change with `/opsx:propose`, implement its `tasks.md` in order with `/opsx:apply`, and tick each `- [ ]` only after its stated verification passes. Finish with `/opsx:archive`, which syncs the change into `openspec/specs/`.
+- If behavior changes, update the spec first (the delta under `openspec/changes/<name>/specs/` for an open change, otherwise start a change), then the code, then run `openspec validate --all`.
 - Do not start implementing during `/opsx:propose` or `/opsx:update`; those only touch planning artifacts.
 
 ## Stack (decided)
 
 Next.js App Router, React, TypeScript (strict), Tailwind v4, `next-themes`, Postgres with Drizzle ORM, `@octokit/rest`, `@octokit/auth-app` and `@octokit/webhooks`, unified/remark/rehype with `rehype-sanitize` and Shiki, Mermaid (client-side), zod, Vitest, Playwright, pnpm.
 
-## Planned commands
-
-These land with task group 1 and may need adjusting to what the scaffold actually provides.
+## Commands
 
 ```bash
 pnpm dev                 # run the app
@@ -26,8 +24,8 @@ pnpm typecheck && pnpm lint && pnpm test
 pnpm test:e2e            # Playwright
 pnpm db:generate         # create a Drizzle migration
 pnpm db:migrate          # apply migrations
-docker compose up -d db  # local Postgres
-openspec validate docmyrepos-mvp
+pnpm db:up               # local Postgres (docker compose)
+openspec validate --all
 ```
 
 ## Architecture rules
@@ -39,7 +37,7 @@ openspec validate docmyrepos-mvp
 - Workspace settings (GitHub App, repository scope, limits, provider credentials) live in the database, are edited by admins, and are validated with zod when saved. Secrets among them are encrypted at rest with `SETTINGS_ENCRYPTION_KEY`, are write-only, and never reach logs or responses. Startup secrets (`DATABASE_URL`, `SESSION_SECRET`, `SYNC_SECRET`, the encryption key) come only from environment variables.
 - GitHub access is a GitHub App installation (`@octokit/auth-app`), never a personal access token. Installation tokens are short-lived, cached, and refreshed. Repo discovery uses the installation's accessible repos, narrowed by config.
 - Every read of repos, documents, search, facets, and assets goes through the single visibility filter in the shared query layer. Do not query those tables around it.
-- Keep modules under `src/server/` free of React and under `src/components/` free of database access.
+- Keep modules under `src/server/` free of React (the one allowed import is `cache` from `react`, to memoize a read per request) and under `src/components/` free of database access.
 
 ## Security rules
 
