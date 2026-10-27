@@ -185,7 +185,7 @@ describe("parseApiSpec hostile input finishes quickly", () => {
     const started = performance.now();
     expect(rejected(json, "openapi.json")).toBe("too_deep");
     expect(rejected(`x: ${"[".repeat(n)}${"]".repeat(n)}`, "openapi.yaml")).toMatch(
-      /^too_deep|invalid_syntax$/,
+      /^(?:too_deep|invalid_syntax)$/,
     );
     expect(performance.now() - started).toBeLessThan(2000);
   });

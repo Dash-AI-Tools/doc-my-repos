@@ -883,7 +883,7 @@ describeDb("comment write handlers", () => {
 
       const all = rec.lines.join("");
       expect(all).not.toContain(marker);
-      expect(all).not.toMatch(/example\.com/);
+      expect(all).not.toContain("example.com");
       const events = rec.events();
       for (const e of ["create", "edit", "resolve", "delete", "admin_delete", "admin_purge"]) {
         expect(events, e).toContain(`comments.${e}`);

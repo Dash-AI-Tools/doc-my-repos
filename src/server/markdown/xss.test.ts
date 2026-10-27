@@ -324,7 +324,7 @@ const CONTEXTS: readonly ((payload: string) => string)[] = [
 
 const ONE_LINE: readonly ((payload: string) => string)[] = [
   (p) => `## ${p}`,
-  (p) => `| h |\n|---|\n| ${p.replace(/\|/g, "\\|")} |`,
+  (p) => `| h |\n|---|\n| ${p.replace(/[\\|]/g, "\\$&")} |`,
   (p) => `**${p}**`,
 ];
 
