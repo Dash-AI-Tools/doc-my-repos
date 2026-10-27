@@ -76,12 +76,12 @@ test.describe("security headers on the built app", () => {
       expect(seen.has(nonce)).toBe(false);
       seen.add(nonce);
       const html = await response.text();
-      const scripts = html.match(/<script\b[^>]*>/g) ?? [];
+      const scripts = html.match(/<script\b[^>]*>/gi) ?? [];
       expect(scripts.length).toBeGreaterThan(1);
       for (const tag of scripts) expect(tag).toContain(`nonce="${nonce}"`);
       // the theme script is inline (no src) and still the first thing in <body>
       const body = html.slice(html.indexOf("<body"));
-      const first = /<script\b[^>]*>/.exec(body)?.[0] ?? "";
+      const first = /<script\b[^>]*>/i.exec(body)?.[0] ?? "";
       expect(first).not.toMatch(/\bsrc=/);
       expect(body.indexOf("<script")).toBeLessThan(body.indexOf("<header"));
     }

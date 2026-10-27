@@ -63,10 +63,11 @@ describe("rehypeMermaid", () => {
     expect(html).not.toContain("<script");
     expect(html).not.toContain("<b>");
     const inner = /<code class="language-mermaid">([\s\S]*)<\/code>/.exec(html)?.[1] ?? "";
-    const decoded = inner
-      .replaceAll("&#x3C;", "<")
-      .replaceAll("&#x26;", "&")
-      .replaceAll("&#x3E;", ">");
+    // One pass, so a decoded `&` is never decoded again.
+    const decoded = inner.replace(
+      /&#x(3C|26|3E);/g,
+      (_, code: string) => ({ "3C": "<", "26": "&", "3E": ">" })[code]!,
+    );
     expect(decoded).toBe(src);
   });
 

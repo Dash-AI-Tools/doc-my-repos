@@ -251,7 +251,7 @@ describe("root layout", () => {
   });
 
   it("puts the request nonce from the proxy on the theme script", () => {
-    const tag = /<script[^>]*>/.exec(html)?.[0] ?? "";
+    const tag = /<script[^>]*>/i.exec(html)?.[0] ?? "";
     expect(tag).toContain(`nonce="${NONCE}"`);
   });
 
@@ -262,13 +262,13 @@ describe("root layout", () => {
     ["a value that would break out of the attribute", `${NONCE}" onload="alert(1)`],
   ])("renders no nonce for %s", async (_label, nonce) => {
     const markup = renderToStaticMarkup(await renderLayout(nonce));
-    const tag = /<script[^>]*>/.exec(markup)?.[0] ?? "";
+    const tag = /<script[^>]*>/i.exec(markup)?.[0] ?? "";
     expect(tag).not.toContain("nonce");
     expect(markup).not.toContain("onload");
   });
 
   it("configures the script for the class attribute, system default and system detection", () => {
-    const script = /<script[^>]*>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? "";
+    const script = /<script[^>]*>([\s\S]*?)<\/script>/i.exec(html)?.[1] ?? "";
     const args = script.slice(script.lastIndexOf(")(") + 2, -1);
     // [attribute, storageKey, defaultTheme, forcedTheme, themes, value, enableSystem, enableColorScheme]
     expect(JSON.parse(`[${args}]`)).toEqual([

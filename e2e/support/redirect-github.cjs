@@ -11,8 +11,9 @@ if (target && typeof globalThis.fetch === "function") {
   const original = globalThis.fetch.bind(globalThis);
   globalThis.fetch = (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    if (typeof url === "string" && url.startsWith(real)) {
-      const next = target + url.slice(real.length);
+    const parsed = typeof url === "string" && URL.canParse(url) ? new URL(url) : null;
+    if (parsed !== null && parsed.origin === real) {
+      const next = target + parsed.pathname + parsed.search;
       return original(
         typeof input === "string" || input instanceof URL ? next : new Request(next, input),
         init,

@@ -19,6 +19,14 @@ type FieldErrors = Partial<
   Record<"orgName" | "pageTitle" | "primaryColor" | "accentColor" | "logo", string>
 >;
 
+/** The logo types the picker offers; any other file is not previewed (the server rejects it). */
+const PREVIEW_TYPES: ReadonlySet<string> = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/svg+xml",
+]);
+
 /** Live preview of the bar, a button, a link, a badge and the logo in one theme. */
 function BrandPreview({
   theme,
@@ -142,7 +150,11 @@ export function BrandingForm({ initial }: { initial: BrandingSettings }) {
   const lightInverts = rootPart.includes("--logo-filter:invert(1);");
 
   const logoSrc = useMemo(() => {
-    if (logoFile !== null && typeof URL.createObjectURL === "function") {
+    if (
+      logoFile !== null &&
+      PREVIEW_TYPES.has(logoFile.type) &&
+      typeof URL.createObjectURL === "function"
+    ) {
       try {
         return URL.createObjectURL(logoFile);
       } catch {

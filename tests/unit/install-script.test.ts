@@ -1,9 +1,12 @@
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  closeSync,
   existsSync,
+  fstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -648,8 +651,14 @@ describe("install.sh upgrade", () => {
     expect(files).toHaveLength(1);
     expect(files[0]).toMatch(/^backup-\d{8}T\d{6}Z\.sql$/);
     const path = join(work, "site", files[0]!);
-    expect(statSync(path).mode & 0o777).toBe(0o600);
-    expect(readFileSync(path, "utf8")).toContain("CREATE TABLE");
+    // One descriptor for both checks, so the file cannot change between them.
+    const fd = openSync(path, "r");
+    try {
+      expect(fstatSync(fd).mode & 0o777).toBe(0o600);
+      expect(readFileSync(fd, "utf8")).toContain("CREATE TABLE");
+    } finally {
+      closeSync(fd);
+    }
   });
 
   it("upgrades to the version of the script when no image is given", () => {
