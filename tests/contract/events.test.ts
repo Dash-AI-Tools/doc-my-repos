@@ -43,7 +43,7 @@ beforeAll(async () => {
   github.fail({ path: /^\/repos\/acme\/broken\/git\/trees\//, status: 500 });
   const realFetch = globalThis.fetch;
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
-    String(input instanceof Request ? input.url : input).startsWith("https://api.github.com")
+    new URL(input instanceof Request ? input.url : input).origin === "https://api.github.com"
       ? github.fetch(input, init)
       : realFetch(input, init),
   );

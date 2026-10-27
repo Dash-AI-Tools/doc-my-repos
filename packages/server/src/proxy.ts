@@ -95,11 +95,18 @@ async function hasSessionCookie(request: NextRequest): Promise<boolean> {
   return session !== null;
 }
 
+/** `path` without its trailing slashes, in linear time (a host app's paths are not trusted to be short). */
+function withoutTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path[end - 1] === "/") end--;
+  return path.slice(0, end);
+}
+
 /** Builds the proxy a route-level `src/proxy.ts` exports: `export const proxy = createProxy();` */
 export function createProxy(
   options: ProxyOptions = {},
 ): (request: NextRequest) => Promise<NextResponse> {
-  const extra = (options.publicPaths ?? []).map((p) => p.replace(/\/+$/, ""));
+  const extra = (options.publicPaths ?? []).map(withoutTrailingSlashes);
   const isPublicPath = (pathname: string) =>
     isCorePublicPath(pathname) || extra.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   const isSignedIn = options.isSignedIn ?? hasSessionCookie;

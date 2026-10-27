@@ -790,6 +790,13 @@ describeDb("dogfood docs: synced end to end into a test database", () => {
     let footnotes = 0;
     let tasks = 0;
     let highlighted = 0;
+    // Shiki compiles a grammar's patterns on first use, which can take most of the wall-clock
+    // highlighting budget on a busy CI runner. Warm it up on the same documents first, so the
+    // assertions below see only what the documents themselves cause.
+    for (const path of MARKDOWN_PATHS) {
+      const doc = await getDocumentByPath(h.db, { id: ref.id }, [path]);
+      if (doc !== null) await renderMarkdown(doc.body, { slots: { highlight: [rehypeHighlight] } });
+    }
     for (const path of MARKDOWN_PATHS) {
       const doc = await getDocumentByPath(h.db, { id: ref.id }, [path]);
       expect(doc, path).not.toBeNull();

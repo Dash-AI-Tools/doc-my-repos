@@ -5,7 +5,7 @@ description: An application that extends DocMyRepos is a Next.js host app that i
 tags: [decisions, packages, extension]
 status: accepted
 sources:
-  - openspec/changes/prepare-core-for-open-core-extensibility/design.md
+  - openspec/changes/archive/2026-10-27-prepare-core-for-open-core-extensibility/design.md
   - pnpm-workspace.yaml
 generated: 2026-10-27
 verified: 2026-10-27

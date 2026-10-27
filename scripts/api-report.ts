@@ -32,7 +32,7 @@ function entrypoints(name: string): Record<string, string> {
     for (const file of readdirSync(folder).sort()) {
       if (!file.endsWith(suffix) || /\.test\.tsx?$/.test(file) || file.startsWith("test-"))
         continue;
-      out[key.replace("*", file.slice(0, -suffix.length))] = join(folder, file);
+      out[key.replaceAll("*", file.slice(0, -suffix.length))] = join(folder, file);
     }
   }
   return out;
