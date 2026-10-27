@@ -5,12 +5,12 @@ description: The settings an admin manages in the app (GitHub App, repositories,
 tags: [guides, configuration]
 status: stable
 sources:
-  - src/server/config/schema.ts
-  - src/server/config/env.ts
-  - src/server/workspace.ts
-  - src/server/settings/store.ts
-  - src/server/settings/crypto.ts
-  - src/server/sync/schedule-runtime.ts
+  - packages/core/src/config/schema.ts
+  - packages/server/src/config/env.ts
+  - packages/server/src/workspace.ts
+  - packages/server/src/settings/store.ts
+  - packages/server/src/settings/crypto.ts
+  - packages/server/src/sync/schedule-runtime.ts
   - .env.example
 generated: 2026-10-10
 verified: 2026-10-16

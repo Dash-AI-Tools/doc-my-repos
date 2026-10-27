@@ -1,7 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AssetDeps } from "@/server/assets/serve";
-import { PNG } from "@/server/assets/test-images";
+import type { AssetDeps } from "@docmyrepos/server/internal/assets/serve";
+import { PNG } from "@docmyrepos/server/internal/assets/test-images";
+
+// These tests check the route wiring. A gated route confirms the signed-in user in the tenant's
+// database first; the e2e switch makes that the fixed admin without a database.
+beforeAll(() => {
+  vi.stubEnv("E2E_AUTH_BYPASS", "1");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 const TOKEN = "ghs_SENTINEL_route_token_51d0";
 
@@ -23,12 +32,12 @@ const deps: AssetDeps = {
   cache: null,
 };
 
-vi.mock("@/server/assets/service", () => ({
+vi.mock("@docmyrepos/server/internal/assets/service", () => ({
   getAssetDeps: vi.fn(() => deps),
 }));
 
 const route = await import("./route");
-const { getAssetDeps } = await import("@/server/assets/service");
+const { getAssetDeps } = await import("@docmyrepos/server/internal/assets/service");
 
 const url = (path: string) => `http://localhost/api/asset/${path}`;
 

@@ -6,9 +6,9 @@ tags: [decisions, markdown, mermaid]
 status: accepted
 sources:
   - openspec/changes/archive/2026-10-14-docmyrepos-mvp/design.md
-  - src/server/markdown/mermaid.ts
-  - src/components/mermaid-diagram.tsx
-  - src/components/mermaid-svg.ts
+  - packages/server/src/markdown/mermaid.ts
+  - packages/ui/src/components/mermaid-diagram.tsx
+  - packages/ui/src/components/mermaid-svg.ts
 generated: 2026-10-10
 verified: 2026-10-10
 stale_after: 2999-01-01

@@ -1,8 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 
-import { E2E_CRASH_HEADER } from "../src/lib/e2e-fixtures";
-import { THEME_TOKENS, type ThemeName } from "../src/lib/theme-tokens";
+import { E2E_CRASH_HEADER } from "../packages/core/src/e2e-fixtures";
+import { THEME_TOKENS, type ThemeName } from "../packages/core/src/theme-tokens";
 import { expect, test } from "./support/csp";
 import { stackUrl } from "./support/stack";
 

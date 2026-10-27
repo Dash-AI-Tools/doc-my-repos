@@ -1,8 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { BrowserContext, Locator, Page } from "@playwright/test";
 
-import { NAV_VIEW_COOKIE } from "../src/lib/reading-prefs";
-import { type ThemeName } from "../src/lib/theme-tokens";
+import { NAV_VIEW_COOKIE } from "../packages/core/src/reading-prefs";
+import { type ThemeName } from "../packages/core/src/theme-tokens";
 import { expect, test } from "./support/csp";
 import { SEEDED } from "./support/seed-data";
 import { SKIP_DB, SKIP_DB_REASON, stackUrl } from "./support/stack";

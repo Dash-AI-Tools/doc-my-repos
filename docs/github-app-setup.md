@@ -5,8 +5,8 @@ description: Register a read-only GitHub App, subscribe it to the right events, 
 tags: [guides, setup, github-app]
 status: draft
 sources:
-  - src/server/webhooks/router.ts
-  - src/server/config/env.ts
+  - packages/server/src/webhooks/router.ts
+  - packages/server/src/config/env.ts
 generated: 2026-10-14
 ---
 

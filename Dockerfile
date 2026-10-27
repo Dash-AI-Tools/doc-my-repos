@@ -27,6 +27,11 @@ WORKDIR /app
 # Locked dependencies only. Re-runs when the manifests change, not on every source edit.
 FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# The workspace packages the app is composed from (see pnpm-workspace.yaml): their manifests only,
+# so the install layer still re-runs only when a manifest changes.
+COPY packages/core/package.json packages/core/
+COPY packages/server/package.json packages/server/
+COPY packages/ui/package.json packages/ui/
 RUN --mount=type=cache,id=docmyrepos-pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
@@ -37,7 +42,7 @@ FROM deps AS build
 COPY . .
 ENV NEXT_OUTPUT=standalone
 RUN pnpm build && pnpm build:migrate \
-    # The file tracer copies src/server/config (with its tests) because the environment check looks for
+    # The file tracer copies packages/server/src/config (with its tests) because the environment check looks for
     # the retired config file in the working directory. The server runs from the compiled build, not from src.
     && rm -rf .next/standalone/src
 

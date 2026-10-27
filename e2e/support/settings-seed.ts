@@ -1,9 +1,9 @@
 import { generateKeyPairSync } from "node:crypto";
 
-import type { Db } from "../../src/server/db/client";
-import { configSchema } from "../../src/server/config/schema";
-import { parseEncryptionKey } from "../../src/server/settings/crypto";
-import { saveWorkspace } from "../../src/server/settings/store";
+import type { Db } from "../../packages/server/src/db/client";
+import { configSchema } from "../../packages/core/src/config/schema";
+import { parseEncryptionKey } from "../../packages/server/src/settings/crypto";
+import { saveWorkspace } from "../../packages/server/src/settings/store";
 import { E2E_ENCRYPTION_KEY, fakeProviderUrl, type DatabaseKind } from "./stack";
 
 /**

@@ -2,25 +2,31 @@ import { createHmac } from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Secret } from "@/server/config/secret";
+import { Secret } from "@docmyrepos/server/internal/config/secret";
 
 const SECRET = "SENTINEL-webhook-secret-91c4d2";
 
-// The route must authenticate from the environment alone: building the runtime or the database
-// handle on an unauthenticated request is a failure.
-// The stored webhook secret comes from the workspace; the database is never opened here.
+// The stored webhook secret comes from the tenant's workspace (mocked here). The database
+// handle the workspace is read through must never be used on an unauthenticated request.
 const stored = vi.hoisted(() => ({ secret: null as string | null }));
 const getWorkspace = vi.hoisted(() => vi.fn());
-vi.mock("@/server/workspace", () => ({ getWorkspace }));
-const getDb = vi.fn(() => {
-  throw new Error("database must not be opened");
+vi.mock("@docmyrepos/server/internal/workspace", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@docmyrepos/server/internal/workspace")>()),
+  getWorkspace,
+}));
+const dbUsed = vi.hoisted(() => vi.fn());
+vi.mock("@docmyrepos/server/internal/db/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@docmyrepos/server/internal/db/client")>();
+  const unusable = new Proxy({}, { get: () => dbUsed() });
+  return { ...actual, getDb: () => ({ db: unusable, pool: unusable, close: async () => {} }) };
 });
-vi.mock("@/server/db/client", () => ({ getDb, createDb: getDb }));
 
-const dispatch = vi.fn(async () => undefined);
-vi.mock("@/server/webhooks/service", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/server/webhooks/service")>();
-  return { ...actual, getWebhookDispatch: vi.fn(() => dispatch) };
+// The verified delivery reaches the router through the `webhook.dispatch` job.
+const dispatch = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@docmyrepos/server/internal/webhooks/service", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@docmyrepos/server/internal/webhooks/service")>();
+  return { ...actual, createWebhookDispatch: vi.fn(() => dispatch) };
 });
 
 const { DELETE, GET, PATCH, POST, PUT, dynamic, runtime } = await import("./route");
@@ -50,6 +56,7 @@ beforeEach(() => {
   stored.secret = SECRET;
   getWorkspace.mockImplementation(async () => ({
     webhookSecret: stored.secret === null ? null : new Secret(stored.secret),
+    github: { sync: {}, installationId: 1 },
   }));
 });
 
@@ -84,7 +91,7 @@ describe("/api/webhooks/github route", () => {
     }
     expect(texts[0]).toBe(texts[1]);
     expect(dispatch).not.toHaveBeenCalled();
-    expect(getDb).not.toHaveBeenCalled();
+    expect(dbUsed).not.toHaveBeenCalled();
   });
 
   it("answers 401 to everyone, signed or not, while no webhook secret is stored", async () => {
@@ -105,13 +112,13 @@ describe("/api/webhooks/github route", () => {
     expect(dispatch).not.toHaveBeenCalled();
   });
 
-  it.each<[string, (request: Request) => Response]>([
+  it.each<[string, (request: Request) => Promise<Response>]>([
     ["GET", GET],
     ["PUT", PUT],
     ["PATCH", PATCH],
     ["DELETE", DELETE],
   ])("answers %s with 405 and Allow: POST", async (method, handler) => {
-    const response = handler(
+    const response = await handler(
       request(method, { "x-hub-signature-256": sign(BODY) }, method === "GET" ? undefined : BODY),
     );
     expect(response.status).toBe(405);

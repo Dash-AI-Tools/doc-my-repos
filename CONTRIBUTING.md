@@ -22,19 +22,23 @@ Syncing real repositories needs a GitHub App: see the [setup guide](docs/github-
 
 ## Commands
 
-| Command                                | What it does                                                        |
-| -------------------------------------- | ------------------------------------------------------------------- |
-| `pnpm dev`                             | Run the app with hot reload                                         |
-| `pnpm typecheck`                       | TypeScript, strict                                                  |
-| `pnpm lint`                            | ESLint                                                              |
-| `pnpm format:check` / `pnpm format`    | Prettier check / write (covers Markdown and YAML too)               |
-| `pnpm test`                            | Unit and database tests (Vitest); needs Postgres                    |
-| `pnpm test:e2e`                        | Browser tests (Playwright); needs Postgres and Chromium             |
-| `pnpm build` / `pnpm build:migrate`    | Production build / the self-contained migration bundle              |
-| `pnpm db:up`                           | Start only the compose `db` service                                 |
-| `pnpm db:generate` / `pnpm db:migrate` | Create a Drizzle migration after a schema change / apply migrations |
-| `pnpm screenshots`                     | Regenerate `docs-assets/screenshots` (light and dark)               |
-| `openspec validate --all`              | Validate the specs (CLI: `npm i -g @fission-ai/openspec`)           |
+| Command                                | What it does                                                                      |
+| -------------------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm dev`                             | Run the app with hot reload                                                       |
+| `pnpm typecheck`                       | TypeScript, strict                                                                |
+| `pnpm lint`                            | ESLint                                                                            |
+| `pnpm format:check` / `pnpm format`    | Prettier check / write (covers Markdown and YAML too)                             |
+| `pnpm test`                            | Unit and database tests (Vitest); needs Postgres                                  |
+| `pnpm test:e2e`                        | Browser tests (Playwright); needs Postgres and Chromium                           |
+| `pnpm build` / `pnpm build:migrate`    | Production build / the self-contained migration bundle                            |
+| `pnpm db:up`                           | Start only the compose `db` service                                               |
+| `pnpm db:generate` / `pnpm db:migrate` | Create a Drizzle migration after a schema change / apply migrations               |
+| `pnpm screenshots`                     | Regenerate `docs-assets/screenshots` (light and dark)                             |
+| `pnpm test:contract`                   | The extension contract suite: a host app over the public API only; needs Postgres |
+| `pnpm build:packages`                  | Build `packages/*/dist` (JS and type declarations), as published                  |
+| `pnpm api:check` / `pnpm api:report`   | Check / rewrite `packages/*/api-report.json`, the public API of each package      |
+| `pnpm changeset`                       | Add a changeset for a change to `packages/**`                                     |
+| `openspec validate --all`              | Validate the specs (CLI: `npm i -g @fission-ai/openspec`)                         |
 
 Before you push, run `pnpm typecheck && pnpm lint && pnpm format:check && pnpm test`. CI runs the same, plus the build, the e2e tests, the Docker image and `openspec validate`.
 
@@ -43,7 +47,7 @@ Before you push, run `pnpm typecheck && pnpm lint && pnpm format:check && pnpm t
 Write a test with every parser or pipeline change.
 
 1. **Unit tests** (`src/**/*.test.ts(x)`, `tests/unit/`): pure logic such as CODEOWNERS parsing, frontmatter, link rewriting, config validation, snippets, theme tokens. No database, no network.
-2. **Database tests**: the sync engine, queries and search run against a **real Postgres**, never a mock. They create and drop a throwaway database on the server in `TEST_DATABASE_URL` (default `DATABASE_URL`, then the compose database) and fail loudly when it is unreachable. `SKIP_DB_TESTS=1` skips them, visibly. Use `describeDb` and `src/server/db/test-db.ts`.
+2. **Database tests**: the sync engine, queries and search run against a **real Postgres**, never a mock. They create and drop a throwaway database on the server in `TEST_DATABASE_URL` (default `DATABASE_URL`, then the compose database) and fail loudly when it is unreachable. `SKIP_DB_TESTS=1` skips them, visibly. Use `describeDb` and `packages/server/src/db/test-db.ts`.
 3. **End-to-end tests** (`e2e/*.spec.ts`, Playwright + Chromium): real pages from a production build against a seeded throwaway database (`e2e/support/seed-data.ts`), including axe accessibility checks in light and dark. Setup once: `pnpm exec playwright install chromium` (add `--with-deps` on a fresh Linux machine). Then `pnpm db:up && pnpm test:e2e`. `E2E_SKIP_DB=1` runs only the specs that need no database. To cover new UI, add a seeded repository or documents to `seed-data.ts` and write the spec against them; keep existing names stable. Never set `E2E_FIXTURES` yourself: `playwright.config.ts` does it for its own server.
 4. **CI smoke test** of the Docker image (`scripts/docker-smoke.sh`).
 
@@ -58,8 +62,8 @@ The behavior of DocMyRepos is specified with [OpenSpec](https://github.com/Fissi
 ## Conventions
 
 - **TypeScript strict**, no `any`. Match the style of the code around you; Prettier decides formatting, and `.editorconfig` covers the rest.
-- **Layers.** Keep modules under `src/server/` free of React and under `src/components/` free of database access.
-- **The visibility filter.** Every read of repos, documents, search, facets and assets goes through the single visibility filter in the shared query layer (`src/server/queries/`). Do not query those tables around it; a static guard test enforces this.
+- **Layers.** Keep modules under `packages/server/src/` free of React and under `packages/ui/src/components/` free of database access.
+- **The visibility filter.** Every read of repos, documents, search, facets and assets goes through the single visibility filter in the shared query layer (`packages/server/src/queries/`). Do not query those tables around it; a static guard test enforces this.
 - **Pages read Postgres only.** Never call GitHub at request time, except the image proxy `/api/asset`.
 - **Store parsed documents, not HTML.** Rendering happens at read time.
 - **Syncs** are incremental (tree SHA, then blob SHA), idempotent and serialized per repository. A failed sync keeps the previously stored content.
@@ -78,7 +82,7 @@ Documentation comes from third-party repositories and is untrusted.
 - GitHub credentials (the App private key, installation tokens) never reach the browser, the logs or error messages. Wrap secrets (`Secret`), never log request bodies or error messages, and do not widen the logger's allowed fields. The App is read-only.
 - `/api/asset` must validate that the path is inside a configured repository, serve only image content types and block path traversal.
 - Verify webhook signatures against the raw request body. Guard `/api/sync` with `SYNC_SECRET`.
-- Do not loosen the Content-Security-Policy (`src/lib/security-headers.ts`) without a reason written in the pull request. Never widen `default-src` or `script-src`.
+- Do not loosen the Content-Security-Policy (`packages/core/src/security-headers.ts`) without a reason written in the pull request. Never widen `default-src` or `script-src`.
 - Never commit secrets. `.env`, `*.pem` and `.env.*` (except `.env.example`) are ignored.
 
 ## Commits and pull requests
@@ -92,6 +96,14 @@ Documentation comes from third-party repositories and is untrusted.
   - UI changes come with screenshots in light and dark;
   - no secrets, no unrelated refactors.
 - CI must be green. It cannot read repository secrets, so it also runs on pull requests from forks.
+
+## Packages, changesets and releases
+
+The app is built from three packages, `@docmyrepos/core`, `@docmyrepos/server` and `@docmyrepos/ui`, which are also published to npm for host apps (see the [Extension API](docs/reference/extension-api.md)). They and the app share one version.
+
+- A pull request that changes `packages/**` adds a changeset: run `pnpm changeset`, choose the bump (patch, minor or major, following semver for the public entrypoints; `./internal/*` is not covered) and write one line for the changelog. CI fails without one.
+- A change to a public entrypoint also updates `packages/*/api-report.json` (`pnpm api:report`); `pnpm api:check` fails on a public API that does not match it, naming each export.
+- To release, a maintainer runs `pnpm version-packages`. It applies the changesets to the three packages (`fixed` versioning), writes their changelogs, and sets the same version in the root `package.json` and `install.sh` (`scripts/sync-installer-version.ts`). Commit that, then tag `v<version>`: the release workflow checks the versions agree (`scripts/check-release-versions.sh`), publishes the image and the packages.
 
 ## Changing CI or Docker
 

@@ -3,7 +3,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { fakeProviderUrl } from "./stack";
 
 /**
- * Client of the fake model provider's control API (see `src/server/ask/testing/fake-provider.ts`),
+ * Client of the fake model provider's control API (see `packages/server/src/ask/testing/fake-provider.ts`),
  * for the Ask e2e specs. The provider is one process shared by all specs, so a spec that scripts
  * it runs serially.
  */

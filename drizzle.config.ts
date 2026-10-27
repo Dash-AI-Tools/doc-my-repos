@@ -4,7 +4,7 @@ import { defineConfig } from "drizzle-kit";
 // `drizzle-kit generate` does not connect, so the URL is only needed for later db commands.
 export default defineConfig({
   dialect: "postgresql",
-  schema: "./src/server/db/schema.ts",
+  schema: "./packages/server/src/db/schema.ts",
   out: "./drizzle",
   dbCredentials: {
     url: process.env.DATABASE_URL ?? "",

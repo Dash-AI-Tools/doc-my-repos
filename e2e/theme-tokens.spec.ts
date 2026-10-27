@@ -6,7 +6,7 @@ import {
   contrastRatio,
   type ThemeName,
   type TokenName,
-} from "../src/lib/theme-tokens";
+} from "../packages/core/src/theme-tokens";
 import { expect, test } from "./support/csp";
 
 /**

@@ -6,8 +6,8 @@ tags: [decisions, search, database]
 status: accepted
 sources:
   - openspec/changes/archive/2026-10-14-docmyrepos-mvp/design.md
-  - src/server/db/schema.ts
-  - src/server/queries/search.ts
+  - packages/server/src/db/schema.ts
+  - packages/server/src/queries/search.ts
 generated: 2026-10-10
 verified: 2026-10-10
 stale_after: 2999-01-01

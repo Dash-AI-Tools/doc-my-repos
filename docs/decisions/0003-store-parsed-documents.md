@@ -6,8 +6,8 @@ tags: [decisions, sync, markdown]
 status: accepted
 sources:
   - openspec/changes/archive/2026-10-14-docmyrepos-mvp/design.md
-  - src/server/sync/document-record.ts
-  - src/server/markdown/pipeline.ts
+  - packages/server/src/sync/document-record.ts
+  - packages/server/src/markdown/pipeline.ts
 generated: 2026-10-10
 verified: 2026-10-10
 stale_after: 2999-01-01

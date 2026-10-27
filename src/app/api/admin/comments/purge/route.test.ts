@@ -1,9 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ purge: vi.fn() }));
-vi.mock("@/server/comments/service", () => ({ adminPurge: mocks.purge }));
+vi.mock("@docmyrepos/server/internal/comments/service", () => ({ adminPurge: mocks.purge }));
 
 import * as route from "./route";
+
+// These tests check the route wiring. A gated route confirms the signed-in user in the tenant's
+// database first; the e2e switch makes that the fixed admin without a database.
+beforeAll(() => {
+  vi.stubEnv("E2E_AUTH_BYPASS", "1");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("/api/admin/comments/purge route", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -30,8 +39,8 @@ describe("/api/admin/comments/purge route", () => {
 
   it.each(["GET", "HEAD", "PUT", "PATCH", "DELETE"] as const)(
     "refuses %s with Allow: POST",
-    (m) => {
-      const res = route[m]();
+    async (m) => {
+      const res = await route[m]();
       expect([res.status, res.headers.get("allow")]).toEqual([405, "POST"]);
     },
   );

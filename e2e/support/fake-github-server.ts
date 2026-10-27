@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 
-import { FakeGitHub } from "../../src/server/sync/fake-github";
+import { FakeGitHub } from "../../tests/support/fake-github";
 import { FAKE_GITHUB_PORT } from "./stack";
 
 /**

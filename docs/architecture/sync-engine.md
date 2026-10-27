@@ -5,22 +5,24 @@ description: How a repository is copied into Postgres. Incremental by tree SHA a
 tags: [architecture, sync]
 status: stable
 sources:
-  - src/server/sync/engine.ts
-  - src/server/sync/tree.ts
-  - src/server/sync/blobs.ts
-  - src/server/sync/persist.ts
-  - src/server/sync/requests.ts
-  - src/server/sync/removal.ts
-  - src/server/sync/scheduler.ts
-  - src/server/db/advisory-lock.ts
+  - packages/server/src/sync/engine.ts
+  - packages/server/src/sync/tree.ts
+  - packages/server/src/sync/blobs.ts
+  - packages/server/src/sync/persist.ts
+  - packages/server/src/sync/requests.ts
+  - packages/server/src/sync/removal.ts
+  - packages/server/src/sync/scheduler.ts
+  - packages/server/src/sync/schedule-runtime.ts
+  - packages/server/src/jobs/core.ts
+  - packages/server/src/db/advisory-lock.ts
 generated: 2026-10-10
-verified: 2026-10-10
+verified: 2026-10-27
 stale_after: 2999-01-01
 ---
 
 # Sync engine
 
-The sync engine is the only writer of repository content. It lives in `src/server/sync/` and reads GitHub through a small `fetch`-based client authenticated with a GitHub App installation token. Everything it learns ends up in Postgres, in one transaction per repository.
+The sync engine is the only writer of repository content. It lives in `packages/server/src/sync/` and reads GitHub through a small `fetch`-based client authenticated with a GitHub App installation token. Everything it learns ends up in Postgres, in one transaction per repository.
 
 The entry points in `engine.ts`:
 
@@ -128,3 +130,11 @@ Webhooks are the fast path. A background scheduler is the fallback for lost deli
 - among several instances, one cluster-wide advisory lock lets only one run a scheduled full sync at a time.
 
 The scheduler is on when `NODE_ENV=production` and off otherwise, so `pnpm dev` never calls GitHub on its own. `SYNC_SCHEDULER=1` or `0` overrides that. See [Configuration](../guides/configuration.md#scheduler).
+
+## Jobs and tenants
+
+The scheduler and the webhook endpoint do not call the sync engine directly. They submit jobs to the jobs adapter: `sync.full` (a scheduled full sync), `sync.drain`, `sync.reap` and `webhook.dispatch` (one verified delivery, which the router turns into repository syncs or removals). `sync.repo` syncs one repository for a host's own use. Each job's payload names its tenant, and the job reads that tenant's workspace when it runs. The open-source default runs a job in the server process at once, so nothing changes for a single server; a [host app](../reference/extension-api.md) can queue them instead.
+
+The scheduler runs one schedule per tenant of `listTenants`, each with its own timers and failure backoff, so one tenant's failures never hold up another's. It reads the tenant list again on every drain tick, starting and stopping schedules for tenants that came or went. The open-source app has one tenant, so it runs one schedule, as before.
+
+A webhook is resolved to its tenant first, verified with that tenant's webhook secret, and dispatched only if its installation is that tenant's.

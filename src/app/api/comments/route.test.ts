@@ -1,13 +1,24 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   create: vi.fn(),
 }));
-vi.mock("@/server/comments/read-api", () => ({ handleListComments: mocks.list }));
-vi.mock("@/server/comments/service", () => ({ createComment: mocks.create }));
+vi.mock("@docmyrepos/server/internal/comments/read-api", () => ({
+  handleListComments: mocks.list,
+}));
+vi.mock("@docmyrepos/server/internal/comments/service", () => ({ createComment: mocks.create }));
 
 import * as route from "./route";
+
+// These tests check the route wiring. A gated route confirms the signed-in user in the tenant's
+// database first; the e2e switch makes that the fixed admin without a database.
+beforeAll(() => {
+  vi.stubEnv("E2E_AUTH_BYPASS", "1");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("/api/comments route", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -21,7 +32,11 @@ describe("/api/comments route", () => {
     mocks.list.mockResolvedValue(new Response("{}", { status: 200 }));
     const request = new Request("http://localhost/api/comments?repo=a/b&path=x.md");
     expect((await route.GET(request)).status).toBe(200);
-    expect(mocks.list).toHaveBeenCalledWith(request);
+    expect(mocks.list).toHaveBeenCalledWith(request, {
+      db: expect.any(Function),
+      enabled: expect.any(Function),
+      access: expect.any(Object),
+    });
   });
 
   it("turns a create result into the JSON response, with the changed comment and thread", async () => {
@@ -56,8 +71,8 @@ describe("/api/comments route", () => {
     ]);
   });
 
-  it.each(["HEAD", "PUT", "PATCH", "DELETE"] as const)("refuses %s with Allow", (method) => {
-    const res = route[method]();
+  it.each(["HEAD", "PUT", "PATCH", "DELETE"] as const)("refuses %s with Allow", async (method) => {
+    const res = await route[method]();
     expect(res.status).toBe(405);
     expect(res.headers.get("allow")).toBe("GET, POST");
     expect(res.headers.get("cache-control")).toBe("no-store");

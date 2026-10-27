@@ -41,6 +41,7 @@ const doc = parse(text) as {
   jobs: Record<string, Job>;
 };
 const image = doc.jobs.image as Job;
+const packages = doc.jobs.packages as Job;
 const steps = image.steps ?? [];
 const indexOf = (predicate: (s: Step) => boolean) => steps.findIndex(predicate);
 
@@ -57,6 +58,7 @@ describe("release workflow trigger and scope", () => {
   it("publishes only from the project's own repository, never from a fork", () => {
     expect(doc.jobs.versions?.if).toBe(GUARD);
     expect(image.if).toBe(GUARD);
+    expect(packages.if).toBe(GUARD);
     expect(needs(doc.jobs.ci as Job)).toContain("versions");
   });
 
@@ -67,17 +69,17 @@ describe("release workflow trigger and scope", () => {
 });
 
 describe("release workflow permissions", () => {
-  it("is read-only by default and writes packages only in the image job", () => {
+  it("is read-only by default; only the image job writes packages, only the npm job mints an OIDC token", () => {
     expect(doc.permissions).toEqual({ contents: "read" });
     expect(image.permissions).toEqual({ contents: "read", packages: "write" });
+    expect(packages.permissions).toEqual({ contents: "read", "id-token": "write" });
     for (const [name, job] of Object.entries(doc.jobs)) {
-      if (name !== "image") expect(job.permissions, name).toBeUndefined();
+      if (name !== "image" && name !== "packages") expect(job.permissions, name).toBeUndefined();
     }
   });
 
-  it("uses no long-lived credential: no id-token, no npm publish, no secret but the workflow token", () => {
-    expect(body).not.toMatch(/id-token/);
-    expect(body).not.toMatch(/npm publish|NPM_TOKEN|NODE_AUTH_TOKEN/);
+  it("uses no long-lived credential: npm trusted publishing, no secret but the workflow token", () => {
+    expect(body).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN/);
     const secrets = [...body.matchAll(/\bsecrets\.([A-Za-z0-9_]+)/g)].map((m) => m[1]);
     expect(new Set(secrets)).toEqual(new Set(["GITHUB_TOKEN"]));
   });
@@ -114,6 +116,27 @@ describe("release workflow order", () => {
     expect(steps[login]?.with?.password).toBe("${{ secrets.GITHUB_TOKEN }}");
     expect(steps[guard]?.run).toContain("imagetools inspect");
     expect(steps[guard]?.run).toContain("exit 1");
+  });
+});
+
+describe("release workflow packages", () => {
+  const run = (packages.steps ?? []).map((step) => step.run ?? "");
+
+  it("publishes after the versions check and CI, gated by the release environment", () => {
+    expect(needs(packages)).toEqual(expect.arrayContaining(["versions", "ci"]));
+    expect(packages.environment).toBe("release");
+  });
+
+  it("refuses a version npm already has, then builds and publishes with provenance", () => {
+    const guard = run.findIndex((r) => r.includes("npm view"));
+    const build = run.findIndex((r) => r.includes("pnpm build:packages"));
+    const publish = run.findIndex((r) => r.includes("pnpm -r publish"));
+    expect(guard).toBeGreaterThan(-1);
+    expect(run[guard]).toContain("exit 1");
+    expect(build).toBeGreaterThan(guard);
+    expect(publish).toBeGreaterThan(build);
+    expect(run[publish]).toContain("--provenance");
+    expect(run[publish]).toContain("--access public");
   });
 });
 

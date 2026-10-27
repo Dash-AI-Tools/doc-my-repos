@@ -10,7 +10,7 @@ import { SKIP_DB, SKIP_DB_REASON, stackUrl } from "./support/stack";
  * whose database no other spec asserts titles on, and resets branding afterwards.
  *
  * A viewer getting 403 on the branding APIs is covered by
- * `src/server/admin/branding-service.test.ts` (the e2e servers run with E2E_AUTH_BYPASS, so
+ * `packages/server/src/admin/branding-service.test.ts` (the e2e servers run with E2E_AUTH_BYPASS, so
  * every request there is an admin). The signed-out sign-in page shares the root layout, so the
  * logo-in-header case is covered by `src/app/layout.test.tsx` with a null user.
  */

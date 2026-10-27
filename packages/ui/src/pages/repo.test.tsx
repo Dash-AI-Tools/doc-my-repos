@@ -1,0 +1,483 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { OutlineItem } from "@docmyrepos/core/internal/outline";
+import { buildDocsTree, type DocsTreeRow } from "@docmyrepos/core/internal/docs-tree";
+import {
+  countTocRows,
+  filterDocsRows,
+  parseTocFilters,
+  type TocData,
+  type TocFilterState,
+} from "@docmyrepos/core/internal/toc-filters";
+import type { NavView } from "@docmyrepos/core/internal/reading-prefs";
+import type { RepoDetail } from "@docmyrepos/server/internal/queries/index";
+import type { RepoPageData } from "@docmyrepos/server/internal/repo-page";
+
+const loadRepoPage =
+  vi.fn<(owner: string, name: string, filters: TocFilterState) => Promise<RepoPageData>>();
+/** The navigation view each load received, and the one the cookie reader returns. */
+const views: NavView[] = [];
+const navView: { current: NavView } = { current: "okf" };
+vi.mock("@docmyrepos/server/internal/repo-page", () => ({
+  loadRepoPage: (
+    owner: string,
+    name: string,
+    _deps: unknown,
+    filters: TocFilterState,
+    view: NavView,
+  ) => {
+    views.push(view);
+    return loadRepoPage(owner, name, filters);
+  },
+}));
+vi.mock("@docmyrepos/server/internal/nav-view", () => ({
+  readNavView: async () => navView.current,
+}));
+const askState = vi.hoisted(() => ({ current: { state: "off" } as { state: string } }));
+vi.mock("@docmyrepos/server/internal/ask/settings", () => ({
+  askStateFor: async () => askState.current,
+}));
+
+import { RepoPage, generateMetadata } from "./repo";
+import { testApp } from "./test-app";
+
+const TEST_APP = testApp();
+
+const NOW = new Date("2026-10-10T12:00:00Z");
+
+const repo: RepoDetail = {
+  id: 1,
+  githubId: 1,
+  owner: "acme",
+  name: "api",
+  description: "API",
+  htmlUrl: "https://github.com/acme/api",
+  visibility: "public" as const,
+  isAllowed: true,
+  starPosition: null,
+  isStarred: false,
+  folderId: null,
+  isOkf: false,
+  okfVersion: null,
+  syncStatus: "ok" as const,
+  syncError: null,
+  lastSyncedAt: new Date("2026-10-10T11:00:00Z"),
+  docCount: 3,
+  defaultBranch: "main",
+  docsPath: "docs",
+  readme: { path: "README.md", markdown: "# x", sha: null },
+  codeownersPath: ".github/CODEOWNERS",
+  codeOwners: [
+    {
+      position: 0,
+      pattern: "*",
+      owners: [{ handle: "@alice", kind: "user" as const }],
+      sourcePath: ".github/CODEOWNERS",
+    },
+  ],
+  syncWarnings: [],
+};
+
+function docRow(path: string, title: string): DocsTreeRow {
+  return { path, title, description: null, type: null, tags: [], status: null, reserved: null };
+}
+
+const tree = buildDocsTree(
+  [
+    docRow("docs/guides/setup.md", "Setup"),
+    docRow("docs/guides/advanced/tuning.md", "Tuning"),
+    docRow("docs/reference/endpoints.md", "Endpoints"),
+  ],
+  "docs",
+);
+
+function ok(over: Partial<RepoDetail> = {}) {
+  return {
+    status: "ok" as const,
+    loadedAt: NOW,
+    repo: { ...repo, ...over },
+    readme: { status: "rendered" as const, html: "<h1>Hello</h1>" },
+    readmeOutline: [] as OutlineItem[],
+    tree,
+    toc: null,
+    view: null,
+    apiSpecs: [],
+    lastRun: null,
+  };
+}
+
+async function html(
+  owner = "acme",
+  name = "api",
+  searchParams: Record<string, string | string[] | undefined> = {},
+): Promise<string> {
+  return renderToStaticMarkup(
+    await RepoPage({
+      app: TEST_APP,
+      params: Promise.resolve({ owner, repo: name }),
+      searchParams: Promise.resolve(searchParams),
+    }),
+  );
+}
+
+beforeEach(() => {
+  loadRepoPage.mockReset();
+  views.length = 0;
+  navView.current = "okf";
+  askState.current = { state: "off" };
+});
+
+const spec = (path: string, over: Record<string, unknown> = {}) => ({
+  id: 1,
+  repoId: 1,
+  path,
+  format: "openapi" as const,
+  specVersion: "3.1.0",
+  title: "Pets API",
+  apiVersion: "1.2.0",
+  operationCount: 1,
+  sizeBytes: 1,
+  blobSha: "x",
+  updatedAt: NOW,
+  ...over,
+});
+
+describe("repository page API reference", () => {
+  it("shows no section without specs", async () => {
+    loadRepoPage.mockResolvedValue(ok());
+    const out = await html();
+    expect(out).not.toContain("api-reference-heading");
+    expect(out).not.toContain("API reference");
+  });
+
+  it("lists one spec with title, version, format and link", async () => {
+    loadRepoPage.mockResolvedValue({ ...ok(), apiSpecs: [spec("api/openapi.yaml")] });
+    const out = await html();
+    expect(out).toContain('id="api-reference-heading"');
+    expect(out).toContain("Pets API");
+    expect(out).toContain("v1.2.0");
+    expect(out).toContain("OpenAPI 3.1");
+    expect(out).toContain('href="/acme/api/api-reference/api/openapi.yaml"');
+  });
+
+  it("lists several specs in the given (path) order", async () => {
+    loadRepoPage.mockResolvedValue({
+      ...ok(),
+      apiSpecs: [
+        spec("a/openapi.yaml", { title: "First" }),
+        spec("b/swagger.json", {
+          title: "Second",
+          format: "swagger",
+          specVersion: "2.0",
+          apiVersion: null,
+        }),
+      ],
+    });
+    const out = await html();
+    expect(out.indexOf("First")).toBeGreaterThan(-1);
+    expect(out.indexOf("First")).toBeLessThan(out.indexOf("Second"));
+    expect(out).toContain("Swagger 2.0");
+    expect(out).toContain('href="/acme/api/api-reference/b/swagger.json"');
+    expect(out).toContain("(2)");
+  });
+});
+
+describe("repository page", () => {
+  it("renders the header, README, documentation slot and code owners", async () => {
+    loadRepoPage.mockResolvedValue(ok());
+    const out = await html();
+    expect(out).toMatch(/<h1[^>]*>.*api<\/h1>/);
+    expect(out).toContain("View on GitHub");
+    expect(out).toContain('id="readme-heading"');
+    expect(out).toContain("<h1>Hello</h1>");
+    expect(out).toContain('aria-label="Documentation"');
+    expect(out).toContain("3 documents");
+    // the table of contents: folders and titles, linking to the document pages
+    expect(out).toContain('href="/acme/api/docs/guides/setup"');
+    expect(out).toContain('href="/acme/api/docs/guides/advanced/tuning"');
+    expect(out).toContain('id="code-owners-heading"');
+    expect(out).toContain("@alice");
+    // reading order: document bar, repository header (in the content column), README, code
+    // owners, then the structure (the list a visitor without JavaScript uses); the README here has
+    // no headings, so no outline
+    const order = [
+      'data-testid="doc-bar"',
+      'data-testid="repo-header"',
+      'data-testid="readme-section"',
+      'id="code-owners-heading"',
+      'data-testid="doc-nav"',
+    ].map((marker) => out.indexOf(marker));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(out).not.toContain('aria-label="On this page"');
+    // no complementary landmark nested in <main>
+    expect(out).not.toContain("<aside");
+  });
+
+  it("shows the README headings as a column and as a dropdown in the bar", async () => {
+    const readmeOutline = [
+      {
+        text: "Usage",
+        id: "usage",
+        depth: 2,
+        children: [{ text: "Details", id: "details", depth: 3, children: [] }],
+      },
+    ];
+    loadRepoPage.mockResolvedValue({ ...ok(), readmeOutline });
+    const out = await html();
+    expect(out).toContain('data-testid="outline-menu"');
+    expect(out).toContain('data-testid="doc-sidebar"');
+    expect(out.match(/aria-label="On this page"/g)).toHaveLength(2);
+    expect(out).toContain('href="#usage"');
+    expect(out).toContain('href="#details"');
+    // the headings column comes after the README and before the structure
+    expect(out.indexOf('data-testid="readme-section"')).toBeLessThan(
+      out.indexOf('data-testid="doc-sidebar"'),
+    );
+    expect(out.indexOf('data-testid="doc-sidebar"')).toBeLessThan(
+      out.indexOf('data-testid="doc-nav"'),
+    );
+    // with headings the bar is hidden from xl; without, from lg
+    expect(out.match(/<div[^>]*data-testid="doc-bar"[^>]*>/)?.[0]).toContain("xl:hidden");
+  });
+
+  it("hides the bar from lg when the README has no headings", async () => {
+    loadRepoPage.mockResolvedValue(ok());
+    const bar = (await html()).match(/<div[^>]*data-testid="doc-bar"[^>]*>/)?.[0] ?? "";
+    expect(bar).toMatch(/\blg:hidden\b/);
+    expect(bar).not.toContain("xl:hidden");
+  });
+
+  it("shows the README empty state and still renders the rest", async () => {
+    loadRepoPage.mockResolvedValue({ ...ok(), readme: { status: "missing" as const } });
+    const out = await html();
+    expect(out).toContain("No README found");
+    expect(out).toContain('aria-label="Documentation"');
+    expect(out).toContain("@alice");
+    expect(out).not.toContain('aria-label="On this page"');
+  });
+
+  it("says 'after the first sync' instead of empty states for a never-synced repository", async () => {
+    loadRepoPage.mockResolvedValue({
+      ...ok({
+        syncStatus: "pending",
+        lastSyncedAt: null,
+        docCount: 0,
+        codeOwners: [],
+        readme: null,
+      }),
+      readme: { status: "missing" as const },
+      tree: buildDocsTree([], null),
+    });
+    const out = await html();
+    expect(out).toContain("Waiting for the first sync");
+    expect(out).toContain("The table of contents appears here after the first sync.");
+    expect(out).not.toContain("No documentation files found");
+    expect(out).toContain("The README appears here after the first sync.");
+    expect(out).toContain("Code owners appear here after the first sync.");
+    expect(out).not.toContain("No README found");
+  });
+
+  it("calls notFound (HTTP 404) for an unknown repository", async () => {
+    loadRepoPage.mockResolvedValue({ status: "not_found" });
+    await expect(html()).rejects.toMatchObject({ digest: expect.stringContaining("404") });
+  });
+
+  it("redirects to the stored spelling", async () => {
+    loadRepoPage.mockResolvedValue(ok());
+    await expect(html("ACME", "API")).rejects.toMatchObject({
+      digest: expect.stringContaining("/acme/api"),
+    });
+  });
+
+  it("renders the in-page error state for an expected failure", async () => {
+    loadRepoPage.mockResolvedValue({ status: "error", loadedAt: NOW });
+    const out = await html();
+    expect(out).toContain("This repository could not be loaded");
+    expect(out).toContain('href="/acme/api"');
+  });
+
+  it("lets an unexpected error reach the error boundary", async () => {
+    loadRepoPage.mockRejectedValue(new TypeError("bug"));
+    await expect(html()).rejects.toThrow("bug");
+  });
+});
+
+describe("generateMetadata", () => {
+  const meta = (owner: string, name: string) =>
+    generateMetadata({
+      app: TEST_APP,
+      params: Promise.resolve({ owner, repo: name }),
+      searchParams: Promise.resolve({}),
+    });
+
+  it("titles the page with the stored owner/name", async () => {
+    loadRepoPage.mockResolvedValue(ok());
+    expect(await meta("ACME", "API")).toEqual({ title: "acme/api" });
+  });
+
+  it("never echoes an address that is not a repository", async () => {
+    loadRepoPage.mockResolvedValue({ status: "not_found" });
+    expect(await meta("search", "<script>")).toEqual({
+      title: "Repository not found",
+    });
+  });
+
+  it("uses the plain site title for the in-page error state", async () => {
+    loadRepoPage.mockResolvedValue({ status: "error", loadedAt: NOW });
+    expect(await meta("acme", "api")).toEqual({});
+  });
+});
+
+describe("repository page, OKF filters (tasks 11.1 to 11.3)", () => {
+  const typed = (path: string, title: string, over: Partial<DocsTreeRow>): DocsTreeRow => ({
+    ...docRow(path, title),
+    ...over,
+  });
+  const rows: DocsTreeRow[] = [
+    typed("docs/index.md", "Overview", { reserved: "index" }),
+    typed("docs/guides/setup.md", "Setup", { type: "Concept", tags: ["core"], status: "active" }),
+    typed("docs/guides/tuning.md", "Tuning", { type: "concept", tags: ["core"], status: "draft" }),
+    typed("docs/reference/endpoints.md", "Endpoints", { type: "Table", status: "active" }),
+  ];
+
+  function okfData(filters: TocFilterState, over: Partial<RepoDetail> = {}) {
+    const toc: TocData = {
+      state: filters,
+      facets: {
+        types: [
+          { value: "Concept", count: 1 },
+          { value: "Table", count: 1 },
+          { value: "concept", count: 1 },
+        ],
+        tags: [{ value: "core", count: 2 }],
+        statuses: [
+          { value: "active", count: 2 },
+          { value: "draft", count: 1 },
+        ],
+      },
+      counts: countTocRows(rows, filters),
+    };
+    return {
+      ...ok({ isOkf: true, okfVersion: "0.2", ...over }),
+      tree: buildDocsTree(filterDocsRows(rows, filters), "docs"),
+      toc,
+    };
+  }
+
+  it("passes the reader's navigation view from the cookie to the loader", async () => {
+    loadRepoPage.mockResolvedValue(okfData(parseTocFilters({})));
+    await html("acme", "api", {});
+    navView.current = "tree";
+    await html("acme", "api", {});
+    expect(views).toEqual(["okf", "tree"]);
+  });
+
+  it("parses the filters of the URL and passes them to the loader", async () => {
+    loadRepoPage.mockResolvedValue(okfData(parseTocFilters({})));
+    await html("acme", "api", { type: ["Table", "Concept"], tag: "core", status: "draft", q: "x" });
+    const state = loadRepoPage.mock.calls[0]?.[2];
+    expect(state).toMatchObject({
+      types: ["Concept", "Table"],
+      tags: ["core"],
+      statuses: ["draft"],
+      repos: [],
+      q: "",
+    });
+  });
+
+  it("shows the badge, the filter groups and chips with counts for an OKF repository", async () => {
+    loadRepoPage.mockResolvedValue(okfData(parseTocFilters({})));
+    const out = await html();
+    expect(out).toContain('data-testid="okf-badge"');
+    expect(out).toContain("OKF v0.2");
+    expect(out).toContain('data-testid="okf-filters"');
+    for (const group of ["type", "tag", "status"]) {
+      expect(out).toContain(`data-testid="okf-filter-${group}"`);
+    }
+    // Chips link to this page with the value toggled; case variants are two chips.
+    expect(out).toContain('href="/acme/api?type=Concept"');
+    expect(out).toContain('href="/acme/api?type=concept"');
+    expect(out).toContain('href="/acme/api?type=Table"');
+    expect(out).toContain('href="/acme/api?tag=core"');
+    expect(out).toContain('href="/acme/api?status=draft"');
+    // Not filtered: no summary, no clear link, plain document links.
+    expect(out).not.toContain("okf-filter-clear");
+    expect(out).toContain('href="/acme/api/docs/guides/setup"');
+  });
+
+  it("narrows the tree, marks the selection, shows the summary and keeps the filters in links", async () => {
+    const filters = parseTocFilters({ type: "Concept", tag: "core" });
+    loadRepoPage.mockResolvedValue(okfData(filters));
+    const out = await html("acme", "api", { type: "Concept", tag: "core" });
+    expect(out).toContain("1 of 3 documents match");
+    expect(out).toContain('href="/acme/api/docs/guides/setup?tag=core&amp;type=Concept"');
+    expect(out).not.toContain("/docs/guides/tuning");
+    expect(out).not.toContain("/docs/reference/endpoints");
+    expect(out).toContain(", selected, press to remove this filter");
+    expect(out).toContain('aria-current="true"');
+    // Toggling a selected chip removes only that value; the clear link removes all.
+    expect(out).toContain('href="/acme/api?tag=core"');
+    expect(out).toContain('href="/acme/api?type=Concept"');
+    expect(out).toContain('data-testid="okf-filter-clear"');
+  });
+
+  it("says nothing matches, with a way out, when the selection matches no document", async () => {
+    const filters = parseTocFilters({ type: "Runbook" });
+    loadRepoPage.mockResolvedValue(okfData(filters));
+    const out = await html("acme", "api", { type: "Runbook" });
+    expect(out).toContain("No documents match these filters");
+    expect(out).toContain("0 of 3 documents match");
+    // One clear link, in the message (the filter summary leaves its own out).
+    expect(out).toContain('data-testid="docs-nav-no-match"');
+    expect(out).not.toContain('data-testid="okf-filter-clear"');
+    expect(out.match(/Clear filters/g)).toHaveLength(1);
+    expect(out).not.toContain("No documentation files found");
+    // The selected value is listed (count 0) so it can be removed.
+    expect(out).toContain('href="/acme/api"');
+  });
+
+  it("keeps the filters when redirecting to the stored spelling", async () => {
+    loadRepoPage.mockResolvedValue(okfData(parseTocFilters({ type: "Concept" })));
+    await expect(html("ACME", "API", { type: "Concept" })).rejects.toMatchObject({
+      digest: expect.stringContaining("/acme/api?type=Concept"),
+    });
+  });
+
+  it("shows no OKF UI at all for a plain repository, even when the URL carries filters", async () => {
+    // A plain repository: the loader returns toc null, whatever the URL says; its documents may
+    // have a `type` (stale data) and still must not get chips.
+    loadRepoPage.mockResolvedValue({
+      ...ok({ isOkf: false, okfVersion: null }),
+      tree: buildDocsTree(rows, "docs"),
+      toc: null,
+    });
+    for (const params of [{}, { type: "Concept", tag: "core", status: "draft" }]) {
+      const out = await html("acme", "api", params);
+      expect(out).not.toContain("okf-badge");
+      expect(out).not.toContain("okf-filter");
+      expect(out).not.toContain("Filter documents");
+      expect(out).not.toMatch(/OKF/);
+      expect(out).not.toContain("Clear filters");
+      expect(out).not.toContain("No documents match");
+      // The whole tree, no filter query on its links.
+      expect(out).toContain('href="/acme/api/docs/guides/setup"');
+      expect(out).toContain('href="/acme/api/docs/reference/endpoints"');
+      expect(out).not.toContain("?type=");
+    }
+  });
+});
+
+describe("repository page: Ask about this repository", () => {
+  it("links to /ask limited to this repository only while Ask is ready", async () => {
+    loadRepoPage.mockResolvedValue(ok());
+    expect(await html()).not.toContain("Ask about this repository");
+    askState.current = { state: "unavailable" };
+    expect(await html()).not.toContain("Ask about this repository");
+    askState.current = { state: "ready" };
+    const out = await html();
+    expect(out).toContain("Ask about this repository");
+    expect(out).toContain('href="/ask?repo=acme/api"');
+  });
+});

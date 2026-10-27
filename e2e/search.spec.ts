@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 
-import { type ThemeName } from "../src/lib/theme-tokens";
+import { type ThemeName } from "../packages/core/src/theme-tokens";
 import { expect, test } from "./support/csp";
 import { SEEDED } from "./support/seed-data";
 import { SKIP_DB, SKIP_DB_REASON, stackUrl } from "./support/stack";

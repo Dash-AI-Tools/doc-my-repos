@@ -5,9 +5,9 @@ description: Every finding the OKF validator can report, with its severity, what
 tags: [reference, okf, validation, mcp]
 status: stable
 sources:
-  - src/server/docs/okf-validate.ts
-  - src/server/docs/okf-validate.agreement.test.ts
-  - src/server/sync/document-record.ts
+  - packages/server/src/docs/okf-validate.ts
+  - packages/server/src/docs/okf-validate.agreement.test.ts
+  - packages/server/src/sync/document-record.ts
 generated: 2026-10-16
 verified: 2026-10-16
 stale_after: 2999-01-01

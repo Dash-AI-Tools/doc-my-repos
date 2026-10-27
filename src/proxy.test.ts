@@ -6,8 +6,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import nextConfig from "../next.config";
-import { BASELINE_HEADERS, HSTS_VALUE, buildContentSecurityPolicy } from "./lib/security-headers";
-import { SESSION_COOKIE } from "./server/auth/session";
+import {
+  BASELINE_HEADERS,
+  HSTS_VALUE,
+  buildContentSecurityPolicy,
+} from "@docmyrepos/core/internal/security-headers";
+import { SESSION_COOKIE } from "@docmyrepos/server/internal/auth/session";
 import { config, proxy } from "./proxy";
 
 /**
@@ -67,6 +71,11 @@ describe("proxy: nonce and CSP", () => {
     expect(response.headers.get("x-middleware-request-content-security-policy")).not.toContain(
       "script-src *",
     );
+  });
+
+  it("forwards the request path to server components, overwriting a client value", async () => {
+    const response = await proxy(request("/acme/handbook", { "x-dmr-pathname": "/admin" }));
+    expect(response.headers.get("x-middleware-request-x-dmr-pathname")).toBe("/acme/handbook");
   });
 
   it("keeps the other request headers", async () => {
@@ -339,7 +348,8 @@ describe("proxy: auth gate (access-control)", () => {
   });
 
   it("lets a valid session through and rejects tampered or expired ones", async () => {
-    const { signSession, newSessionPayload } = await import("./server/auth/session");
+    const { signSession, newSessionPayload } =
+      await import("@docmyrepos/server/internal/auth/session");
     const valid = signSession(SECRET, newSessionPayload(1, "admin", 0));
     expect((await gated("/", valid)).headers.get("x-middleware-next")).toBe("1");
 

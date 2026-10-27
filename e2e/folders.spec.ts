@@ -14,7 +14,7 @@ import { SKIP_DB, SKIP_DB_REASON, stackUrl } from "./support/stack";
  * builds on the state the one before left.
  *
  * Authorization, validation and the 409s are covered with a real database in
- * `src/server/admin/*.test.ts`; component behaviour in the `*.test.tsx` files next to the
+ * `packages/server/src/admin/*.test.ts`; component behaviour in the `*.test.tsx` files next to the
  * components. This file covers the flow in a real browser: the home page without folders, the
  * admin pages, sections, tabs and links, and axe.
  */

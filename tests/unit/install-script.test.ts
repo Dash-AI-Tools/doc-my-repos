@@ -21,8 +21,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
-import { parseEnv } from "../../src/server/config/env";
-import { parseEncryptionKey } from "../../src/server/settings/crypto";
+import { parseEnv } from "../../packages/server/src/config/env";
+import { parseEncryptionKey } from "../../packages/server/src/settings/crypto";
 
 /**
  * Tests of install.sh without Docker: the script runs under `sh` with a PATH that holds recording

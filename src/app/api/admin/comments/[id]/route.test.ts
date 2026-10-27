@@ -1,9 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ del: vi.fn() }));
-vi.mock("@/server/comments/service", () => ({ adminDelete: mocks.del }));
+vi.mock("@docmyrepos/server/internal/comments/service", () => ({ adminDelete: mocks.del }));
 
 import * as route from "./route";
+
+// These tests check the route wiring. A gated route confirms the signed-in user in the tenant's
+// database first; the e2e switch makes that the fixed admin without a database.
+beforeAll(() => {
+  vi.stubEnv("E2E_AUTH_BYPASS", "1");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("/api/admin/comments/[id] route", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -19,7 +28,11 @@ describe("/api/admin/comments/[id] route", () => {
     });
     const request = new Request("http://localhost/api/admin/comments/9", { method: "DELETE" });
     const res = await route.DELETE(request, { params: Promise.resolve({ id: "9" }) });
-    expect(mocks.del).toHaveBeenCalledWith(request, "9");
+    expect(mocks.del).toHaveBeenCalledWith(request, "9", {
+      db: expect.any(Function),
+      enabled: expect.any(Function),
+      access: expect.any(Object),
+    });
     expect(res.status).toBe(200);
   });
 
@@ -38,8 +51,8 @@ describe("/api/admin/comments/[id] route", () => {
 
   it.each(["GET", "HEAD", "POST", "PUT", "PATCH"] as const)(
     "refuses %s with Allow: DELETE",
-    (m) => {
-      const res = route[m]();
+    async (m) => {
+      const res = await route[m]();
       expect([res.status, res.headers.get("allow")]).toEqual([405, "DELETE"]);
     },
   );

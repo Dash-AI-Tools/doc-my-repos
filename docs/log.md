@@ -11,7 +11,7 @@ Changes to this documentation, oldest first. New entries go at the end.
 
 - Added the [GitHub App setup guide](./github-app-setup.md) and the App manifest. The guide has not yet been checked against a real GitHub App, so it is marked as a draft.
 - Wrote the documentation set as an OKF v0.2 bundle: [architecture](./architecture/index.md), [guides](./guides/index.md), [reference](./reference/index.md) and [decisions](./decisions/index.md), each folder summarized by its `index.md`.
-- Added a test, `src/server/docs/dogfood.test.ts`, that syncs this folder into a throwaway database and checks the type counts, the links and the search results.
+- Added a test, `packages/server/src/docs/dogfood.test.ts`, that syncs this folder into a throwaway database and checks the type counts, the links and the search results.
 
 ## 2026-10-15
 
@@ -29,3 +29,9 @@ Changes to this documentation, oldest first. New entries go at the end.
 - Added [Writing OKF documents with an agent](./guides/okf-authoring.md) and [OKF validation codes](./reference/okf-validation.md): the guidelines file and generated draft, the write-and-validate flow for AI agents, and every finding the validator reports.
 - Added the [MCP server reference](./reference/mcp.md): the endpoint and its authentication, the six tools and the prompt, the limits, the failures, the visibility and untrusted-content rules.
 - Documented `install.sh --upgrade` in the [install script guide](./guides/install-script.md#upgrade): the order of steps, the database backup, the refusal to downgrade and how to go back.
+
+## 2026-10-27
+
+- Added the [Extension API reference](./reference/extension-api.md) and the decision record [Compose a host app from packages](./decisions/0005-host-app-composition.md): DocMyRepos is built from the packages `@docmyrepos/core`, `@docmyrepos/server` and `@docmyrepos/ui`, which a host app can install and extend.
+- Documented the host app's adapters (secrets, blob storage, email) and the domain event catalogue with its delivery rules in the [Extension API reference](./reference/extension-api.md).
+- Documented background jobs per tenant (the jobs adapter, `app.jobs.run`, webhook tenant resolution) and the plugin API (routes, pages, jobs, schedules, migrations and UI slots) in the [Extension API reference](./reference/extension-api.md); updated [Sync engine](./architecture/sync-engine.md) and [ADR 0002](./decisions/0002-advisory-locks-no-queue.md) for the jobs adapter.

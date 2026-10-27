@@ -5,10 +5,10 @@ description: The frontmatter keys DocMyRepos reads, what each is used for, how d
 tags: [reference, okf, frontmatter]
 status: stable
 sources:
-  - src/server/docs/frontmatter.ts
-  - src/server/docs/extract.ts
-  - src/server/sync/document-record.ts
-  - src/lib/okf-meta.ts
+  - packages/server/src/docs/frontmatter.ts
+  - packages/server/src/docs/extract.ts
+  - packages/server/src/sync/document-record.ts
+  - packages/core/src/okf-meta.ts
 generated: 2026-10-10
 verified: 2026-10-10
 stale_after: 2999-01-01

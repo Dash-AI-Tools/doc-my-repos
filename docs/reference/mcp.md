@@ -5,12 +5,12 @@ description: The read-only MCP endpoint AI agents use to search and read the syn
 tags: [reference, mcp, ai, api]
 status: stable
 sources:
-  - src/server/mcp/endpoint.ts
-  - src/server/mcp/server.ts
-  - src/server/mcp/tools.ts
-  - src/server/mcp/authoring.ts
-  - src/server/mcp/limits.ts
-  - src/server/mcp/safe-text.ts
+  - packages/server/src/mcp/endpoint.ts
+  - packages/server/src/mcp/server.ts
+  - packages/server/src/mcp/tools.ts
+  - packages/server/src/mcp/authoring.ts
+  - packages/server/src/mcp/limits.ts
+  - packages/server/src/mcp/safe-text.ts
   - src/app/api/mcp/route.ts
 generated: 2026-10-16
 verified: 2026-10-16

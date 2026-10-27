@@ -5,17 +5,17 @@ description: How the Ask assistant works. Setting it up as an admin, what is sen
 tags: [guides, ask, ai]
 status: stable
 sources:
-  - src/server/ask/handler.ts
-  - src/server/ask/retrieve.ts
-  - src/server/ask/prompt.ts
-  - src/server/ask/settings.ts
-  - src/server/ask/limits.ts
-  - src/server/admin/ask.ts
-  - src/lib/ask/answer.ts
-  - src/lib/ask/sections.ts
-  - src/server/ask/credentials.ts
-  - src/server/settings/store.ts
-  - src/server/config/schema.ts
+  - packages/server/src/ask/handler.ts
+  - packages/server/src/ask/retrieve.ts
+  - packages/server/src/ask/prompt.ts
+  - packages/server/src/ask/settings.ts
+  - packages/server/src/ask/limits.ts
+  - packages/server/src/admin/ask.ts
+  - packages/core/src/ask/answer.ts
+  - packages/core/src/ask/sections.ts
+  - packages/server/src/ask/credentials.ts
+  - packages/server/src/settings/store.ts
+  - packages/core/src/config/schema.ts
 generated: 2026-10-16
 verified: 2026-10-16
 stale_after: 2999-01-01

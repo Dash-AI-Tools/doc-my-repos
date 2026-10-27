@@ -5,14 +5,16 @@ description: Threat model for documents from third-party repositories. The sanit
 tags: [architecture, security]
 status: stable
 sources:
-  - src/server/markdown/sanitize.ts
-  - src/lib/security-headers.ts
-  - src/proxy.ts
-  - src/server/assets/serve.ts
-  - src/server/webhooks/verify.ts
-  - src/server/sync/auth.ts
-  - src/server/queries/visibility.ts
-  - src/server/log.ts
+  - packages/server/src/markdown/sanitize.ts
+  - packages/core/src/security-headers.ts
+  - packages/server/src/proxy.ts
+  - packages/server/src/auth/authenticate.ts
+  - packages/server/src/routes/index.ts
+  - packages/server/src/assets/serve.ts
+  - packages/server/src/webhooks/verify.ts
+  - packages/server/src/sync/auth.ts
+  - packages/server/src/queries/visibility.ts
+  - packages/server/src/log.ts
 generated: 2026-10-10
 verified: 2026-10-10
 stale_after: 2999-01-01
@@ -39,7 +41,7 @@ DocMyRepos renders Markdown that comes from repositories you do not fully contro
 
 ## Sanitizer
 
-`src/server/markdown/sanitize.ts` is the XSS boundary. It runs in two steps inside one plugin that the pipeline always runs last: `rehype-sanitize` with a fixed allow-list, then a hardening pass. The processor is frozen after it, so no plugin can run afterwards. Plugin output (highlighting, link rewriting) is treated like document content and must fit the same allow-list.
+`packages/server/src/markdown/sanitize.ts` is the XSS boundary. It runs in two steps inside one plugin that the pipeline always runs last: `rehype-sanitize` with a fixed allow-list, then a hardening pass. The processor is frozen after it, so no plugin can run afterwards. Plugin output (highlighting, link rewriting) is treated like document content and must fit the same allow-list.
 
 - Forms, frames, embeds, `svg`, `math`, `style`, `script` and similar elements are dropped with their content.
 - `id` is allowed only on headings and footnotes, never `name`, so a document cannot clobber `document.*` names. A heading id that is a sensitive DOM name is renamed with a `user-content-` prefix.
@@ -47,11 +49,11 @@ DocMyRepos renders Markdown that comes from repositories you do not fully contro
 - Links accept `http`, `https`, `mailto`, relative paths and fragments. External links get `rel="nofollow noopener noreferrer"` and no `target`.
 - Images accept `http`, `https` and relative sources, never `data:` or `srcset`; external ones get `referrerpolicy="no-referrer"`.
 
-A suite of about 150 XSS payloads is run through every container element in `src/server/markdown/xss.test.ts`.
+A suite of about 150 XSS payloads is run through every container element in `packages/server/src/markdown/xss.test.ts`.
 
 ## Content-Security-Policy and headers
 
-`src/proxy.ts` makes a fresh nonce for every request and sets the headers from `src/lib/security-headers.ts` on pages and route handlers alike. The values, wrapped here for reading:
+`src/proxy.ts` makes a fresh nonce for every request and sets the headers from `packages/core/src/security-headers.ts` on pages and route handlers alike. The values, wrapped here for reading:
 
 ```http
 Content-Security-Policy: default-src 'none'; script-src 'self' 'nonce-<nonce>' 'strict-dynamic';
@@ -85,6 +87,12 @@ Rendered documents point their repository images at `GET /api/asset/{owner}/{rep
 
 SVG is served with `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, so opening it directly runs no script in the portal's origin. See the [HTTP API reference](../reference/api.md#get-apiassetownerrepopath) for status codes and caching.
 
+## Authentication of people
+
+- **Two checks.** The proxy (Edge runtime) checks only that a session cookie is signed with `SESSION_SECRET` and not expired, and redirects or answers 401 without one; it cannot reach the database. Every page and API behind it then confirms the user in the database on the server, through the `authenticate` hook: the user exists, is enabled, and still has the password version and role the cookie was issued with. A user who is disabled, or whose password or role changes, is signed out on the next request, not when the cookie expires. The answer is the same as the proxy's: a redirect to `/login` for a page, `401 {"error":"Unauthorized"}` for an API. The check runs once per request.
+- **Sessions belong to a tenant.** A host app can serve several tenants, each with its own database, where user ids repeat. A session cookie issued for any tenant other than the built-in one names it, and is accepted only for requests resolved to that tenant; a cookie that names no tenant is valid only for the built-in tenant. Cookies of the built-in tenant keep the format they always had, so existing sessions survive an upgrade.
+- **API tokens** authenticate the MCP endpoint only, looked up in the request's tenant database, so a token of one tenant is unknown to every other.
+
 ## Authentication of machines
 
 - **Webhooks.** `X-Hub-Signature-256` is verified over the raw request bytes with the webhook secret saved at `/admin/workspace` (stored encrypted, write-only). Only the `sha256=` form with 64 lowercase hex characters is accepted. A wrong or missing signature gets one fixed `401`, and no JSON is parsed before it passes. `node:crypto` is used instead of a library because hashing must see the exact bytes GitHub signed.
@@ -99,7 +107,7 @@ SVG is served with `Content-Security-Policy: default-src 'none'; style-src 'unsa
 
 ## Visibility filter
 
-`visibleRepos` in `src/server/queries/visibility.ts` is the single filter. Every query for repositories, documents, search hits, facet counts and assets joins `repos` and applies it, and a static test fails when other code reads those tables. In the MVP the filter allows everything, because every synced repository is visible to every visitor. Per-viewer access later changes only that file.
+`visibleRepos` in `packages/server/src/queries/visibility.ts` is the single filter. Every query for repositories, documents, search hits, facet counts and assets joins `repos` and applies it, and a static test fails when other code reads those tables. In the MVP the filter allows everything, because every synced repository is visible to every visitor. Per-viewer access later changes only that file.
 
 ## What is not covered
 

@@ -5,11 +5,11 @@ description: How to search across all synced repositories. Query syntax (quotes,
 tags: [guides, search]
 status: stable
 sources:
-  - src/server/queries/search.ts
-  - src/lib/search.ts
-  - src/lib/search-params.ts
-  - src/lib/palette.ts
-  - src/server/search-api.ts
+  - packages/server/src/queries/search.ts
+  - packages/core/src/search.ts
+  - packages/core/src/search-params.ts
+  - packages/core/src/palette.ts
+  - packages/server/src/search-api.ts
 generated: 2026-10-10
 verified: 2026-10-10
 stale_after: 2999-01-01

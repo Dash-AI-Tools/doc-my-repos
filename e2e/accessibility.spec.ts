@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
 
-import { THEME_TOKENS, contrastRatio, type ThemeName } from "../src/lib/theme-tokens";
+import { THEME_TOKENS, contrastRatio, type ThemeName } from "../packages/core/src/theme-tokens";
 import { stubAssets } from "./support/assets";
 import { expect, test } from "./support/csp";
 import { SKIP_DB, SKIP_DB_REASON, stackUrl, type StackName } from "./support/stack";
@@ -16,7 +16,7 @@ import { SKIP_DB, SKIP_DB_REASON, stackUrl, type StackName } from "./support/sta
  *
  * axe cannot judge every color (pseudo-elements, SVG internals, gradients), so the Shiki token
  * colors are also checked from computed styles against the `code-background` token, and the token
- * pairs are covered by src/lib/theme-tokens.test.ts.
+ * pairs are covered by packages/core/src/theme-tokens.test.ts.
  *
  * Every new page added in later task groups must be added to PAGES below.
  */

@@ -1,9 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ list: vi.fn() }));
-vi.mock("@/server/comments/read-api", () => ({ handleAdminListComments: mocks.list }));
+vi.mock("@docmyrepos/server/internal/comments/read-api", () => ({
+  handleAdminListComments: mocks.list,
+}));
 
 import * as route from "./route";
+
+// These tests check the route wiring. A gated route confirms the signed-in user in the tenant's
+// database first; the e2e switch makes that the fixed admin without a database.
+beforeAll(() => {
+  vi.stubEnv("E2E_AUTH_BYPASS", "1");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("/api/admin/comments route", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -13,13 +24,17 @@ describe("/api/admin/comments route", () => {
     mocks.list.mockResolvedValue(new Response("{}"));
     const request = new Request("http://localhost/api/admin/comments");
     await route.GET(request);
-    expect(mocks.list).toHaveBeenCalledWith(request);
+    expect(mocks.list).toHaveBeenCalledWith(request, {
+      db: expect.any(Function),
+      enabled: expect.any(Function),
+      access: expect.any(Object),
+    });
   });
 
   it.each(["HEAD", "POST", "PUT", "PATCH", "DELETE"] as const)(
     "refuses %s with Allow: GET",
-    (m) => {
-      const res = route[m]();
+    async (m) => {
+      const res = await route[m]();
       expect([res.status, res.headers.get("allow")]).toEqual([405, "GET"]);
     },
   );

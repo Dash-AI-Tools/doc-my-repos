@@ -6,12 +6,12 @@ tags: [reference, api]
 status: stable
 sources:
   - src/app/api/sync/route.ts
-  - src/server/sync/manual-sync.ts
-  - src/server/webhooks/endpoint.ts
-  - src/server/search-api.ts
-  - src/lib/palette.ts
-  - src/server/status-api.ts
-  - src/server/assets/serve.ts
+  - packages/server/src/sync/manual-sync.ts
+  - packages/server/src/webhooks/endpoint.ts
+  - packages/server/src/search-api.ts
+  - packages/core/src/palette.ts
+  - packages/server/src/status-api.ts
+  - packages/server/src/assets/serve.ts
 generated: 2026-10-10
 verified: 2026-10-10
 stale_after: 2999-01-01

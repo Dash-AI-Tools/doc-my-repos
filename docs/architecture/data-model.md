@@ -5,7 +5,7 @@ description: The four Postgres tables, what each column family is for, and how t
 tags: [architecture, database, search]
 status: stable
 sources:
-  - src/server/db/schema.ts
+  - packages/server/src/db/schema.ts
   - drizzle/0000_early_thor_girl.sql
   - drizzle/0001_search_text_functions.sql
 generated: 2026-10-10
@@ -15,7 +15,7 @@ stale_after: 2999-01-01
 
 # Data model
 
-The schema is defined with Drizzle in `src/server/db/schema.ts` and targets Postgres 17. Migrations live in `drizzle/` and are forward-only. They are applied by `pnpm db:migrate` on a development machine and by the container entrypoint in production.
+The schema is defined with Drizzle in `packages/server/src/db/schema.ts` and targets Postgres 17. Migrations live in `drizzle/` and are forward-only. They are applied by `pnpm db:migrate` on a development machine and by the container entrypoint in production.
 
 ```mermaid
 erDiagram

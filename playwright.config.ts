@@ -14,7 +14,7 @@ import {
  * production build on these ports (see `e2e/support/stack.ts`):
  *
  * - 3100 `fixtures`: no database; the e2e-only fixture pages (`E2E_FIXTURES=1`, see
- *   `src/lib/e2e-fixtures.ts`). Outside CI a server already running on the port is reused, so you
+ *   `packages/core/src/e2e-fixtures.ts`). Outside CI a server already running on the port is reused, so you
  *   can start it yourself with the same environment for fast reruns: `E2E_FIXTURES=1
  *   E2E_AUTH_BYPASS=1 DATABASE_URL=postgres://docmyrepos:docmyrepos@127.0.0.1:1/docmyrepos pnpm
  *   exec next start --port 3100` (the dead `DATABASE_URL` keeps your own branding out of the run).
