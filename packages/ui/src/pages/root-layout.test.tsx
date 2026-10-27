@@ -268,7 +268,7 @@ describe("root layout", () => {
   });
 
   it("configures the script for the class attribute, system default and system detection", () => {
-    const script = /<script[^>]*>([\s\S]*?)<\/script>/i.exec(html)?.[1] ?? "";
+    const script = /<script[^>]*>([\s\S]*?)<\/script[^>]*>/i.exec(html)?.[1] ?? "";
     const args = script.slice(script.lastIndexOf(")(") + 2, -1);
     // [attribute, storageKey, defaultTheme, forcedTheme, themes, value, enableSystem, enableColorScheme]
     expect(JSON.parse(`[${args}]`)).toEqual([
