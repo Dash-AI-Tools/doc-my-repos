@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 
 import { EXPIRY_OPTIONS, connectionSnippets, mcpAddress, type TokenRow } from "@/lib/agent-access";
 import { copyText } from "@/lib/copy-text";
@@ -87,6 +87,11 @@ export function AgentAccess({
   const [created, setCreated] = useState<Created | null>(null);
   const panel = useRef<HTMLDivElement>(null);
 
+  // Land on the new token for keyboard and screen reader users, once the panel is in the DOM.
+  useEffect(() => {
+    if (created) panel.current?.focus();
+  }, [created]);
+
   const active = tokens.filter((t) => t.status === "active").length;
   const generic = connectionSnippets(address);
 
@@ -110,8 +115,6 @@ export function AgentAccess({
         setCreated({ token: data.token, name: data.view.name });
         setTokens((current) => [data.view as TokenRow, ...current]);
         setName("");
-        // Land on the new token for keyboard and screen reader users.
-        requestAnimationFrame(() => panel.current?.focus());
       } else {
         setError(data.error ?? "The token could not be created.");
       }
