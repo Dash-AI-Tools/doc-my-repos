@@ -102,6 +102,13 @@ Each image has a light and a dark version; GitHub shows the one that matches you
   <img alt="The quick search palette listing documents that match orders" src="docs-assets/screenshots/palette-light.png">
 </picture>
 
+**Ask the docs**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs-assets/screenshots/ask-dark.png">
+  <img alt="The Ask page with a question about rotating the signing key, a streamed answer and links to the documentation sections it used" src="docs-assets/screenshots/ask-light.png">
+</picture>
+
 **OKF: filter by type, tag and status**
 
 <picture>
