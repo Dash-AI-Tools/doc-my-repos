@@ -167,3 +167,32 @@ export const RESERVED_OWNERS: ReadonlySet<string> = new Set([
 export function isReservedOwner(owner: string): boolean {
   return RESERVED_OWNERS.has(owner.toLowerCase());
 }
+
+/** First URL segments that are pages of the app itself, never a repository owner (public access). */
+const APP_SEGMENTS: ReadonlySet<string> = new Set(["admin", "account", "login", "ask"]);
+
+const READ_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD"]);
+
+/**
+ * Whether a request without a session may be one for public content (public access design
+ * decision 3). The proxy has no database, so it cannot tell whether anything is public; it lets
+ * these paths through and the page or route decides. Only reads of the home page, the search and
+ * Ask pages, a repository or a document, `GET /api/search`, `GET /api/asset/...` and
+ * `POST /api/ask` qualify; admin, account, status, comments, tokens, sync, plugin and every other
+ * path keep the cookie gate. `pathname` is the URL path without the query.
+ */
+export function mayBePublicPath(pathname: string, method: string): boolean {
+  const verb = method.toUpperCase();
+  const read = READ_METHODS.has(verb);
+  if (pathname === "/") return read;
+  if (pathname === "/search" || pathname === "/ask") return read;
+  if (pathname === "/api/search") return read;
+  if (pathname === "/api/ask") return verb === "POST";
+  if (pathname === "/api/asset" || pathname.startsWith("/api/asset/")) return read;
+  if (!read || !pathname.startsWith("/")) return false;
+  // A repository or a document: `/<owner>/<repo>` and below, owner not an app segment.
+  const segments = pathname.slice(1).split("/");
+  const owner = segments[0] ?? "";
+  if (segments.length < 2 || segments[1] === "") return false;
+  return !isReservedOwner(owner) && !APP_SEGMENTS.has(owner.toLowerCase());
+}

@@ -16,6 +16,7 @@ import { E2E_ENCRYPTION_KEY, fakeProviderUrl, type DatabaseKind } from "./stack"
  *
  * - `commentsoff`: comments are off.
  * - `agentoff`: the MCP endpoint for AI agents is off.
+ * - `publicaccess`: the same model provider as `ask` (the fake one), so anonymous Ask can be tried.
  * - `ask`: small Ask limits so the specs can reach them (per user: 4 questions in ten minutes, 2
  *   answers at once), and the fake model provider as the OpenAI-compatible endpoint, so an admin
  *   can turn Ask on there. No other database has a provider.
@@ -30,7 +31,7 @@ export async function seedSettings(db: Db, kind: DatabaseKind): Promise<void> {
       ? { comments: { enabled: false } }
       : kind === "agentoff"
         ? { mcp: { enabled: false } }
-        : kind === "ask"
+        : kind === "ask" || kind === "publicaccess"
           ? {
               ask: { questionsPerTenMinutes: 4, maxConcurrent: 2 },
               providers: { openaiBaseUrl: `${fakeProviderUrl}/v1` },

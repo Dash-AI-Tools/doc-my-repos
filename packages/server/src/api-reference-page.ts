@@ -6,6 +6,7 @@ import { apiReferenceUrl, apiSpecPathFromSegments } from "@docmyrepos/core/inter
 import { type DbSource } from "./db/client";
 import { expectedFailureKind } from "./home";
 import { getApiSpec, getRepo, type ApiSpecDetail, type RepoDetail } from "./queries";
+import { MEMBER, filterFor, type Reader } from "./queries/visibility";
 import { isRepoRoute } from "./repo-page";
 import { logger, type LogFn } from "./log";
 
@@ -50,6 +51,11 @@ export interface ApiReferenceDeps {
   readonly now?: () => Date;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
   readonly log?: LogFn;
+  /**
+   * Who is reading (public access). Default: a signed-in user, who sees every allowed repository.
+   * An anonymous visitor reads through the anonymous filter, so only public repositories exist.
+   */
+  readonly reader?: Reader;
 }
 
 export async function loadApiReference(
@@ -66,9 +72,10 @@ export async function loadApiReference(
   const db = deps.db;
   try {
     const handle = await db();
-    const repo = await getRepo(handle, owner, name);
+    const options = { visibility: filterFor(deps.reader ?? MEMBER) };
+    const repo = await getRepo(handle, owner, name, options);
     if (repo === null) return { status: "not_found" };
-    const spec = await getApiSpec(handle, { id: repo.id }, specPath);
+    const spec = await getApiSpec(handle, { id: repo.id }, specPath, options);
     if (spec === null) return { status: "not_found" };
     const url = apiReferenceUrl(repo.owner, repo.name, spec.path);
     if (url === null) return { status: "not_found" };

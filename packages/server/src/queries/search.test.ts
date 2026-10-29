@@ -21,7 +21,7 @@ import {
   type SearchHit,
   type SearchParams,
 } from "./search";
-import { publicReposOnly, type RepoVisibilityFilter } from "./visibility";
+import { githubPublicReposOnly, type RepoVisibilityFilter } from "./visibility";
 
 describe("RANK_WEIGHTS", () => {
   it("separates the four fields by more than repetition within one field can add", () => {
@@ -886,22 +886,24 @@ describeDb("search on a real database", () => {
     it("hides private repositories from hits, totals and every facet count", async () => {
       const shown = await search({ q: "secretword" });
       expect(shown.total).toBe(2);
-      const hidden = await search({ q: "secretword" }, publicReposOnly);
+      const hidden = await search({ q: "secretword" }, githubPublicReposOnly);
       expect(hidden).toMatchObject({ total: 0, hits: [] });
 
-      const f = await facets({ q: "facetword" }, publicReposOnly);
+      const f = await facets({ q: "facetword" }, githubPublicReposOnly);
       expect(f.total).toBe(8);
       expect(f.repos.map((x) => x.id)).not.toContain(s.secret);
       expect(f.types.find((x) => x.value === "Guide")?.count).toBe(3);
       expect(f.tags.map((x) => x.value)).not.toContain("secret-tag");
       expect(f.statuses.find((x) => x.value === "draft")?.count).toBe(3);
-      const hiddenType = await facets({ q: "secretword" }, publicReposOnly);
+      const hiddenType = await facets({ q: "secretword" }, githubPublicReposOnly);
       expect(hiddenType.types).toEqual([]);
       // Filtering on the hidden repository finds nothing either.
-      expect((await search({ q: "facetword", repo: "acme/secret" }, publicReposOnly)).total).toBe(
+      expect(
+        (await search({ q: "facetword", repo: "acme/secret" }, githubPublicReposOnly)).total,
+      ).toBe(0);
+      expect((await facets({ q: "facetword", repo: s.secret }, githubPublicReposOnly)).total).toBe(
         0,
       );
-      expect((await facets({ q: "facetword", repo: s.secret }, publicReposOnly)).total).toBe(0);
     });
   });
 

@@ -43,6 +43,7 @@ import {
   listCodeOwners,
   listCommentsForModeration,
   listDocComments,
+  listRepoIds,
   listRepoOverviews,
   listRepos,
   NOT_QUERIES,
@@ -55,7 +56,11 @@ import {
   activeRepoVisibility,
   allowAllRepos,
   allowedReposOnly,
-  publicReposOnly,
+  anonymousReposOnly,
+  filterFor,
+  githubPublicReposOnly,
+  MEMBER,
+  ANONYMOUS,
   type QueryOptions,
   type RepoVisibilityFilter,
 } from "./visibility";
@@ -410,6 +415,13 @@ function flipCases(s: Seed): Record<keyof typeof QUERY_FUNCTIONS, FlipCase[]> {
         seen: (r) => (r as { id: number }[]).some((x) => x.id === s.secret),
       },
     ],
+    listRepoIds: [
+      {
+        label: "ids",
+        run: (db, o) => listRepoIds(db, o),
+        seen: (r) => (r as number[]).includes(s.secret),
+      },
+    ],
     listRepoOverviews: [
       {
         label: "agent list",
@@ -692,6 +704,7 @@ describeDb("query layer on a real database", () => {
         htmlUrl: "https://github.com/Acme/Handbook",
         visibility: "public",
         isAllowed: true,
+        isPublic: false,
         starPosition: null,
         isStarred: false,
         folderId: null,
@@ -1097,7 +1110,7 @@ describeDb("query layer on a real database", () => {
     });
 
     it("hides a hidden repository's run and counts only visible repositories", async () => {
-      const status = await getSyncStatus(t.db, {}, { visibility: publicReposOnly });
+      const status = await getSyncStatus(t.db, {}, { visibility: githubPublicReposOnly });
       expect(status.repos.map((r) => r.name)).toEqual(["Handbook", "empty", "big"]);
       expect(status.running).toBeNull();
       // The secret's own run is skipped: the full run is the latest visible one. Its counts
@@ -1195,7 +1208,7 @@ describeDb("query layer on a real database", () => {
       expect(await getRepoSyncInfo(t.db, { id: s.big })).toEqual({ lastRun: null });
       expect(await getRepoSyncInfo(t.db, { owner: "acme", name: "nope" })).toBeNull();
       expect(
-        await getRepoSyncInfo(t.db, { id: s.secret }, { visibility: publicReposOnly }),
+        await getRepoSyncInfo(t.db, { id: s.secret }, { visibility: githubPublicReposOnly }),
       ).toBeNull();
     });
   });
@@ -1219,18 +1232,20 @@ describeDb("query layer on a real database", () => {
     it("hides the private repository from every query when the filter hides private repos", async () => {
       for (const [name, cases] of Object.entries(flipCases(s))) {
         for (const c of cases) {
-          const options = { visibility: publicReposOnly };
+          const options = { visibility: githubPublicReposOnly };
           expect(c.seen(await c.run(t.db, options)), `${name} ${c.label}`).toBe(false);
         }
       }
       // Public repositories stay visible.
-      const list = await listRepos(t.db, {}, { visibility: publicReposOnly });
+      const list = await listRepos(t.db, {}, { visibility: githubPublicReposOnly });
       expect(list.map((r) => r.name)).toEqual(["Handbook", "empty", "big"]);
-      const handbook = await getRepo(t.db, "acme", "handbook", { visibility: publicReposOnly });
+      const handbook = await getRepo(t.db, "acme", "handbook", {
+        visibility: githubPublicReposOnly,
+      });
       expect(handbook?.codeOwners.length).toBe(3);
       expect(
         await getDocumentByPath(t.db, { id: s.handbook }, "docs/index.md", {
-          visibility: publicReposOnly,
+          visibility: githubPublicReposOnly,
         }),
       ).not.toBeNull();
     });
@@ -1247,6 +1262,84 @@ describeDb("query layer on a real database", () => {
       expect(list.map((r) => r.id)).toEqual([s.handbook]);
       expect(await countDocs(t.db, { id: s.handbook }, { visibility: hideAll })).toBe(0);
       expect(await getRepo(t.db, "acme", "handbook", { visibility: hideAll })).toBeNull();
+    });
+
+    describe("anonymous reader (public access)", () => {
+      const visibleToAnonymous = async () => {
+        const seen: string[] = [];
+        for (const [name, cases] of Object.entries(flipCases(s))) {
+          for (const c of cases) {
+            if (c.seen(await c.run(t.db, { visibility: anonymousReposOnly })))
+              seen.push(`${name} ${c.label}`);
+          }
+        }
+        return seen;
+      };
+      const reset = async () => {
+        await t.db.update(repos).set({ isPublic: false, isAllowed: true, folderId: null });
+        await t.db.update(repoFolders).set({ isPublic: false });
+      };
+
+      it("picks the filter by reader: members keep the allowed-only default", () => {
+        expect(filterFor(MEMBER)).toBe(activeRepoVisibility);
+        expect(filterFor(ANONYMOUS)).toBe(anonymousReposOnly);
+      });
+
+      it("shows nothing to an anonymous reader until something is public", async () => {
+        await reset();
+        expect(await visibleToAnonymous()).toEqual([]);
+        expect(await listRepos(t.db, {}, { visibility: anonymousReposOnly })).toEqual([]);
+      });
+
+      it("shows a repository that is public on its own, to every query", async () => {
+        await reset();
+        await t.db.update(repos).set({ isPublic: true }).where(eq(repos.id, s.secret));
+        const seen = await visibleToAnonymous();
+        for (const [name, cases] of Object.entries(flipCases(s))) {
+          for (const c of cases) expect(seen, `${name} ${c.label}`).toContain(`${name} ${c.label}`);
+        }
+        const list = await listRepos(t.db, {}, { visibility: anonymousReposOnly });
+        expect(list.map((r) => r.id)).toEqual([s.secret]);
+      });
+
+      it("shows the repositories of a public folder, and only while they are in it", async () => {
+        await reset();
+        const [folder] = await t.db
+          .insert(repoFolders)
+          .values({ name: "Open source", isPublic: true })
+          .returning({ id: repoFolders.id });
+        await t.db.update(repos).set({ folderId: folder!.id }).where(eq(repos.id, s.secret));
+        expect(
+          (await listRepos(t.db, {}, { visibility: anonymousReposOnly })).map((r) => r.id),
+        ).toEqual([s.secret]);
+        await t.db.update(repos).set({ folderId: null }).where(eq(repos.id, s.secret));
+        expect(await listRepos(t.db, {}, { visibility: anonymousReposOnly })).toEqual([]);
+        await t.db.delete(repoFolders).where(eq(repoFolders.id, folder!.id));
+      });
+
+      it("does not show a repository in a folder that is not public", async () => {
+        await reset();
+        const [folder] = await t.db
+          .insert(repoFolders)
+          .values({ name: "Internal", isPublic: false })
+          .returning({ id: repoFolders.id });
+        await t.db.update(repos).set({ folderId: folder!.id }).where(eq(repos.id, s.secret));
+        expect(await visibleToAnonymous()).toEqual([]);
+        await t.db.update(repos).set({ folderId: null }).where(eq(repos.id, s.secret));
+        await t.db.delete(repoFolders).where(eq(repoFolders.id, folder!.id));
+      });
+
+      it("hides a blocked repository even when it is public, and shows it again when allowed", async () => {
+        await reset();
+        await t.db
+          .update(repos)
+          .set({ isPublic: true, isAllowed: false })
+          .where(eq(repos.id, s.secret));
+        expect(await visibleToAnonymous()).toEqual([]);
+        await t.db.update(repos).set({ isAllowed: true }).where(eq(repos.id, s.secret));
+        expect((await visibleToAnonymous()).length).toBeGreaterThan(0);
+        await reset();
+      });
     });
 
     it("reads search_vector only in search and always joins repos for documents and code owners", async () => {

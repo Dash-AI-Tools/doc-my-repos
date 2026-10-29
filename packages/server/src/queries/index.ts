@@ -18,7 +18,7 @@ import {
   getDocumentByPath,
   getRepoOutline,
 } from "./documents";
-import { getRepo, listCodeOwners, listRepoOverviews, listRepos } from "./repos";
+import { getRepo, listCodeOwners, listRepoIds, listRepoOverviews, listRepos } from "./repos";
 import { getRepoFacets, searchDocuments, searchFacets } from "./search";
 import { getRepoSyncInfo, getSyncStatus } from "./status";
 
@@ -37,6 +37,7 @@ import { getRepoSyncInfo, getSyncStatus } from "./status";
  */
 export const QUERY_FUNCTIONS = {
   listRepos,
+  listRepoIds,
   listRepoOverviews,
   getRepo,
   listCodeOwners,
@@ -79,7 +80,11 @@ export const NOT_QUERIES: ReadonlySet<string> = new Set([
   "activeRepoVisibility",
   "allowAllRepos",
   "allowedReposOnly",
-  "publicReposOnly",
+  "ANONYMOUS",
+  "anonymousReposOnly",
+  "filterFor",
+  "githubPublicReposOnly",
+  "MEMBER",
   "visibleRepos",
   // repo-ref.ts: input checks and the shared repository condition (resolved through the filter).
   // folders.ts: folder names and descriptions only, no repository data (nothing to filter).
@@ -141,6 +146,7 @@ export type { RepoRef } from "./repo-ref";
 export {
   getRepo,
   listCodeOwners,
+  listRepoIds,
   listRepoOverviews,
   listRepos,
   type CodeOwnerRule,
@@ -181,4 +187,5 @@ export {
   type SyncStatus,
   type SyncStatusArgs,
 } from "./status";
+export { ANONYMOUS, MEMBER, filterFor, type Reader } from "./visibility";
 export type { QueryOptions } from "./visibility";

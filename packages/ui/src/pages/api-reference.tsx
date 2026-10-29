@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 
 import { ApiReference } from "../components/api-reference";
@@ -10,7 +10,8 @@ import { API_REFERENCE_ROUTE_SEGMENT, repoUrl } from "@docmyrepos/core/internal/
 import { loadApiReference } from "@docmyrepos/server/internal/api-reference-page";
 import type { RequestContext } from "@docmyrepos/server";
 import type { AppProps } from "../bind-page";
-import { pageContext } from "../page-context";
+import type { Reader } from "@docmyrepos/server/internal/public-access/reader";
+import { deny, readerContext } from "../page-context";
 
 /**
  * API reference page `/<owner>/<repo>/api-reference/<spec path>` (openapi-reference tasks 5.3).
@@ -38,8 +39,9 @@ function decodeSegments(raw: readonly string[]): string[] | null {
 }
 
 /** One read per request, shared by `generateMetadata` and the page. */
-const load = cache((ctx: RequestContext, owner: string, repo: string, key: string) =>
-  loadApiReference(owner, repo, JSON.parse(key) as string[], { db: ctx.db }),
+const load = cache(
+  (ctx: RequestContext, reader: Reader, owner: string, repo: string, key: string) =>
+    loadApiReference(owner, repo, JSON.parse(key) as string[], { db: ctx.db, reader }),
 );
 
 export async function generateMetadata({
@@ -48,7 +50,8 @@ export async function generateMetadata({
 }: AppProps & { params: Params }): Promise<Metadata> {
   const { owner, repo, path } = await params;
   // `generateMetadata` receives decoded segments (see the document page).
-  const data = await load(await pageContext(app), owner, repo, JSON.stringify(path));
+  const { ctx, reader } = await readerContext(app, "content");
+  const data = await load(ctx, reader, owner, repo, JSON.stringify(path));
   if (data.status === "ok") {
     return {
       title: {
@@ -73,12 +76,12 @@ function SourceLink({ href }: { href: string }) {
 }
 
 export async function ApiReferencePage({ app, params }: AppProps & { params: Params }) {
-  const ctx = await pageContext(app);
+  const { ctx, reader } = await readerContext(app, "content");
   const { owner, repo: name, path: rawPath } = await params;
   const path = decodeSegments(rawPath);
-  if (path === null) notFound();
-  const data = await load(ctx, owner, name, JSON.stringify(path));
-  if (data.status === "not_found") notFound();
+  if (path === null) deny(reader);
+  const data = await load(ctx, reader, owner, name, JSON.stringify(path));
+  if (data.status === "not_found") deny(reader);
   if (data.status === "redirect") redirect(data.to);
   if (data.status === "error") {
     return (

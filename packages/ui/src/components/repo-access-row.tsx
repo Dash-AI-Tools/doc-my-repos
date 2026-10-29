@@ -9,6 +9,8 @@ export interface RepoAccessRow {
   readonly name: string;
   readonly visibility: "public" | "private";
   readonly isAllowed: boolean;
+  /** Readable without signing in (public access), on its own. */
+  readonly isPublic: boolean;
   /** Place in the admin-set starred order; null when not starred. */
   readonly starPosition: number | null;
   readonly isStarred: boolean;
@@ -60,6 +62,8 @@ export interface RepoLineProps {
   /** Folders to choose from; the folder control is shown only when there is at least one. */
   readonly folders?: readonly FolderOption[];
   readonly onSetFolder?: (repo: RepoAccessRow, folderId: number | null) => void;
+  /** Turns public access for this repository on or off; the control is shown when given. */
+  readonly onTogglePublic?: (repo: RepoAccessRow) => void;
   /** Starred rows: the drag handle, shown before the name. */
   readonly handle?: ReactNode;
   /** Starred rows: the Move up / Move down buttons, shown with the actions. */
@@ -74,6 +78,7 @@ export function RepoLine({
   onToggleAllowed,
   folders = [],
   onSetFolder,
+  onTogglePublic,
   handle,
   moves,
 }: RepoLineProps) {
@@ -122,6 +127,20 @@ export function RepoLine({
               </option>
             ))}
           </select>
+        ) : null}
+        {onTogglePublic ? (
+          <label className="inline-flex items-center gap-1.5 text-sm">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label={`Public access for ${label}`}
+              checked={r.isPublic}
+              disabled={busy}
+              onChange={() => onTogglePublic(r)}
+              className="size-4 accent-primary"
+            />
+            Public
+          </label>
         ) : null}
         <button
           type="button"

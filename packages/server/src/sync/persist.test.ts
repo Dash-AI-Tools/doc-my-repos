@@ -706,6 +706,36 @@ describeDb("persistRepoSync on a real database", () => {
       expect(await repoRow(id)).toMatchObject({ isAllowed: true, starPosition: 4 });
     });
 
+    it("keeps the public access mark across content syncs and renames", async () => {
+      const id = 702;
+      const [folder] = await t.db
+        .insert(repoFolders)
+        .values({ name: "persist-public", isPublic: true })
+        .returning();
+      try {
+        await persist({ repo: repoMeta(id), plan: content({ fetched: [A] }) });
+        await t.db
+          .update(repos)
+          .set({ isPublic: true, folderId: folder!.id })
+          .where(eq(repos.githubId, id));
+        await persist({ repo: repoMeta(id), plan: content({ treeSha: sha("p2"), fetched: [B] }) });
+        await persist({
+          repo: repoMeta(id, { name: "renamed-p", htmlUrl: "https://github.com/acme/renamed-p" }),
+          plan: content({ treeSha: sha("p3") }),
+        });
+        expect(await repoRow(id)).toMatchObject({
+          name: "renamed-p",
+          isPublic: true,
+          folderId: folder!.id,
+        });
+        const [kept] = await t.db.select().from(repoFolders).where(eq(repoFolders.id, folder!.id));
+        expect(kept?.isPublic).toBe(true);
+      } finally {
+        await t.db.delete(repos).where(eq(repos.githubId, id));
+        await t.db.delete(repoFolders).where(eq(repoFolders.id, folder!.id));
+      }
+    });
+
     it("keeps the folder across content syncs, renames, blocking and re-allowing", async () => {
       const id = 701;
       const [folder] = await t.db.insert(repoFolders).values({ name: "persist-test" }).returning();

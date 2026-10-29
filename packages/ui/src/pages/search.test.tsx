@@ -9,8 +9,19 @@ import {
 import { buildFacetGroups, type SearchPageView } from "@docmyrepos/core/internal/search-view";
 
 const loadSearchPage = vi.fn<(state: SearchState) => Promise<SearchPageView>>();
+const readers: string[] = [];
 vi.mock("@docmyrepos/server/internal/search-page", () => ({
-  loadSearchPage: (state: SearchState) => loadSearchPage(state),
+  loadSearchPage: (state: SearchState, deps: { reader?: { kind: string } }) => {
+    readers.push(deps.reader?.kind ?? "none");
+    return loadSearchPage(state);
+  },
+}));
+const publicAccess = vi.hoisted(() => ({ search: true, ask: true }));
+vi.mock("@docmyrepos/server/internal/public-access/reader", () => ({
+  ANONYMOUS: { kind: "anonymous" },
+  MEMBER: { kind: "member" },
+  anonymousMayUse: async (_ctx: unknown, need: string) =>
+    need === "ask" ? publicAccess.ask : publicAccess.search,
 }));
 
 const askState = vi.hoisted(() => ({ current: { state: "off" } as { state: string } }));
@@ -30,9 +41,52 @@ async function html(params: Record<string, string | string[] | undefined>): Prom
 }
 
 beforeEach(() => {
+  readers.length = 0;
+  publicAccess.search = true;
+  publicAccess.ask = true;
   askState.current = { state: "off" };
   loadSearchPage.mockReset();
   loadSearchPage.mockImplementation((state) => Promise.resolve({ status: "idle", state }));
+});
+
+describe("search page for a visitor without a session (public access)", () => {
+  const anonymousApp = testApp({}, { user: async () => null });
+  const anonymousHtml = async (params: Record<string, string>) =>
+    renderToStaticMarkup(
+      await SearchPage({ app: anonymousApp, searchParams: Promise.resolve(params) }),
+    );
+
+  it("searches through the anonymous reader when anonymous search is allowed", async () => {
+    await anonymousHtml({ q: "deploy" });
+    expect(readers).toEqual(["anonymous"]);
+  });
+
+  it("sends the visitor to sign in, searching nothing, when anonymous search is off", async () => {
+    publicAccess.search = false;
+    await expect(anonymousHtml({ q: "deploy" })).rejects.toMatchObject({
+      digest: expect.stringContaining("/login"),
+    });
+    expect(loadSearchPage).not.toHaveBeenCalled();
+  });
+
+  it("offers Ask instead of the search only when anonymous Ask is allowed", async () => {
+    askState.current = { state: "ready", provider: "anthropic", model: "m" } as never;
+    loadSearchPage.mockImplementation((state) =>
+      Promise.resolve({
+        status: "ok",
+        state,
+        query: "deploy",
+        total: 0,
+        hits: [],
+        groups: [],
+        active: [],
+        paging: computePaging(state, 0, 0),
+      } as unknown as SearchPageView),
+    );
+    expect(await anonymousHtml({ q: "deploy" })).toContain("/ask?q=deploy");
+    publicAccess.ask = false;
+    expect(await anonymousHtml({ q: "deploy" })).not.toContain("/ask?q=deploy");
+  });
 });
 
 describe("search page", () => {

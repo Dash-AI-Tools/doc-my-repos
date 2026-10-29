@@ -17,6 +17,7 @@ import {
 import { expectedFailureKind } from "./home";
 import { anchorId, SLUG_ID } from "./markdown/sanitize";
 import { searchDocuments, searchFacets, type SearchHit } from "./queries";
+import { MEMBER, filterFor, type Reader } from "./queries/visibility";
 import { type DbSource } from "./db/client";
 import { logger, type LogFn } from "./log";
 
@@ -43,6 +44,11 @@ export interface SearchPageDeps {
   readonly emit?: (event: DomainEventInput) => void;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
   readonly log?: LogFn;
+  /**
+   * Who is searching. Default: a signed-in user, who searches every allowed repository. An
+   * anonymous visitor searches the public repositories only: hits, facets and counts alike.
+   */
+  readonly reader?: Reader;
 }
 
 /**
@@ -95,9 +101,10 @@ export async function loadSearchPage(
   };
   try {
     const conn = await db();
+    const options = { visibility: filterFor(deps.reader ?? MEMBER) };
     const [result, facets] = await Promise.all([
-      searchDocuments(conn, params),
-      searchFacets(conn, params),
+      searchDocuments(conn, params, options),
+      searchFacets(conn, params, options),
     ]);
     // A page past the end (or deeper than the query layer serves) has no hits but the facets
     // still know the total, so the page can say "beyond the last page" instead of "no results".

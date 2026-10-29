@@ -13,6 +13,7 @@ const row = (id: number, name: string): RepoAccessRow => ({
   name,
   visibility: "public",
   isAllowed: true,
+  isPublic: false,
   starPosition: id,
   isStarred: true,
   folderId: null,

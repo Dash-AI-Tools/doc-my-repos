@@ -25,19 +25,19 @@ The other way to install is the clone-and-compose path in [Getting started](./ge
 You need Linux, macOS or WSL, `curl`, and Docker with Compose v2 running.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/v0.1.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/v0.2.0/install.sh | sh
 ```
 
-Replace `v0.1.0` with the release you want; the script installs the container image of its own version. To pass flags to a piped script, put them after `sh -s --`:
+Replace `v0.2.0` with the release you want; the script installs the container image of its own version. To pass flags to a piped script, put them after `sh -s --`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/v0.1.0/install.sh | sh -s -- --dry-run
+curl -fsSL https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/v0.2.0/install.sh | sh -s -- --dry-run
 ```
 
 **Read it first.** It is one file of about 500 lines. Fetch it, read it, then run it from disk:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/v0.1.0/install.sh
+curl -fsSLO https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/v0.2.0/install.sh
 less install.sh
 sh install.sh
 ```

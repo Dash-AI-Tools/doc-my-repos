@@ -9,7 +9,7 @@ import {
   listRepoOverviews,
   listRepos,
 } from "./index";
-import { allowAllRepos, publicReposOnly } from "./visibility";
+import { allowAllRepos, githubPublicReposOnly } from "./visibility";
 
 /**
  * The reads behind the MCP tools (mcp-agent-access task 3.1), on a real database with its own
@@ -185,7 +185,7 @@ describeDb("agent reads of the query layer", () => {
     it("answers with the filter it is given", async () => {
       await t.db.update(repos).set({ visibility: "private" }).where(eqId(none));
       try {
-        const publicOnly = await listRepoOverviews(t.db, {}, { visibility: publicReposOnly });
+        const publicOnly = await listRepoOverviews(t.db, {}, { visibility: githubPublicReposOnly });
         expect(publicOnly.map((r) => r.name)).not.toContain("none");
       } finally {
         await t.db.update(repos).set({ visibility: "public" }).where(eqId(none));

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { SESSION_COOKIE, verifySessionEdge } from "./auth/edge-session";
+import { mayBePublicPath } from "@docmyrepos/core/internal/routes";
 import {
   NONCE_HEADER,
   PATHNAME_HEADER,
@@ -69,7 +70,9 @@ function isCorePublicPath(pathname: string): boolean {
  *    except those a route owns: `/api/asset` keeps its own sandbox CSP.
  * 4. Auth gate (access-control): pages and non-auth APIs need a valid session cookie (signature +
  *    expiry checked here with WebCrypto; the database re-check in `current-user.ts` is the source
- *    of truth). Pages redirect to `/login`, APIs answer 401 JSON.
+ *    of truth). Pages redirect to `/login`, APIs answer 401 JSON. The paths that may be public
+ *    content (`mayBePublicPath`: the home page, search, Ask, repositories, documents, images)
+ *    pass without a session and are decided where the database can be read.
  */
 export interface ProxyOptions {
   /**
@@ -145,7 +148,10 @@ async function proxy(
   requestHeaders.set("Content-Security-Policy", csp);
 
   if (!isPublicPath(pathname) && !e2eAuthBypass()) {
-    if (!(await isSignedIn(request))) {
+    // A request without a session for a path that may be public content (public access) is passed
+    // on: this code has no database, so the page or route decides, and answers a login redirect or
+    // 401 itself when nothing is public.
+    if (!(await isSignedIn(request)) && !mayBePublicPath(pathname, request.method)) {
       if (pathname.startsWith("/api/")) {
         const response = new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,

@@ -30,6 +30,7 @@ import {
   type RepoDetail,
   type RepoLastRun,
 } from "./queries";
+import { MEMBER, filterFor, type Reader } from "./queries/visibility";
 import { loadToc } from "./toc-data";
 import { logger, type LogFn } from "./log";
 
@@ -101,6 +102,11 @@ export interface RepoPageDeps {
   readonly now?: () => Date;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
   readonly log?: LogFn;
+  /**
+   * Who is reading (public access). Default: a signed-in user, who sees every allowed repository.
+   * An anonymous visitor reads through the anonymous filter, so only public repositories exist.
+   */
+  readonly reader?: Reader;
   /** Default: `renderMarkdown`. Replaceable in tests to prove the failure fallback. */
   readonly render?: (
     source: string,
@@ -173,18 +179,23 @@ export async function loadRepoPage(
   const render = deps.render ?? renderMarkdown;
   try {
     const handle = await db();
-    const repo = await getRepo(handle, owner, name);
+    const options = { visibility: filterFor(deps.reader ?? MEMBER) };
+    const repo = await getRepo(handle, owner, name, options);
     if (repo === null) return { status: "not_found" };
-    const rows = await getDocsTree(handle, { id: repo.id });
-    const { tree, toc, view: shown } = await loadToc(handle, repo, rows, filters, null, view);
+    const rows = await getDocsTree(handle, { id: repo.id }, options);
+    const {
+      tree,
+      toc,
+      view: shown,
+    } = await loadToc(handle, repo, rows, filters, null, view, options);
     const { view: readme, outline: readmeOutline } = await readmeView(
       repo,
       new Set(rows.map((r) => r.path)),
       render,
       log,
     );
-    const apiSpecs = await listApiSpecs(handle, { id: repo.id });
-    const sync = await getRepoSyncInfo(handle, { id: repo.id });
+    const apiSpecs = await listApiSpecs(handle, { id: repo.id }, options);
+    const sync = await getRepoSyncInfo(handle, { id: repo.id }, options);
     return {
       status: "ok",
       repo,

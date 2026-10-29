@@ -6,7 +6,13 @@ import { useRouter } from "next/navigation";
 import { failureText } from "@docmyrepos/core/internal/fetch-error";
 import { fieldClass } from "@docmyrepos/core/internal/ui";
 
-import { RepoLine, repoLabel, type FolderOption, type RepoAccessRow } from "./repo-access-row";
+import {
+  RepoLine,
+  repoLabel,
+  rowButton,
+  type FolderOption,
+  type RepoAccessRow,
+} from "./repo-access-row";
 import { RunSyncButton } from "./run-sync-button";
 import { StarredRepoList } from "./starred-repo-list";
 
@@ -24,6 +30,19 @@ const FILTERS: ReadonlyArray<{ value: AccessFilter; label: string }> = [
 interface Notice {
   readonly tone: "ok" | "error";
   readonly text: string;
+}
+
+/** A repository private on GitHub that the admin asked to make public, awaiting confirmation. */
+interface PendingPublic {
+  readonly repo: RepoAccessRow;
+  readonly text: string;
+}
+
+interface Saved {
+  readonly isAllowed: boolean;
+  readonly isPublic: boolean;
+  readonly starPosition: number | null;
+  readonly folderId: number | null;
 }
 
 /** Starred rows in the admin order (place, then id: the same order the server uses). */
@@ -52,6 +71,7 @@ export function RepoAccessManager({
   const [notice, setNotice] = useState<Notice | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [reordering, setReordering] = useState(false);
+  const [pending, setPending] = useState<PendingPublic | null>(null);
 
   // The starred group is always shown whole (it is the list being ordered); the search and filter
   // narrow the other repositories.
@@ -81,8 +101,12 @@ export function RepoAccessManager({
   /** PATCH one repo; on failure the list is left as it was and the error is shown. */
   async function patch(
     r: RepoAccessRow,
-    body: { isAllowed: boolean } | { isStarred: boolean } | { folderId: number | null },
-  ): Promise<{ isAllowed: boolean; starPosition: number | null; folderId: number | null } | null> {
+    body:
+      | { isAllowed: boolean }
+      | { isStarred: boolean }
+      | { folderId: number | null }
+      | { isPublic: boolean; confirmPrivate?: boolean },
+  ): Promise<Saved | null> {
     setBusyId(r.id);
     setNotice(null);
     try {
@@ -91,13 +115,21 @@ export function RepoAccessManager({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ owner: r.owner, name: r.name, ...body }),
       });
+      if (response.status === 409 && "isPublic" in body) {
+        const data = (await response
+          .clone()
+          .json()
+          .catch(() => null)) as { code?: string; error?: string } | null;
+        if (data?.code === "confirm_private") {
+          setPending({ repo: r, text: data.error ?? "This repository is private on GitHub." });
+          return null;
+        }
+      }
       if (!response.ok) {
         setNotice({ tone: "error", text: await failureText(response) });
         return null;
       }
-      const data = (await response.json()) as {
-        repo: { isAllowed: boolean; starPosition: number | null; folderId: number | null };
-      };
+      const data = (await response.json()) as { repo: Saved };
       return data.repo;
     } catch {
       setNotice({ tone: "error", text: "Could not reach the server." });
@@ -114,6 +146,21 @@ export function RepoAccessManager({
     setNotice({
       tone: "ok",
       text: `${repoLabel(r)} is ${saved.isAllowed ? "visible again" : "blocked"}.`,
+    });
+    router.refresh();
+  }
+
+  async function onTogglePublic(r: RepoAccessRow, confirmPrivate = false) {
+    setPending(null);
+    const saved = await patch(r, {
+      isPublic: !r.isPublic,
+      ...(confirmPrivate ? { confirmPrivate: true } : {}),
+    });
+    if (!saved) return;
+    setRepos((prev) => prev.map((p) => (p.id === r.id ? { ...p, isPublic: saved.isPublic } : p)));
+    setNotice({
+      tone: "ok",
+      text: `${repoLabel(r)} is ${saved.isPublic ? "public: anyone can read it without signing in" : "no longer public on its own"}.`,
     });
     router.refresh();
   }
@@ -199,6 +246,7 @@ export function RepoAccessManager({
               onToggleAllowed={(r) => void onToggle(r)}
               folders={folders}
               onSetFolder={(r, id) => void onSetFolder(r, id)}
+              onTogglePublic={(r) => void onTogglePublic(r)}
             />
           </div>
         </section>
@@ -252,6 +300,26 @@ export function RepoAccessManager({
             </p>
           ) : null}
         </div>
+        {pending ? (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center gap-x-4 gap-y-2 border border-border p-3 text-sm"
+          >
+            <p className="max-w-prose">
+              {pending.text}. Make {repoLabel(pending.repo)} public?
+            </p>
+            <button
+              type="button"
+              onClick={() => void onTogglePublic(pending.repo, true)}
+              className={`${rowButton} font-medium`}
+            >
+              Confirm and make public
+            </button>
+            <button type="button" onClick={() => setPending(null)} className={rowButton}>
+              Cancel
+            </button>
+          </div>
+        ) : null}
 
         <div>
           <ul>
@@ -264,6 +332,7 @@ export function RepoAccessManager({
                   onToggleAllowed={(row) => void onToggle(row)}
                   folders={folders}
                   onSetFolder={(row, id) => void onSetFolder(row, id)}
+                  onTogglePublic={(row) => void onTogglePublic(row)}
                 />
               </li>
             ))}

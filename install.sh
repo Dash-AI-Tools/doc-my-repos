@@ -15,7 +15,7 @@
 set -eu
 
 # Kept equal to package.json and the release tag by scripts/check-release-versions.sh.
-DOCMYREPOS_VERSION="0.1.0"
+DOCMYREPOS_VERSION="0.2.0"
 DEFAULT_IMAGE="ghcr.io/dash-ai-tools/doc-my-repos:${DOCMYREPOS_VERSION}"
 
 NL='

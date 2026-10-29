@@ -10,6 +10,7 @@ sources:
   - packages/server/src/ask/prompt.ts
   - packages/server/src/ask/settings.ts
   - packages/server/src/ask/limits.ts
+  - packages/server/src/public-access/settings.ts
   - packages/server/src/admin/ask.ts
   - packages/core/src/ask/answer.ts
   - packages/core/src/ask/sections.ts
@@ -78,6 +79,15 @@ Without script the page says it needs script. The chat has a labelled field (Ent
 ## What is sent to the provider
 
 Only the question (at most 2,000 characters), up to four earlier exchanges, and the selected excerpts, labelled as data. Never the reader's email or name, cookies, other documents or any credential. The provider is told the excerpts are untrusted and that it has no tools.
+
+## Visitors without an account
+
+Ask is for signed-in users unless an admin turns on **Allow Ask the docs** under **Public access** on the Repository access tab (see [Public access](configuration.md#public-access)). It is off by default and needs two other things: Ask itself turned on with a provider, and at least one public repository.
+
+- **What they can ask about.** Only public repositories. Retrieval goes through the same single visibility filter as everything else, so an excerpt of any other repository never reaches the model or the references, and a question about one is answered "the documentation does not cover it".
+- **Shared caps.** An anonymous visitor has no account to count against, so the questions per day (200 by default, 1 to 10000) and per ten minutes (20, 1 to 1000) are shared by all of them together, next to the cap on answers at once. A question over a cap gets `429` with `Retry-After` and a short fixed message; signed-in users' own limits are separate and unaffected. A question that finds no documents still counts, because the search query is itself a model call you pay for.
+- **What is stored.** One row per question in the usage table, marked anonymous, holding the provider, token counts and how it ended. No question, answer, excerpt, address or identifier of the visitor is stored or logged.
+- **A shared budget.** Anyone who can reach the portal can spend it, up to the caps. Leave the switch off unless you want that, and set the caps to what you are willing to pay for.
 
 ## Safety
 

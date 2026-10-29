@@ -33,6 +33,7 @@ function ok(over: Partial<Extract<StatusPageData, { status: "ok" }>["sync"]> = {
     loadedAt: NOW,
     ask: { state: "off" },
     workspace: null,
+    publicAccess: null,
     sync: {
       lastRun: {
         trigger: "schedule",
@@ -198,6 +199,23 @@ describe("/status page", () => {
       expect(out).toContain('data-testid="status-ask"');
       for (const text of present) expect(out).toContain(text);
       for (const text of absent) expect(out).not.toContain(text);
+    }
+  });
+
+  it("shows the Public access line only when it could be read", async () => {
+    const data = ok();
+    if (data.status !== "ok") throw new Error("fixture");
+    loadStatusPage.mockResolvedValue(data);
+    expect(await html()).not.toContain('data-testid="status-public"');
+    for (const [publicAccess, present] of [
+      [{ anyPublic: false, searchEnabled: true, askEnabled: true }, ["Off", "Nothing is public"]],
+      [{ anyPublic: true, searchEnabled: true, askEnabled: false }, ["On", "and search."]],
+      [{ anyPublic: true, searchEnabled: false, askEnabled: false }, ["but not search or use Ask"]],
+    ] as const) {
+      loadStatusPage.mockResolvedValue({ ...data, publicAccess });
+      const out = await html();
+      expect(out).toContain('data-testid="status-public"');
+      for (const text of present) expect(out).toContain(text);
     }
   });
 

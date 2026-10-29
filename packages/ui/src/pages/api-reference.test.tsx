@@ -4,11 +4,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiReferenceData } from "@docmyrepos/server/internal/api-reference-page";
 import type { ApiSpecDetail, RepoDetail } from "@docmyrepos/server/internal/queries/index";
 
+const readers: string[] = [];
+const publicAccess = vi.hoisted(() => ({ content: true }));
+vi.mock("@docmyrepos/server/internal/public-access/reader", () => ({
+  ANONYMOUS: { kind: "anonymous" },
+  MEMBER: { kind: "member" },
+  anonymousMayUse: async () => publicAccess.content,
+}));
 const loadApiReference =
   vi.fn<(owner: string, name: string, segments: readonly string[]) => Promise<ApiReferenceData>>();
 vi.mock("@docmyrepos/server/internal/api-reference-page", () => ({
-  loadApiReference: (owner: string, name: string, segments: readonly string[]) =>
-    loadApiReference(owner, name, segments),
+  loadApiReference: (
+    owner: string,
+    name: string,
+    segments: readonly string[],
+    deps: { reader?: { kind: string } },
+  ) => {
+    readers.push(deps.reader?.kind ?? "none");
+    return loadApiReference(owner, name, segments);
+  },
 }));
 vi.mock("../components/api-reference", () => ({
   ApiReference: ({ spec, sourceUrl }: { spec: { marker?: string }; sourceUrl: string | null }) => (
@@ -72,7 +86,43 @@ async function html(path = ["api", "openapi.yaml"]): Promise<string> {
   );
 }
 
-beforeEach(() => loadApiReference.mockReset());
+beforeEach(() => {
+  loadApiReference.mockReset();
+  readers.length = 0;
+  publicAccess.content = true;
+});
+
+describe("API reference page for a visitor without a session (public access)", () => {
+  const anonymousApp = testApp({}, { user: async () => null });
+  const anonymousHtml = async (): Promise<string> =>
+    renderToStaticMarkup(
+      await ApiReferencePage({
+        app: anonymousApp,
+        params: Promise.resolve({ owner: "acme", repo: "api", path: ["api", "openapi.yaml"] }),
+      }),
+    );
+
+  it("reads through the anonymous reader and shows a public spec", async () => {
+    loadApiReference.mockResolvedValue(ok());
+    expect(await anonymousHtml()).toContain("widget");
+    expect(readers).toEqual(["anonymous"]);
+  });
+
+  it("sends the visitor to sign in for a spec that is missing or not public", async () => {
+    loadApiReference.mockResolvedValue({ status: "not_found" });
+    await expect(anonymousHtml()).rejects.toMatchObject({
+      digest: expect.stringContaining("/login"),
+    });
+  });
+
+  it("sends the visitor to sign in, reading nothing, when nothing is public", async () => {
+    publicAccess.content = false;
+    await expect(anonymousHtml()).rejects.toMatchObject({
+      digest: expect.stringContaining("/login"),
+    });
+    expect(loadApiReference).not.toHaveBeenCalled();
+  });
+});
 
 describe("API reference page", () => {
   it("renders the header, the widget with the spec and the source link", async () => {

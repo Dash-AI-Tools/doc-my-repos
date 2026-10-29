@@ -7,7 +7,7 @@ import { findAssetRepo } from "./assets";
 import {
   activeRepoVisibility,
   allowedReposOnly,
-  publicReposOnly,
+  githubPublicReposOnly,
   type RepoVisibilityFilter,
   visibleRepos,
 } from "./visibility";
@@ -102,10 +102,10 @@ describeDb("findAssetRepo on a real database", () => {
 
   it("goes through the visibility filter: a restrictive filter hides the repository", async () => {
     expect(
-      await findAssetRepo(t.db, "acme", "handbook", { visibility: publicReposOnly }),
+      await findAssetRepo(t.db, "acme", "handbook", { visibility: githubPublicReposOnly }),
     ).toBeNull();
     expect(
-      (await findAssetRepo(t.db, "acme", "site", { visibility: publicReposOnly }))?.githubId,
+      (await findAssetRepo(t.db, "acme", "site", { visibility: githubPublicReposOnly }))?.githubId,
     ).toBe(12);
     const hideAll: RepoVisibilityFilter = () => sql`false`;
     expect(await findAssetRepo(t.db, "acme", "site", { visibility: hideAll })).toBeNull();

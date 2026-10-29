@@ -1,6 +1,8 @@
 import { contextAccess } from "../auth/access";
 import type { RequestContext } from "../app/types";
 import { handleSearchRequest, methodNotAllowed } from "../search-api";
+import { readerOf } from "../public-access/reader";
+import { filterFor } from "../queries/visibility";
 import type { RouteContext } from "./index";
 
 /**
@@ -10,12 +12,14 @@ import type { RouteContext } from "./index";
  * app only caps how many searches run at once.
  */
 
-export function GET(
+export async function GET(
   request: Request,
   _route: RouteContext | undefined,
   ctx: RequestContext,
 ): Promise<Response> {
-  return handleSearchRequest(request, { db: ctx.db, emit: contextAccess(ctx).emit });
+  // A visitor without a session (when public search is on) searches public repositories only.
+  const options = { visibility: filterFor(await readerOf(ctx)) };
+  return handleSearchRequest(request, { db: ctx.db, emit: contextAccess(ctx).emit, options });
 }
 
 // Every other method is refused with `Allow: GET`, without reading the request.

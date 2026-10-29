@@ -6,6 +6,7 @@ import { CommandPalette } from "../components/command-palette";
 import { THEME_STORAGE_KEY } from "../components/theme-provider";
 import { E2E_CRASH_HEADER } from "@docmyrepos/core/internal/e2e-fixtures";
 import { AskLauncher } from "../components/ask-launcher";
+import { SiteFooter } from "../components/site-footer";
 import { SiteHeader } from "../components/site-header";
 import { THEME_TOKENS } from "@docmyrepos/core/internal/theme-tokens";
 
@@ -67,6 +68,30 @@ vi.mock("@docmyrepos/server/internal/auth/current-user", () => ({
 }));
 vi.mock("@docmyrepos/server/internal/ask/settings", () => ({
   askStateFor: async () => session.ask,
+}));
+const publicState = vi.hoisted(() => ({ searchEnabled: true, askEnabled: false, reads: 0 }));
+vi.mock("@docmyrepos/server/internal/public-access/reader", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@docmyrepos/server/internal/public-access/reader")>()),
+  publicAccessOf: async () => {
+    publicState.reads += 1;
+    return {
+      anyPublic: true,
+      settings: {
+        searchEnabled: publicState.searchEnabled,
+        askEnabled: publicState.askEnabled,
+        askQuestionsPerDay: 200,
+        askQuestionsPerTenMinutes: 20,
+      },
+    };
+  },
+  anonymousMayUse: async (_ctx: unknown, need: string) => {
+    publicState.reads += 1;
+    return need === "ask"
+      ? publicState.askEnabled
+      : need === "search"
+        ? publicState.searchEnabled
+        : true;
+  },
 }));
 vi.mock("@docmyrepos/server/internal/workspace", () => ({
   mcpEnabled: async () => {
@@ -148,6 +173,86 @@ describe("root layout: the AI agent access link", () => {
     session.user = { id: 1, email: "u@example.com", role: "user" };
     session.mcp = "throws";
     expect(await agentAccess()).toBe(false);
+  });
+});
+
+describe("root layout: the Sign in link and anonymous search", () => {
+  afterEach(() => {
+    session.user = null;
+    publicState.searchEnabled = true;
+    publicState.askEnabled = false;
+    session.ask = { state: "off" };
+    publicState.reads = 0;
+  });
+
+  async function headerAt(path: string | null) {
+    requestHeaders.current = new Headers(path === null ? {} : { "x-dmr-pathname": path });
+    const tree = (await RootLayout({ app: TEST_APP, children: page })) as ReactElement;
+    return {
+      tree,
+      header: propsOf<{ user: unknown; signIn: boolean; search: boolean }>(tree, SiteHeader),
+    };
+  }
+
+  it("offers Sign in to a visitor without a session on a page, with search when allowed", async () => {
+    const { header, tree } = await headerAt("/acme/handbook");
+    expect(header).toMatchObject({ user: null, signIn: true, search: true });
+    expect(countElements(tree, CommandPalette)).toBe(1);
+  });
+
+  it("leaves the search bar and the quick search out when public search is off", async () => {
+    publicState.searchEnabled = false;
+    const { header, tree } = await headerAt("/");
+    expect(header).toMatchObject({ signIn: true, search: false });
+    expect(countElements(tree, CommandPalette)).toBe(0);
+  });
+
+  it("offers no Sign in link on the sign-in page itself, and does not read public access there", async () => {
+    const { header, tree } = await headerAt("/login");
+    expect(header).toMatchObject({ user: null, signIn: false, search: true });
+    expect(countElements(tree, CommandPalette)).toBe(1);
+    expect(publicState.reads).toBe(0);
+  });
+
+  it("offers no Sign in link to a signed-in user, and never reads public access for one", async () => {
+    session.user = { id: 1, email: "a@example.com", role: "user" };
+    const { header } = await headerAt("/acme/handbook");
+    expect(header?.signIn).toBe(false);
+    expect(header?.search).toBe(true);
+    expect(publicState.reads).toBe(0);
+  });
+
+  it("offers Ask to a visitor without a session only when Ask is ready and anonymous Ask is on", async () => {
+    const askLink = async () => {
+      const { tree } = await headerAt("/acme/handbook");
+      const nav = propsOf<{ nav: { href: string }[] }>(tree, SiteHeader)?.nav ?? [];
+      return {
+        link: nav.some((item) => item.href === "/ask"),
+        orb: countElements(tree, AskLauncher),
+      };
+    };
+    expect(await askLink()).toEqual({ link: false, orb: 0 });
+    session.ask = { state: "ready" };
+    expect(await askLink()).toEqual({ link: false, orb: 0 });
+    publicState.askEnabled = true;
+    expect(await askLink()).toEqual({ link: true, orb: 1 });
+    session.ask = { state: "off" };
+    expect(await askLink()).toEqual({ link: false, orb: 0 });
+  });
+
+  it("shows a visitor without a session no link to the status page and no plugin contribution", async () => {
+    const { tree } = await headerAt("/acme/handbook");
+    const footer = propsOf<{ links: { href: string }[] }>(tree, SiteFooter);
+    expect(footer?.links.map((l) => l.href)).toEqual([]);
+    const signedOut = await headerAt("/login");
+    expect(
+      propsOf<{ links: { href: string }[] }>(signedOut.tree, SiteFooter)?.links.map((l) => l.href),
+    ).toEqual(["/status"]);
+  });
+
+  it("changes nothing when the proxy sent no pathname", async () => {
+    const { header } = await headerAt(null);
+    expect(header).toMatchObject({ signIn: false, search: true });
   });
 });
 

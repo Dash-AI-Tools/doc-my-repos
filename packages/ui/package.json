@@ -1,6 +1,6 @@
 {
   "name": "@docmyrepos/ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "React pages and components of DocMyRepos.",
   "license": "MIT",
   "type": "module",

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 
 import { ApiSpecList } from "../components/api-spec-list";
@@ -21,11 +21,12 @@ import {
 } from "@docmyrepos/core/internal/toc-filters";
 import type { NavView } from "@docmyrepos/core/internal/reading-prefs";
 import { askStateFor } from "@docmyrepos/server/internal/ask/settings";
+import { anonymousMayUse, type Reader } from "@docmyrepos/server/internal/public-access/reader";
 import { readNavView } from "@docmyrepos/server/internal/nav-view";
 import { loadRepoPage } from "@docmyrepos/server/internal/repo-page";
 import type { RequestContext } from "@docmyrepos/server";
 import type { AppProps } from "../bind-page";
-import { pageContext } from "../page-context";
+import { deny, readerContext } from "../page-context";
 
 /**
  * Repository space `/<owner>/<repo>` (tasks 9.3 to 9.5): header, README, code owners and, in the
@@ -57,11 +58,18 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
  * docs-nav-views), read from its cookie so the first HTML already shows the chosen view.
  */
 const load = cache(
-  (ctx: RequestContext, owner: string, repo: string, filterQuery: string, view: NavView) =>
+  (
+    ctx: RequestContext,
+    reader: Reader,
+    owner: string,
+    repo: string,
+    filterQuery: string,
+    view: NavView,
+  ) =>
     loadRepoPage(
       owner,
       repo,
-      { db: ctx.db },
+      { db: ctx.db, reader },
       parseTocFilters(new URLSearchParams(filterQuery)),
       view,
     ),
@@ -77,8 +85,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { owner, repo } = await params;
   // The title comes from the stored repository, never from the address as typed.
+  const { ctx, reader } = await readerContext(app, "content");
   const data = await load(
-    await pageContext(app),
+    ctx,
+    reader,
     owner,
     repo,
     buildFilterQuery(parseTocFilters(await searchParams)),
@@ -97,11 +107,12 @@ export async function RepoPage({
   params: Params;
   searchParams: SearchParams;
 }) {
-  const ctx = await pageContext(app);
+  const { ctx, reader } = await readerContext(app, "content");
   const { owner, repo: name } = await params;
   const filterQuery = buildFilterQuery(parseTocFilters(await searchParams));
-  const data = await load(ctx, owner, name, filterQuery, await readNavView());
-  if (data.status === "not_found") notFound();
+  const data = await load(ctx, reader, owner, name, filterQuery, await readNavView());
+  // A repository that does not exist and one that is not public look the same to a visitor.
+  if (data.status === "not_found") deny(reader);
   if (data.status === "error") return <RepoLoadError href={repoUrl(owner, name)} />;
 
   const { repo, readme, readmeOutline, tree, toc, view, apiSpecs, lastRun, loadedAt } = data;
@@ -114,9 +125,11 @@ export async function RepoPage({
       ? null
       : buildTocFilterView({ basePath, state: toc.state, facets: toc.facets, counts: toc.counts });
   const awaitingSync = repo.syncStatus === "pending" || repo.lastSyncedAt === null;
-  // The Ask link only exists while Ask is on and usable.
+  // The Ask link only exists while Ask is on and usable, and for a visitor without a session only
+  // when public Ask is on.
   const askHref =
-    (await askStateFor(ctx)).state === "ready"
+    (await askStateFor(ctx)).state === "ready" &&
+    (reader.kind === "member" || (await anonymousMayUse(ctx, "ask")))
       ? `/ask?repo=${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`
       : null;
 

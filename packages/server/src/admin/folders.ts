@@ -1,9 +1,16 @@
-import { eq, max } from "drizzle-orm";
+import { and, count, eq, max } from "drizzle-orm";
 
 import type { Db } from "../db/client";
-import { repoFolders } from "../db/schema";
+import { repoFolders, repos } from "../db/schema";
 
-type Failure = { ok: false; status: 400 | 404 | 409; error: string };
+type Failure = {
+  ok: false;
+  status: 400 | 404 | 409;
+  error: string;
+  /** `confirm_private`: the folder holds repositories that are private on GitHub. */
+  code?: "confirm_private";
+  privateRepos?: number;
+};
 
 export const FOLDER_NAME_MAX = 80;
 export const FOLDER_DESCRIPTION_MAX = 500;
@@ -14,8 +21,11 @@ export type FolderView = {
   description: string | null;
   starPosition: number | null;
   isStarred: boolean;
+  /** Every allowed repository in it is readable without signing in (public access). */
+  isPublic: boolean;
 };
-export type FolderResult = ({ ok: true } & { folder: FolderView }) | Failure;
+export type FolderResult =
+  ({ ok: true } & { folder: FolderView; publicChanged: boolean }) | Failure;
 export type DeleteFolderResult = { ok: true } | Failure;
 export type ReorderFoldersResult = { ok: true; folderIds: number[] } | Failure;
 
@@ -24,6 +34,7 @@ const columns = {
   name: repoFolders.name,
   description: repoFolders.description,
   starPosition: repoFolders.starPosition,
+  isPublic: repoFolders.isPublic,
 };
 
 const view = (row: Omit<FolderView, "isStarred">): FolderView => ({
@@ -88,7 +99,7 @@ export async function createFolder(
       .insert(repoFolders)
       .values({ name: name.name, description: description.description })
       .returning(columns);
-    return { ok: true, folder: view(row!) };
+    return { ok: true, folder: view(row!), publicChanged: false };
   } catch (error) {
     if (isUniqueViolation(error)) return DUPLICATE;
     throw error;
@@ -96,14 +107,50 @@ export async function createFolder(
 }
 
 /**
+ * The allowed repositories in a folder that are private on GitHub: what making the folder public
+ * would publish to anyone.
+ */
+export async function countPrivateRepos(db: Pick<Db, "select">, folderId: number): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(repos)
+    .where(
+      and(eq(repos.folderId, folderId), eq(repos.isAllowed, true), eq(repos.visibility, "private")),
+    );
+  return row?.n ?? 0;
+}
+
+/** For every folder that holds any, the allowed repositories in it that are private on GitHub. */
+export async function countPrivateReposByFolder(
+  db: Pick<Db, "select">,
+): Promise<Map<number, number>> {
+  const rows = await db
+    .select({ folderId: repos.folderId, n: count() })
+    .from(repos)
+    .where(and(eq(repos.isAllowed, true), eq(repos.visibility, "private")))
+    .groupBy(repos.folderId);
+  const counts = new Map<number, number>();
+  for (const row of rows) if (row.folderId !== null) counts.set(row.folderId, row.n);
+  return counts;
+}
+
+/**
  * Edits the fields that are present (`undefined` = leave alone); each is validated before anything
  * is written. Starring appends at `max + 1`, starring a starred folder keeps its place, unstarring
- * clears it.
+ * clears it. `isPublic` makes every allowed repository in the folder readable without signing in;
+ * when that publishes repositories that are private on GitHub it needs `confirmPrivate: true`,
+ * else 409 `confirm_private` with the count. Turning it off never needs confirmation.
  */
 export async function updateFolder(
   db: Db,
   id: unknown,
-  patch: { name?: unknown; description?: unknown; isStarred?: unknown },
+  patch: {
+    name?: unknown;
+    description?: unknown;
+    isStarred?: unknown;
+    isPublic?: unknown;
+    confirmPrivate?: unknown;
+  },
 ): Promise<FolderResult> {
   if (!isId(id)) return { ok: false, status: 404, error: "folder not found" };
   const set: Partial<typeof repoFolders.$inferInsert> = {};
@@ -120,13 +167,25 @@ export async function updateFolder(
   if (patch.isStarred !== undefined && typeof patch.isStarred !== "boolean") {
     return { ok: false, status: 400, error: "isStarred: must be a boolean" };
   }
+  if (patch.isPublic !== undefined && typeof patch.isPublic !== "boolean") {
+    return { ok: false, status: 400, error: "isPublic: must be a boolean" };
+  }
+  if (patch.confirmPrivate !== undefined && typeof patch.confirmPrivate !== "boolean") {
+    return { ok: false, status: 400, error: "confirmPrivate: must be a boolean" };
+  }
   if (
     patch.name === undefined &&
     patch.description === undefined &&
-    patch.isStarred === undefined
+    patch.isStarred === undefined &&
+    patch.isPublic === undefined
   ) {
-    return { ok: false, status: 400, error: "name, description or isStarred is required" };
+    return {
+      ok: false,
+      status: 400,
+      error: "name, description, isStarred or isPublic is required",
+    };
   }
+  const isPublic = patch.isPublic as boolean | undefined; // checked above
   try {
     return await db.transaction(async (tx): Promise<FolderResult> => {
       const [current] = await tx
@@ -135,6 +194,19 @@ export async function updateFolder(
         .where(eq(repoFolders.id, id))
         .for("update");
       if (!current) return { ok: false, status: 404, error: "folder not found" };
+      if (patch.isPublic === true && !current.isPublic && patch.confirmPrivate !== true) {
+        const privateRepos = await countPrivateRepos(tx, id);
+        if (privateRepos > 0) {
+          return {
+            ok: false,
+            status: 409,
+            error: `This folder holds ${privateRepos} repositor${privateRepos === 1 ? "y" : "ies"} that ${privateRepos === 1 ? "is" : "are"} private on GitHub; confirm to make ${privateRepos === 1 ? "its documents" : "their documents"} readable by anyone`,
+            code: "confirm_private",
+            privateRepos,
+          };
+        }
+      }
+      if (isPublic !== undefined) set.isPublic = isPublic;
       if (patch.isStarred === false) set.starPosition = null;
       if (patch.isStarred === true && current.starPosition === null) {
         const [row] = await tx.select({ top: max(repoFolders.starPosition) }).from(repoFolders);
@@ -145,7 +217,11 @@ export async function updateFolder(
         .set({ ...set, updatedAt: new Date() })
         .where(eq(repoFolders.id, id))
         .returning(columns);
-      return { ok: true, folder: view(updated!) };
+      return {
+        ok: true,
+        folder: view(updated!),
+        publicChanged: patch.isPublic !== undefined && patch.isPublic !== current.isPublic,
+      };
     });
   } catch (error) {
     if (isUniqueViolation(error)) return DUPLICATE;

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { findAssetRepo } from "../queries/assets";
+import { MEMBER, filterFor, type Reader } from "../queries/visibility";
 import type { RequestContext } from "../app/types";
 import { repoNameSelection } from "../sync/discovery";
 import { requireGitHub } from "../workspace";
@@ -36,11 +37,16 @@ export function sharedFetchGate(): FetchGate {
  * visibility filter), the current selection, and the request-time GitHub client. Throws
  * `NotConfiguredError` (names only, no values) when the GitHub settings are incomplete.
  */
-export async function getAssetDeps(ctx: RequestContext): Promise<AssetDeps> {
+export async function getAssetDeps(
+  ctx: RequestContext,
+  reader: Reader = MEMBER,
+): Promise<AssetDeps> {
   const github = requireGitHub(await ctx.workspace());
   const db = await ctx.db();
   return {
-    findRepo: (owner, name) => findAssetRepo(db, owner, name),
+    // The repository is looked up through the reader's filter: an anonymous visitor finds only
+    // public repositories, and anything else is "unknown" before any cache or GitHub is touched.
+    findRepo: (owner, name) => findAssetRepo(db, owner, name, { visibility: filterFor(reader) }),
     isConfigured: (name) => repoNameSelection(github.sync.config, name) === "selected",
     github: github.assets,
     cache: sharedAssetCache(),

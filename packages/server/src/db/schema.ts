@@ -140,6 +140,9 @@ export const repoFolders = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     starPosition: integer("star_position"),
+    // Public access (public-access): every allowed repository in a public folder is readable
+    // without signing in. Written only by the admin folder actions, never by sync.
+    isPublic: boolean("is_public").notNull().default(false),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },
@@ -198,6 +201,9 @@ export const repos = pgTable(
     // Admin-chosen folder (repo-folders); null = in no folder. Written only by the admin folder
     // actions (never by the sync's explicit-column upsert). Deleting a folder clears it.
     folderId: integer("folder_id").references(() => repoFolders.id, { onDelete: "set null" }),
+    // Public access (public-access): readable without signing in, on top of `is_allowed`. Not the
+    // GitHub `visibility` above. Written only by the admin repo action, never by sync.
+    isPublic: boolean("is_public").notNull().default(false),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },
@@ -437,6 +443,26 @@ export const docComments = pgTable(
 );
 
 /**
+ * Public access settings (public-access design decision 4): one row (`id` fixed to 1), edited by an
+ * admin. No row means the defaults: anonymous search on, anonymous Ask off, 200 questions a day
+ * and 20 per ten minutes shared by all anonymous visitors. Kept out of the workspace settings
+ * document on purpose: that schema is strict, so an older image would reject an unknown key.
+ */
+export const publicAccessSettings = pgTable(
+  "public_access_settings",
+  {
+    id: smallint("id").primaryKey(),
+    searchEnabled: boolean("search_enabled").notNull().default(true),
+    askEnabled: boolean("ask_enabled").notNull().default(false),
+    askQuestionsPerDay: integer("ask_questions_per_day").notNull().default(200),
+    askQuestionsPerTenMinutes: integer("ask_questions_per_ten_minutes").notNull().default(20),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+    updatedBy: integer("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [check("public_access_settings_single_row", sql`${t.id} = 1`)],
+);
+
+/**
  * Ask-the-docs settings (ask-the-docs design decision 9): one row (`id` fixed to 1), edited by an
  * admin. Credentials are never stored here; `provider` and `model` are re-validated on read.
  */
@@ -470,6 +496,9 @@ export const askUsage = pgTable(
     excerptCount: integer("excerpt_count").notNull().default(0),
     // `started` until the answer ends; then a fixed outcome word (see packages/server/src/ask/limits.ts).
     outcome: text("outcome").notNull().default("started"),
+    // True for a question asked without signing in (public Ask): `user_id` is null, and this tells
+    // it apart from the rows of deleted users, which are null too. Counted only as totals.
+    anonymous: boolean("anonymous").notNull().default(false),
   },
   (t) => [
     index("ask_usage_user_created_idx").on(t.userId, t.createdAt),

@@ -7,6 +7,7 @@ import { providerAvailability, type ProviderSettingsInput } from "./ask/credenti
 import { type DbSource } from "./db/client";
 import { errorFields, logger, type LogFn } from "./log";
 import { getRepo, listRepos } from "./queries";
+import { MEMBER, filterFor, type Reader } from "./queries/visibility";
 import { getWorkspace } from "./workspace";
 
 /**
@@ -37,6 +38,11 @@ export interface AskPageDeps {
   readonly db: DbSource;
   readonly providers?: () => Promise<ProviderSettingsInput>;
   readonly log?: LogFn;
+  /**
+   * Who is asking. Default: a signed-in user. An anonymous visitor (public access) can scope a
+   * question only to public repositories, and the picker lists only those.
+   */
+  readonly reader?: Reader;
 }
 
 const MAX_REPOS_LISTED = 200;
@@ -61,10 +67,11 @@ export async function loadAskPage(params: AskPageParams, deps: AskPageDeps): Pro
   let repos: string[] = [];
   try {
     const db = await deps.db();
+    const options = { visibility: filterFor(deps.reader ?? MEMBER) };
     const match = REPO_PARAM.exec(first(params.repo).trim());
     const [found, listed] = await Promise.all([
-      match ? getRepo(db, match[1]!, match[2]!) : Promise.resolve(null),
-      listRepos(db, { limit: MAX_REPOS_LISTED }),
+      match ? getRepo(db, match[1]!, match[2]!, options) : Promise.resolve(null),
+      listRepos(db, { limit: MAX_REPOS_LISTED }, options),
     ]);
     scope = found ? `${found.owner}/${found.name}` : null;
     repos = listed.map((r) => `${r.owner}/${r.name}`);

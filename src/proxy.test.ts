@@ -246,8 +246,16 @@ describe("proxy: auth gate (access-control)", () => {
     return proxy(request(path, headers));
   }
 
-  it("redirects pages without a session to /login", async () => {
-    for (const path of ["/", "/search", "/acme/repo"]) {
+  it("passes the paths that may be public content through without a session, for the page or route to decide", async () => {
+    for (const path of ["/", "/search", "/ask", "/acme/repo", "/acme/repo/docs/guides/setup"]) {
+      expect((await gated(path)).headers.get("x-middleware-next"), path).toBe("1");
+    }
+    expect((await gated("/api/search?q=x")).headers.get("x-middleware-next")).toBe("1");
+    expect((await gated("/api/asset/acme/repo/x.png")).headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it("redirects the other pages without a session to /login", async () => {
+    for (const path of ["/admin", "/admin/workspace", "/status", "/account/agent-access"]) {
       const response = await gated(path);
       expect(response.status, path).toBe(307);
       expect(response.headers.get("location"), path).toMatch(/\/login$/);
@@ -255,7 +263,7 @@ describe("proxy: auth gate (access-control)", () => {
   });
 
   it("answers non-auth APIs with 401 JSON instead of a redirect", async () => {
-    const response = await gated("/api/search?q=x");
+    const response = await gated("/api/status");
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "Unauthorized" });
   });
@@ -324,10 +332,16 @@ describe("proxy: auth gate (access-control)", () => {
 
   it("treats a bearer API token as no credential on every page and API except the MCP endpoint", async () => {
     const bearer = { authorization: "Bearer dmr_" + "A".repeat(43) };
-    for (const path of ["/", "/admin", "/account/agent-access", "/search", "/acme/repo"]) {
+    for (const path of ["/admin", "/account/agent-access", "/status"]) {
       const response = await gated(path, undefined, bearer);
       expect(response.status, path).toBe(307);
       expect(response.headers.get("location"), path).toMatch(/\/login$/);
+    }
+    // On the paths that may be public content a token is simply no session: the visitor is
+    // anonymous, and the page or route decides what an anonymous visitor may see.
+    for (const path of ["/", "/search", "/acme/repo", "/api/search?q=x", "/api/asset/a/b/x.png"]) {
+      const response = await gated(path, undefined, bearer);
+      expect(response.headers.get("x-middleware-next"), path).toBe("1");
     }
     for (const path of [
       "/api/account/tokens",
@@ -337,10 +351,8 @@ describe("proxy: auth gate (access-control)", () => {
       "/api/admin/users",
       "/api/admin/settings",
       "/api/status",
-      "/api/search?q=x",
       "/api/ask",
       "/api/comments?repo=a/b&path=x",
-      "/api/asset/acme/repo/x.png",
     ]) {
       const response = await gated(path, undefined, bearer);
       expect(response.status, path).toBe(401);
@@ -354,9 +366,9 @@ describe("proxy: auth gate (access-control)", () => {
     expect((await gated("/", valid)).headers.get("x-middleware-next")).toBe("1");
 
     const [data] = valid.split(".");
-    expect((await gated("/", `${data}.bogus`)).status).toBe(307);
+    expect((await gated("/admin", `${data}.bogus`)).status).toBe(307);
     const expired = signSession(SECRET, { uid: 1, role: "user", exp: Date.now() - 1, pwv: 0 });
-    expect((await gated("/", expired)).status).toBe(307);
-    expect((await gated("/api/search", `${data}.bogus`)).status).toBe(401);
+    expect((await gated("/admin", expired)).status).toBe(307);
+    expect((await gated("/api/status", `${data}.bogus`)).status).toBe(401);
   });
 });

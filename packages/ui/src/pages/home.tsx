@@ -7,7 +7,8 @@ import { SearchBar } from "../components/search-bar";
 import { loadHome } from "@docmyrepos/server/internal/home";
 import { setupNeededFor } from "@docmyrepos/server/internal/onboarding";
 import type { AppProps } from "../bind-page";
-import { pageContext } from "../page-context";
+import { anonymousMayUse } from "@docmyrepos/server/internal/public-access/reader";
+import { readerContext } from "../page-context";
 
 /**
  * Home page (task 9.2): search bar and the repository grid, read from Postgres only (never
@@ -34,11 +35,16 @@ export async function HomePage({
 }: AppProps & {
   readonly searchParams?: Promise<{ folder?: string | string[] }>;
 }) {
-  const ctx = await pageContext(app);
+  // A visitor without a session reads the public repositories only (public access); with nothing
+  // public they are sent to sign in. The setup banner is for signed-in admins, and the search bar
+  // is shown to an anonymous visitor only when the admin allowed anonymous search.
+  const { ctx, reader } = await readerContext(app, "content");
+  const anonymous = reader.kind === "anonymous";
   const folderId = folderParam((await searchParams)?.folder);
-  const [home, setup] = await Promise.all([
-    loadHome({ db: ctx.db }, folderId),
-    setupNeededFor(ctx),
+  const [home, setup, canSearch] = await Promise.all([
+    loadHome({ db: ctx.db, reader }, folderId),
+    anonymous ? Promise.resolve(false) : setupNeededFor(ctx),
+    anonymous ? anonymousMayUse(ctx, "search") : Promise.resolve(true),
   ]);
   return (
     <div className="flex flex-col gap-16">
@@ -55,7 +61,7 @@ export async function HomePage({
             Search and browse the Markdown documentation of all your repositories in one place.
           </p>
         </div>
-        <SearchBar />
+        {canSearch ? <SearchBar /> : null}
       </section>
       {home.status === "ok" && home.tabs.length > 0 ? (
         <HomeTabs tabs={home.tabs} selected={home.folder?.id ?? null} />

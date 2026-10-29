@@ -24,6 +24,21 @@ import { visibleRepos, type QueryOptions } from "./visibility";
 export type RepoVisibility = "public" | "private";
 export type RepoSyncStatus = "pending" | "ok" | "error";
 
+/**
+ * The ids of the repositories the reader may see, for questions of the form "is anything visible
+ * to this reader?" (public access: whether an anonymous visitor has anything to read). A small
+ * read of ids only. `limit` bounds it when only "any?" matters.
+ */
+export async function listRepoIds(
+  db: Db,
+  options: QueryOptions = {},
+  limit?: number,
+): Promise<number[]> {
+  const query = db.select({ id: repos.id }).from(repos).where(visibleRepos(options));
+  const rows = await (limit === undefined ? query : query.limit(limit));
+  return rows.map((r) => r.id);
+}
+
 /** A repository card on the home page. */
 export interface RepoSummary {
   readonly id: number;
@@ -35,6 +50,8 @@ export interface RepoSummary {
   readonly visibility: RepoVisibility;
   /** False when an admin blocked the repo (hidden everywhere, content kept). */
   readonly isAllowed: boolean;
+  /** Readable without signing in (public access), on its own; a public folder adds to it. */
+  readonly isPublic: boolean;
   /** Place in the admin-set starred order; null when not starred. */
   readonly starPosition: number | null;
   /** Starred by an admin (portal-wide); derived from `starPosition`. */
@@ -121,6 +138,7 @@ const summaryColumns = {
   htmlUrl: repos.htmlUrl,
   visibility: repos.visibility,
   isAllowed: repos.isAllowed,
+  isPublic: repos.isPublic,
   starPosition: repos.starPosition,
   folderId: repos.folderId,
   isOkf: repos.isOkf,
@@ -139,6 +157,7 @@ type SummaryRow = {
   htmlUrl: string;
   visibility: RepoVisibility;
   isAllowed: boolean;
+  isPublic: boolean;
   starPosition: number | null;
   folderId: number | null;
   isOkf: boolean;
@@ -162,6 +181,7 @@ function toSummary(row: SummaryRow): RepoSummary {
     htmlUrl: row.htmlUrl,
     visibility: row.visibility,
     isAllowed: row.isAllowed,
+    isPublic: row.isPublic,
     starPosition: row.starPosition,
     isStarred: row.starPosition !== null,
     folderId: row.folderId,

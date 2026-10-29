@@ -3,18 +3,26 @@ import { eq, max } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { repoFolders, repos } from "../db/schema";
 
-type Failure = { ok: false; status: 400 | 404 | 409; error: string };
+type Failure = {
+  ok: false;
+  status: 400 | 404 | 409;
+  error: string;
+  /** `confirm_private`: public access was asked for a GitHub-private repository without confirmation. */
+  code?: "confirm_private";
+  privateRepos?: number;
+};
 
 export type RepoFlags = {
   owner: string;
   name: string;
   isAllowed: boolean;
+  isPublic: boolean;
   isStarred: boolean;
   starPosition: number | null;
   folderId: number | null;
 };
 export type UpdateFlagsResult =
-  ({ ok: true; githubId: number; wasAllowed: boolean } & RepoFlags) | Failure;
+  ({ ok: true; githubId: number; wasAllowed: boolean; wasPublic: boolean } & RepoFlags) | Failure;
 export type SetAllowedResult =
   { ok: true; owner: string; name: string; isAllowed: boolean } | Failure;
 export type SetStarredResult =
@@ -27,7 +35,9 @@ type RepoRow = {
   githubId: number;
   owner: string;
   name: string;
+  visibility: "public" | "private";
   isAllowed: boolean;
+  isPublic: boolean;
   starPosition: number | null;
   folderId: number | null;
 };
@@ -56,7 +66,9 @@ async function findRepo(
       githubId: repos.githubId,
       owner: repos.owner,
       name: repos.name,
+      visibility: repos.visibility,
       isAllowed: repos.isAllowed,
+      isPublic: repos.isPublic,
       starPosition: repos.starPosition,
       folderId: repos.folderId,
     })
@@ -71,18 +83,27 @@ async function findRepo(
  * repo is blocked: the visibility chokepoint hides it from every read, and re-allowing restores it
  * without re-syncing. Starring appends at `max + 1`; starring a starred repo keeps its place;
  * unstarring clears it. Blocking never touches the star or its place. `folderId` (a folder id, or
- * null to clear; absent = leave alone) must name an existing folder, else 404.
+ * null to clear; absent = leave alone) must name an existing folder, else 404. `isPublic` makes the
+ * repository readable without signing in; for a repository that is private on GitHub it needs
+ * `confirmPrivate: true` (else 409 `confirm_private`), because its documents become readable by
+ * anyone. Turning it off never needs confirmation.
  */
 export async function updateRepoFlags(
   db: Db,
   owner: unknown,
   name: unknown,
-  flags: { isAllowed?: unknown; isStarred?: unknown; folderId?: unknown },
+  flags: {
+    isAllowed?: unknown;
+    isStarred?: unknown;
+    folderId?: unknown;
+    isPublic?: unknown;
+    confirmPrivate?: unknown;
+  },
 ): Promise<UpdateFlagsResult> {
   if (!nonEmpty(owner) || !nonEmpty(name)) {
     return { ok: false, status: 400, error: "owner and name are required" };
   }
-  const { isAllowed, isStarred, folderId } = flags;
+  const { isAllowed, isStarred, folderId, isPublic, confirmPrivate } = flags;
   if (isAllowed !== undefined && typeof isAllowed !== "boolean") {
     return { ok: false, status: 400, error: "isAllowed: must be a boolean" };
   }
@@ -96,8 +117,23 @@ export async function updateRepoFlags(
   ) {
     return { ok: false, status: 400, error: "folderId: must be a folder id or null" };
   }
-  if (isAllowed === undefined && isStarred === undefined && folderId === undefined) {
-    return { ok: false, status: 400, error: "isAllowed, isStarred or folderId is required" };
+  if (isPublic !== undefined && typeof isPublic !== "boolean") {
+    return { ok: false, status: 400, error: "isPublic: must be a boolean" };
+  }
+  if (confirmPrivate !== undefined && typeof confirmPrivate !== "boolean") {
+    return { ok: false, status: 400, error: "confirmPrivate: must be a boolean" };
+  }
+  if (
+    isAllowed === undefined &&
+    isStarred === undefined &&
+    folderId === undefined &&
+    isPublic === undefined
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      error: "isAllowed, isStarred, isPublic or folderId is required",
+    };
   }
   return db.transaction(async (tx): Promise<UpdateFlagsResult> => {
     const found = await findRepo(tx, owner, name);
@@ -105,6 +141,22 @@ export async function updateRepoFlags(
     const { repo } = found;
     const set: Partial<typeof repos.$inferInsert> = { updatedAt: new Date() };
     if (isAllowed !== undefined) set.isAllowed = isAllowed;
+    if (
+      isPublic === true &&
+      !repo.isPublic &&
+      repo.visibility === "private" &&
+      confirmPrivate !== true
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        error:
+          "This repository is private on GitHub; confirm to make its documents readable by anyone",
+        code: "confirm_private",
+        privateRepos: 1,
+      };
+    }
+    if (isPublic !== undefined) set.isPublic = isPublic;
     if (folderId !== undefined) {
       if (folderId !== null) {
         const [folder] = await tx
@@ -125,9 +177,11 @@ export async function updateRepoFlags(
       ok: true,
       githubId: repo.githubId,
       wasAllowed: repo.isAllowed,
+      wasPublic: repo.isPublic,
       owner: repo.owner,
       name: repo.name,
       isAllowed: set.isAllowed ?? repo.isAllowed,
+      isPublic: set.isPublic ?? repo.isPublic,
       isStarred: (set.starPosition === undefined ? repo.starPosition : set.starPosition) !== null,
       starPosition: set.starPosition === undefined ? repo.starPosition : set.starPosition,
       folderId: set.folderId === undefined ? repo.folderId : set.folderId,

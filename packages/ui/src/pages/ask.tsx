@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { AskChat } from "../components/ask-chat";
 import { loadAskPage, type AskPageParams } from "@docmyrepos/server/internal/ask-page";
 import type { AppProps } from "../bind-page";
-import { pageContext } from "../page-context";
+import { readerContext } from "../page-context";
 import { askStateFor } from "@docmyrepos/server/internal/ask/settings";
 
 /**
@@ -24,8 +24,11 @@ export async function AskPage({
   app,
   searchParams,
 }: AppProps & { searchParams: PageSearchParams }) {
-  const ctx = await pageContext(app);
+  // A visitor without a session may ask only when an admin allowed anonymous Ask (public access);
+  // otherwise they are sent to sign in. Their questions are answered from public repositories.
+  const { ctx, reader } = await readerContext(app, "ask");
   const view = await loadAskPage(await searchParams, {
+    reader,
     db: ctx.db,
     state: () => askStateFor(ctx),
     providers: async () => (await ctx.workspace()).providers,

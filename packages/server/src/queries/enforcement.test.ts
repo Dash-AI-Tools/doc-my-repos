@@ -5,6 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { REPO_ROOT, sourceFiles } from "../../../../tests/support/repo-files";
+import { QUERY_FUNCTIONS } from "./index";
 
 /**
  * Static guard for the single visibility enforcement point (spec repo-space "Single enforcement
@@ -388,5 +389,74 @@ describe("scanSource", () => {
       "re-exports the schema",
     ]);
     expect(rules("server/db/schema.ts", `export { repos };`)).toEqual([]);
+  });
+});
+
+/**
+ * Rule 4, readers (public-access design decision 1): a file that can serve an anonymous reader
+ * passes `visibility` to every shared query it calls, because a query called without it uses the
+ * signed-in default and would show an anonymous reader every allowed repository. The list grows
+ * as each page, route and handler learns about readers (tasks 5 to 7 of the change); a file on it
+ * that forgets the option fails here.
+ */
+const READER_AWARE_FILES: readonly string[] = [
+  "packages/server/src/home.ts",
+  "packages/server/src/repo-page.ts",
+  "packages/server/src/doc-page.ts",
+  "packages/server/src/toc-data.ts",
+  "packages/server/src/api-reference-page.ts",
+  "packages/server/src/assets/service.ts",
+  "packages/server/src/search-page.ts",
+  "packages/server/src/search-api.ts",
+  "packages/server/src/ask-page.ts",
+  "packages/server/src/ask/retrieve.ts",
+];
+
+/**
+ * The calls in `text` to one of `names` that pass no `visibility` property and no `options` argument
+ * (the reader's `{ visibility: filterFor(reader) }`, built once per request).
+ */
+function callsWithoutVisibility(text: string, names: ReadonlySet<string>): number[] {
+  const source = ts.createSourceFile("x.ts", text, ts.ScriptTarget.Latest, true);
+  const lines: number[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const callee = ts.isIdentifier(node.expression) ? node.expression.text : null;
+      if (
+        callee !== null &&
+        names.has(callee) &&
+        !/\b(visibility|options)\b/.test(node.getText(source))
+      ) {
+        lines.push(source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return lines;
+}
+
+describe("reader-aware call sites", () => {
+  const names = new Set(Object.keys(QUERY_FUNCTIONS));
+
+  it("flags a shared query called without a visibility option", () => {
+    expect(
+      callsWithoutVisibility(`await listRepos(db, {});\nawait getRepo(db, "a", "b");`, names),
+    ).toEqual([1, 2]);
+    expect(
+      callsWithoutVisibility(
+        `await listRepos(db, {}, { visibility: filterFor(reader) });\nawait notAQuery(db);`,
+        names,
+      ),
+    ).toEqual([]);
+  });
+
+  it("finds no call without a visibility option in the reader-aware files", () => {
+    const problems = READER_AWARE_FILES.flatMap((file) =>
+      callsWithoutVisibility(readFileSync(join(REPO_ROOT, file), "utf8"), names).map(
+        (line) => `${file}:${line}`,
+      ),
+    );
+    expect(problems, "pass { visibility: filterFor(reader) } to the query").toEqual([]);
   });
 });

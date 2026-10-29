@@ -26,6 +26,12 @@ export async function StatusPage({ app }: AppProps) {
   const data = await loadStatusPage({ db: ctx.db, askState: () => askStateFor(ctx) });
   if (data.status === "error") return <StatusLoadError />;
   return (
-    <StatusView data={data.sync} ask={data.ask} workspace={data.workspace} now={data.loadedAt} />
+    <StatusView
+      data={data.sync}
+      ask={data.ask}
+      workspace={data.workspace}
+      publicAccess={data.publicAccess}
+      now={data.loadedAt}
+    />
   );
 }

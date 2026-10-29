@@ -43,6 +43,18 @@ vi.mock("@docmyrepos/server/internal/admin/ask", () => ({
   }),
 }));
 
+vi.mock("@docmyrepos/server/internal/admin/public-access", () => ({
+  getPublicAccessAdminView: async () => ({
+    settings: {
+      searchEnabled: true,
+      askEnabled: false,
+      askQuestionsPerDay: 200,
+      askQuestionsPerTenMinutes: 20,
+    },
+    anyPublic: false,
+  }),
+}));
+
 vi.mock("@docmyrepos/server/internal/admin/service", () => ({
   getAdminRepos: async () => [
     {
@@ -51,6 +63,7 @@ vi.mock("@docmyrepos/server/internal/admin/service", () => ({
       name: "api",
       visibility: "public",
       isAllowed: true,
+      isPublic: false,
       starPosition: null,
       isStarred: false,
       folderId: null,
@@ -141,6 +154,11 @@ describe("/admin/workspace", () => {
     );
     expect(html).toMatch(/role="tab"[^>]*aria-selected="true"[^>]*data-testid="tab-repos"/);
     expect(html).toContain("acme/api");
+    // Public access: the switch on the row and the settings section above the list.
+    expect(html).toContain("Public access for acme/api");
+    expect(html).toContain("Allow search");
+    expect(html).toContain("Allow Ask the docs");
+    expect(html).toContain("Nothing is public yet");
   });
 
   it("holds Folders in their own tab, opens it for ?tab=folders, and says they are optional", async () => {

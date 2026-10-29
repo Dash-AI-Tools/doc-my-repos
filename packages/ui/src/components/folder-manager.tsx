@@ -15,6 +15,10 @@ export interface FolderRow {
   readonly description: string | null;
   readonly starPosition: number | null;
   readonly isStarred: boolean;
+  /** Every allowed repository in it is readable without signing in (public access). */
+  readonly isPublic: boolean;
+  /** Allowed repositories in it that are private on GitHub; shown as a note while it is public. */
+  readonly privateRepoCount?: number;
 }
 
 const NAME_MAX = 80;
@@ -131,6 +135,9 @@ export function FolderManager({
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [confirming, setConfirming] = useState<number | null>(null);
+  const [pendingPublic, setPendingPublic] = useState<{ folder: FolderRow; text: string } | null>(
+    null,
+  );
 
   const list = arrange(folders);
   const starred = list.filter((f) => f.isStarred);
@@ -181,6 +188,54 @@ export function FolderManager({
     setEditing(null);
     setNotice({ tone: "ok", text: `Saved ${data.folder.name}.` });
     router.refresh();
+  }
+
+  /**
+   * Turns public access for a folder on or off. A folder that holds repositories private on GitHub
+   * is refused with 409 until the admin confirms, because their documents become readable by anyone.
+   */
+  async function togglePublic(folder: FolderRow, confirmPrivate = false) {
+    setPendingPublic(null);
+    setBusy(true);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/admin/folders/${folder.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          isPublic: !folder.isPublic,
+          ...(confirmPrivate ? { confirmPrivate: true } : {}),
+        }),
+      });
+      if (response.status === 409) {
+        const data = (await response
+          .clone()
+          .json()
+          .catch(() => null)) as { code?: string; error?: string } | null;
+        if (data?.code === "confirm_private") {
+          setPendingPublic({
+            folder,
+            text: data.error ?? "This folder holds repositories that are private on GitHub.",
+          });
+          return;
+        }
+      }
+      if (!response.ok) {
+        setNotice({ tone: "error", text: await failureText(response) });
+        return;
+      }
+      const data = (await response.json()) as { folder: FolderRow };
+      replace({ ...folder, ...data.folder, privateRepoCount: folder.privateRepoCount });
+      setNotice({
+        tone: "ok",
+        text: `${folder.name} is ${data.folder.isPublic ? "public: anyone can read its repositories without signing in" : "no longer public"}.`,
+      });
+      router.refresh();
+    } catch {
+      setNotice({ tone: "error", text: "Could not reach the server." });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function toggleStar(folder: FolderRow) {
@@ -294,7 +349,15 @@ export function FolderManager({
                         ) : null}
                         <p className="text-sm text-muted-foreground tabular-nums">
                           {count} {count === 1 ? "repository" : "repositories"}
+                          {f.isPublic ? ", public" : ""}
                         </p>
+                        {f.isPublic && (f.privateRepoCount ?? 0) > 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            Holds {f.privateRepoCount}{" "}
+                            {f.privateRepoCount === 1 ? "repository" : "repositories"} private on
+                            GitHub, readable by anyone while this folder is public.
+                          </p>
+                        ) : null}
                       </div>
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                         {starIndex > 0 ? (
@@ -319,6 +382,18 @@ export function FolderManager({
                             Down
                           </button>
                         ) : null}
+                        <label className="inline-flex items-center gap-1.5 text-sm">
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            aria-label={`Public access for ${f.name}`}
+                            checked={f.isPublic}
+                            disabled={busy}
+                            onChange={() => void togglePublic(f)}
+                            className="size-4 accent-primary"
+                          />
+                          Public
+                        </label>
                         <button
                           type="button"
                           disabled={busy}
@@ -348,6 +423,30 @@ export function FolderManager({
                           </button>
                         )}
                       </div>
+                      {pendingPublic?.folder.id === f.id ? (
+                        <div
+                          role="alert"
+                          className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 border border-border p-3 text-sm"
+                        >
+                          <p className="max-w-prose">
+                            {pendingPublic.text}. Make {f.name} public?
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void togglePublic(f, true)}
+                            className={`${rowButton} font-medium`}
+                          >
+                            Confirm and make public
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPendingPublic(null)}
+                            className={rowButton}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : null}
                       {confirming === f.id ? (
                         <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                           <p>

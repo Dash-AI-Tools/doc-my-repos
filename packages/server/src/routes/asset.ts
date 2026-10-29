@@ -2,6 +2,7 @@ import type { RequestContext } from "../app/types";
 import { handleAssetRequest } from "../assets/serve";
 import type { RouteContext } from "./index";
 import { getAssetDeps } from "../assets/service";
+import { readerOf } from "../public-access/reader";
 
 /**
  * `GET|HEAD /api/asset/{owner}/{repo}/{path}`: the image proxy (task 7.5). Rendered documents
@@ -18,7 +19,7 @@ export function GET(
   _route: RouteContext | undefined,
   ctx: RequestContext,
 ): Promise<Response> {
-  return handleAssetRequest(request, () => getAssetDeps(ctx));
+  return handleAssetRequest(request, async () => getAssetDeps(ctx, await readerOf(ctx)));
 }
 
 export const HEAD = GET;

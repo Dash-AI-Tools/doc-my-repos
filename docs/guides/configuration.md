@@ -10,6 +10,9 @@ sources:
   - packages/server/src/workspace.ts
   - packages/server/src/settings/store.ts
   - packages/server/src/settings/crypto.ts
+  - packages/server/src/admin/repos.ts
+  - packages/server/src/admin/folders.ts
+  - packages/server/src/queries/visibility.ts
   - packages/server/src/sync/schedule-runtime.ts
   - .env.example
 generated: 2026-10-10
@@ -77,6 +80,19 @@ Every change is recorded with who made it and which fields changed (for a secret
 ### Unconfigured and upgrading
 
 A fresh install starts and serves. While the GitHub App is not configured, administrators see an info banner on the home page and the admin home. Clicking it opens `/admin/workspace` with a pop-up that lists the setup steps (the info button next to the page title reopens it any time). Nobody is redirected, and readers never see the banner. Until an admin enters the GitHub App, sync, webhooks and the image proxy report "not configured" (webhooks get a plain 401), and `/status` and the admin home name what is missing. The config file `docmyrepos.config.yml` and the variables `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET`, `AI_ANTHROPIC_API_KEY`, `AI_OPENAI_BASE_URL`, `AI_OPENAI_API_KEY` and `CONFIG_PATH` are **no longer read and are not imported**. Enter their values in the admin pages, then remove them; `/status` and the startup log name any that are still present (names only). The steps are in the [README](../../README.md#upgrading-from-the-config-file-and-environment-variables).
+
+## Public access
+
+By default the whole portal is behind the login. An admin can make chosen repositories readable by anyone, without signing in, on the **Repository access** and **Folders** tabs of `/admin/workspace`:
+
+- **Public** on a repository row makes that repository public.
+- **Public** on a folder makes every allowed repository in it public, including repositories added to the folder later.
+- Public access is separate from the repository's visibility on GitHub, and from **Block**: a blocked repository is hidden from everyone, public or not.
+- Signed-in users keep seeing every allowed repository. Public access only adds what a visitor without a session can read.
+
+Marking a repository that is **private on GitHub**, or a folder that holds one, asks for a confirmation that names how many such repositories are affected, because their documents become readable by anyone. The folder row keeps a note while a public folder holds private repositories. Turning a switch off needs no confirmation and applies to the next request.
+
+The same switches are available to scripts through the admin API (admin session only). `PATCH /api/admin/repos` takes `isPublic` for a repository and `PATCH /api/admin/folders/:id` takes `isPublic` for a folder; for anything that includes a repository private on GitHub the request also needs `confirmPrivate: true`, otherwise it answers `409` with `{ "code": "confirm_private", "privateRepos": n }` and changes nothing. Each change emits a `repo.public_changed` or `folder.public_changed` event (ids and the new state only).
 
 ## Environment variables
 

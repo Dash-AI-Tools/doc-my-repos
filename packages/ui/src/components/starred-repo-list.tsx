@@ -48,6 +48,7 @@ export interface StarredRepoListProps {
   readonly onToggleAllowed: (repo: RepoAccessRow) => void;
   readonly folders?: readonly FolderOption[];
   readonly onSetFolder?: (repo: RepoAccessRow, folderId: number | null) => void;
+  readonly onTogglePublic?: (repo: RepoAccessRow) => void;
 }
 
 const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
@@ -132,6 +133,7 @@ function SortableRow({ repo, index, count, onMove, ...actions }: SortableRowProp
         onToggleAllowed={actions.onToggleAllowed}
         folders={actions.folders}
         onSetFolder={actions.onSetFolder}
+        onTogglePublic={actions.onTogglePublic}
         handle={handle}
         moves={moves}
       />

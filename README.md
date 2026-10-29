@@ -57,6 +57,7 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 
 ## Features
 
+- **Public access (optional)**: an admin can make chosen repositories, or whole folders of repositories, readable without signing in, with anonymous search and Ask as separate switches. Off by default: nothing is public until an admin marks it (see [Public access](#public-access)).
 - **Per-repository space**: the main README, the code owners from `CODEOWNERS`, and a tree of the docs folder.
 - **Good-looking Markdown**: GitHub-flavored Markdown, syntax highlighting with Shiki, and [Mermaid](https://mermaid.js.org) diagrams. Documents are untrusted: output is sanitized and `.mdx` is never executed.
 - **Search**: full-text search across every synced repository (Postgres full-text search, weighted by title, headings, description and body), with highlighted snippets, facets and a `Ctrl/Cmd+K` palette.
@@ -180,7 +181,7 @@ You need a **GitHub App** first. Register and install it by following the [GitHu
 Requires Linux, macOS or WSL, `curl`, and Docker with Compose v2 running.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/v0.1.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/v0.2.0/install.sh | sh
 ```
 
 The script checks that Docker works, asks four questions in the terminal (install folder, port, first admin's email and password), generates every secret, writes a hardened `docker-compose.yml` and an owner-only `.env`, pulls the published image, starts the app and Postgres, and waits until the app is healthy. It never overwrites an existing installation and sends nothing anywhere except the image pull. Then:
@@ -190,7 +191,7 @@ The script checks that Docker works, asks four questions in the terminal (instal
 3. On **Repository access**, press **Run first sync**.
 4. Remove `ADMIN_EMAIL` and `ADMIN_PASSWORD` from `.env` and run `docker compose up -d`.
 
-`--dry-run` shows the plan and writes nothing, `--yes` with flags and `DOCMYREPOS_*` variables runs it without questions (`curl ... | sh -s -- --dry-run`), and you can read the script before running it (`curl -fsSLO <url> && less install.sh`). Replace `v0.1.0` with the release you want. To upgrade later, run the newer release's script with `--upgrade --dir <folder>`: it backs up the database, changes only the image in `.env`, restarts and waits for health. All flags, the files it writes and how to restore a backup are in the [install script guide](docs/guides/install-script.md). **Back up the generated `.env` with your database**: it holds the key that decrypts your stored secrets.
+`--dry-run` shows the plan and writes nothing, `--yes` with flags and `DOCMYREPOS_*` variables runs it without questions (`curl ... | sh -s -- --dry-run`), and you can read the script before running it (`curl -fsSLO <url> && less install.sh`). Replace `v0.2.0` with the release you want. To upgrade later, run the newer release's script with `--upgrade --dir <folder>`: it backs up the database, changes only the image in `.env`, restarts and waits for health. All flags, the files it writes and how to restore a backup are in the [install script guide](docs/guides/install-script.md). **Back up the generated `.env` with your database**: it holds the key that decrypts your stored secrets.
 
 ### With Docker Compose
 
@@ -257,6 +258,16 @@ Behavior is configured in the app, by admins, and by a few environment variables
 | Ask provider credentials                   | none                                | Anthropic key; OpenAI-compatible base URL (`https`, or `http` on a loopback address) and key. On the Ask page.                                                               |
 
 Files left out by the limits are listed as a warning in the repository header and on `/status`.
+
+### Public access
+
+By default every page is behind the login. On the **Repository access** and **Folders** tabs of `/admin/workspace` an admin can turn **Public** on for a repository, or for a folder (every allowed repository in it). A visitor without a session then sees the home page with only the public repositories and folders, can read their repositories, documents, API reference and images, and gets a **Sign in** button in the header. Everything else (status, admin, comments, tokens, MCP) still needs a login, and a repository that is not public cannot be told from one that does not exist: both send the visitor to sign in. With nothing public, `/` redirects to the login as before.
+
+- **Blocking wins.** A blocked repository is hidden from everyone, public or not. Signed-in users keep seeing every allowed repository.
+- **Private on GitHub.** Making public a repository that is private on GitHub, or a folder that holds one, asks for a confirmation that says how many are affected, because their documents become readable by anyone.
+- **Search** for anonymous visitors is on once something is public, and can be turned off. **Ask** for anonymous visitors is off by default and needs Ask itself turned on with a provider; every anonymous question is paid for by the portal, so the questions per day and per ten minutes are caps shared by all anonymous visitors. No question, answer or visitor address is stored.
+
+See [docs/guides/configuration.md](docs/guides/configuration.md#public-access).
 
 ### Upgrading from the config file and environment variables
 
@@ -386,6 +397,7 @@ Every document page has a **Comments** section where signed-in users start threa
 - **Reverse proxy.** The answer streams as server-sent events from `POST /api/ask`. The app sends `X-Accel-Buffering: no`; in nginx also set `proxy_buffering off;` for `/api/ask` and a `proxy_read_timeout` above 60 seconds. Rate-limit this path in the proxy too.
 - **Prompt injection and accuracy.** Documents are untrusted and may contain instructions for the model. Excerpts are passed as labelled data, the model has no tools, and the answer is rendered without images, HTML or links of its own, so an injected instruction can change the wording of an answer but cannot reach out. That is a reduction, not a guarantee: answers can be wrong or misleading, so check the references.
 - **Failures.** A provider error shows a short fixed message, never provider text or a key. If the saved choice loses its credentials, Ask hides itself, `/status` and the Ask tab name the missing setting, and the rest of the portal keeps working.
+- **Visitors without an account.** When an admin has [made repositories public](#public-access) and turned on **Allow Ask the docs** on the Repository access tab, visitors who are not signed in can ask too, answered from the public repositories only. Anonymous questions share two caps set there (per day and per ten minutes, 200 and 20 by default), so a busy day cannot cost more than you chose. Nothing about the visitor or the question is stored: only a count and an outcome.
 
 ## AI agent access
 
@@ -490,7 +502,7 @@ The R key is ignored while you type in a field, while a dialog or the search pal
 Docs come from third-party repositories and are treated as untrusted. See [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 - **Read-only GitHub App.** Contents and Metadata, read-only. Installation tokens are short-lived, cached and refreshed. The private key, tokens and secrets never reach the browser, the logs or error messages.
-- **Login, no per-repository access.** The portal is single-tenant and behind a login with the `admin` and `user` roles. Every signed-in user can read every repository an admin has made visible, including private ones, so install the App only on repositories you want shown and block the rest under **Admin**. Private repositories are marked with a badge, and the app records each repository's visibility so per-user access can be added later.
+- **Login, no per-repository access.** The portal is single-tenant and behind a login with the `admin` and `user` roles. Every signed-in user can read every repository an admin has made visible, including private ones, so install the App only on repositories you want shown and block the rest under **Admin**. Private repositories are marked with a badge, and the app records each repository's visibility so per-user access can be added later. The one exception is what an admin marks **Public** ([Public access](#public-access)): that is readable by anyone, and nothing is public by default.
 - **Sanitized rendering.** HTML is sanitized after every rehype transform; `.mdx` is never executed; Mermaid runs with `securityLevel: 'strict'`.
 - **Verified inputs.** Webhook signatures are checked against the raw body; `/api/sync` needs `SYNC_SECRET`; `/api/asset` only serves image content types from inside a configured repository and blocks path traversal.
 - **Security headers and CSP** are set by the app (`src/proxy.ts`, values in `packages/core/src/security-headers.ts`) and need no help from the proxy:

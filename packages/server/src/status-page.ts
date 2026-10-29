@@ -1,11 +1,14 @@
 import "server-only";
 
 import { getAskState, type AskState } from "./ask/settings";
+import { readPublicAccessSettings } from "./public-access/settings";
+import { anonymousReposOnly } from "./queries/visibility";
+import type { PublicAccessStatusInput } from "@docmyrepos/core/internal/public-access-status";
 import type { WorkspaceStatusInput } from "@docmyrepos/core/internal/workspace-status";
 import { currentWorkspaceState } from "./workspace-state";
 import type { DbSource } from "./db/client";
 import { expectedFailureKind } from "./home";
-import { getSyncStatus, type QueryOptions, type SyncStatus } from "./queries";
+import { getSyncStatus, listRepoIds, type QueryOptions, type SyncStatus } from "./queries";
 import { logger, type LogFn } from "./log";
 
 /**
@@ -23,6 +26,8 @@ export type StatusPageData =
       readonly ask: AskState;
       /** Null when the settings could not be read; the section is then left out. */
       readonly workspace: WorkspaceStatusInput | null;
+      /** Null when public access could not be read; the section is then left out. */
+      readonly publicAccess: PublicAccessStatusInput | null;
       readonly loadedAt: Date;
     }
   | { readonly status: "error"; readonly loadedAt: Date };
@@ -39,6 +44,22 @@ export interface StatusPageDeps {
   readonly askState?: () => Promise<AskState>;
   /** What is missing or unreadable in the workspace. Default: the current workspace. */
   readonly workspaceState?: () => Promise<WorkspaceStatusInput>;
+  /** Whether anything is public and what anonymous visitors may do. Default: read from the database. */
+  readonly publicAccessState?: () => Promise<PublicAccessStatusInput>;
+}
+
+/** Public access as the status page shows it: whether anything is public, and the two switches. */
+async function readPublicAccessStatus(db: DbSource): Promise<PublicAccessStatusInput> {
+  const handle = await db();
+  const [settings, ids] = await Promise.all([
+    readPublicAccessSettings(handle),
+    listRepoIds(handle, { visibility: anonymousReposOnly }),
+  ]);
+  return {
+    anyPublic: ids.length > 0,
+    searchEnabled: settings.searchEnabled,
+    askEnabled: settings.askEnabled,
+  };
 }
 
 export async function loadStatusPage(deps: StatusPageDeps): Promise<StatusPageData> {
@@ -49,7 +70,10 @@ export async function loadStatusPage(deps: StatusPageDeps): Promise<StatusPageDa
     const sync = await getSyncStatus(await db(), {}, deps.options);
     const ask = await (deps.askState ?? (async () => getAskState(await deps.db())))();
     const workspace = await (deps.workspaceState ?? currentWorkspaceState)().catch(() => null);
-    return { status: "ok", sync, ask, workspace, loadedAt: now() };
+    const publicAccess = await (
+      deps.publicAccessState ?? (() => readPublicAccessStatus(deps.db))
+    )().catch(() => null);
+    return { status: "ok", sync, ask, workspace, publicAccess, loadedAt: now() };
   } catch (error) {
     const kind = expectedFailureKind(error);
     if (kind === null) throw error;

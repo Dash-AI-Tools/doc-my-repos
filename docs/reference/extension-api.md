@@ -395,25 +395,27 @@ The proxy lets `/api/plugins/<id>/public/...` and `/-/<id>/public/...` through w
 
 Payloads carry ids and counts only, never document content, search queries, comment text, prompts, answers, email addresses or secrets.
 
-| Event                  | When                                                   | Payload                                                        |
-| ---------------------- | ------------------------------------------------------ | -------------------------------------------------------------- |
-| `sync.completed`       | A repository synced                                    | `githubRepoId`, `trigger`, `added`, `changed`, `removed`       |
-| `sync.failed`          | A repository's sync failed                             | `githubRepoId`, `trigger`, `reason` (a fixed kind, no message) |
-| `auth.login_succeeded` | A password sign-in succeeded                           | `userId`                                                       |
-| `auth.login_failed`    | A password sign-in failed                              | none                                                           |
-| `auth.logout`          | Someone signed out                                     | `userId`, or `null` when nobody was signed in                  |
-| `user.created`         | An admin created a user                                | `userId`, `role`                                               |
-| `user.updated`         | An admin changed a user                                | `userId`, `fields` (names of the changed fields)               |
-| `token.created`        | Someone created an API token                           | `tokenId`, `ownerId`                                           |
-| `token.revoked`        | A token was revoked (not when it already was)          | `tokenId`, `ownerId`                                           |
-| `settings.updated`     | An admin saved the workspace settings                  | `version`, `sections` (names of the changed sections)          |
-| `branding.updated`     | An admin changed or reset the branding                 | `logoChanged`                                                  |
-| `repo.access_changed`  | An admin allowed or blocked a repository               | `githubRepoId`, `allowed`                                      |
-| `comment.created`      | Someone posted a comment or a reply                    | `commentId`, `githubRepoId`, `asOrganization`, `reply`         |
-| `comment.deleted`      | A comment was deleted, by its author or by a moderator | `commentId`, `githubRepoId`, `byModerator`                     |
-| `search.performed`     | Someone searched                                       | `resultCount`, `scoped`                                        |
-| `ask.answered`         | Ask answered a question                                | `provider`, `inputTokens`, `outputTokens` (every model call)   |
-| `mcp.tool_called`      | An agent called an MCP tool                            | `tool`, `outcome` (`ok` or `error`)                            |
+| Event                   | When                                                   | Payload                                                        |
+| ----------------------- | ------------------------------------------------------ | -------------------------------------------------------------- |
+| `sync.completed`        | A repository synced                                    | `githubRepoId`, `trigger`, `added`, `changed`, `removed`       |
+| `sync.failed`           | A repository's sync failed                             | `githubRepoId`, `trigger`, `reason` (a fixed kind, no message) |
+| `auth.login_succeeded`  | A password sign-in succeeded                           | `userId`                                                       |
+| `auth.login_failed`     | A password sign-in failed                              | none                                                           |
+| `auth.logout`           | Someone signed out                                     | `userId`, or `null` when nobody was signed in                  |
+| `user.created`          | An admin created a user                                | `userId`, `role`                                               |
+| `user.updated`          | An admin changed a user                                | `userId`, `fields` (names of the changed fields)               |
+| `token.created`         | Someone created an API token                           | `tokenId`, `ownerId`                                           |
+| `token.revoked`         | A token was revoked (not when it already was)          | `tokenId`, `ownerId`                                           |
+| `settings.updated`      | An admin saved the workspace settings                  | `version`, `sections` (names of the changed sections)          |
+| `branding.updated`      | An admin changed or reset the branding                 | `logoChanged`                                                  |
+| `repo.access_changed`   | An admin allowed or blocked a repository               | `githubRepoId`, `allowed`                                      |
+| `repo.public_changed`   | An admin changed whether a repository is public        | `githubRepoId`, `public`                                       |
+| `folder.public_changed` | An admin changed whether a folder is public            | `folderId`, `public`                                           |
+| `comment.created`       | Someone posted a comment or a reply                    | `commentId`, `githubRepoId`, `asOrganization`, `reply`         |
+| `comment.deleted`       | A comment was deleted, by its author or by a moderator | `commentId`, `githubRepoId`, `byModerator`                     |
+| `search.performed`      | Someone searched                                       | `resultCount`, `scoped`                                        |
+| `ask.answered`          | Ask answered a question                                | `provider`, `inputTokens`, `outputTokens` (every model call)   |
+| `mcp.tool_called`       | An agent called an MCP tool                            | `tool`, `outcome` (`ok` or `error`)                            |
 
 Delivery:
 

@@ -16,7 +16,7 @@ import {
 } from "@docmyrepos/core/internal/toc-filters";
 
 import type { Db } from "./db/client";
-import { getRepoFacets, type RepoDetail } from "./queries";
+import { getRepoFacets, type QueryOptions, type RepoDetail } from "./queries";
 
 /**
  * The table of contents of a repository page or a document page with the type, tag and status
@@ -48,6 +48,7 @@ export async function loadToc(
   state: TocFilterState,
   keepPath: string | null = null,
   view: NavView = "okf",
+  options: QueryOptions = {},
 ): Promise<TocLoad> {
   if (!repo.isOkf) return { tree: buildDocsTree(rows, repo.docsPath), toc: null, view: null };
   if (view === "tree") return { tree: buildPathTree(rows, repo.docsPath), toc: null, view };
@@ -55,6 +56,7 @@ export async function loadToc(
     db,
     { id: repo.id },
     { type: state.types, tag: state.tags, status: state.statuses },
+    options,
   );
   const shown = hasTocFilters(state) ? filterDocsRows(rows, state, keepPath) : rows;
   return {

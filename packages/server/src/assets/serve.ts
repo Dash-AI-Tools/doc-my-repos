@@ -42,11 +42,10 @@ import { parseAssetTarget, rawAssetSegments } from "./path";
  * response, errors included, carries `X-Content-Type-Options: nosniff`,
  * `Content-Security-Policy: default-src 'none'; sandbox` (SVG also `style-src 'unsafe-inline'`),
  * `Cross-Origin-Resource-Policy: same-origin` and `Referrer-Policy: no-referrer`. Images get a
- * strong `ETag` (SHA-256 of the bytes) and answer `If-None-Match` with 304. Cache headers follow
- * the stored visibility: `public, max-age=300, stale-while-revalidate=600` for public
- * repositories, `private, max-age=300` for private ones, so no shared cache ever stores a private
- * image. No `Vary`: the bytes depend on the URL alone. Errors are `no-store` with a fixed
- * plain-text body.
+ * strong `ETag` (SHA-256 of the bytes) and answer `If-None-Match` with 304. Every image is
+ * `private, max-age=300`: whether a visitor may have it depends on who they are (a signed-in user
+ * may read a repository that is not public), so no shared cache ever stores one, even of a
+ * repository that is public on GitHub. Errors are `no-store` with a fixed plain-text body.
  *
  * Credentials. The installation token stays inside the GitHub client: it is never in a response,
  * a header, an error or a log line. Upstream response bodies and headers are never forwarded,
@@ -164,22 +163,24 @@ export function etagMatches(ifNoneMatch: string | null, etag: string): boolean {
     .some((t) => t === "*" || bare(t) === bare(etag));
 }
 
-function cacheControl(visibility: AssetRepo["visibility"]): string {
-  return visibility === "public"
-    ? `public, max-age=${ASSET_MAX_AGE_SECONDS}, stale-while-revalidate=${ASSET_MAX_AGE_SECONDS * 2}`
-    : `private, max-age=${ASSET_MAX_AGE_SECONDS}`;
+/**
+ * Always `private`: what an image answers depends on who is asking (a signed-in user may read a
+ * repository that is not public), so a shared cache must never store it, even for a repository
+ * that is public on GitHub. Browsers still reuse it for the max age.
+ */
+function cacheControl(): string {
+  return `private, max-age=${ASSET_MAX_AGE_SECONDS}`;
 }
 
 function imageResponse(
   method: string,
   ifNoneMatch: string | null,
   outcome: Extract<AssetOutcome, { kind: "image" }>,
-  repo: AssetRepo,
 ): AssetResponse {
   const common = {
     ...securityHeaders(outcome.type === "svg" ? SVG_CSP : BASE_CSP),
     etag: outcome.etag,
-    "cache-control": cacheControl(repo.visibility),
+    "cache-control": cacheControl(),
   };
   if (etagMatches(ifNoneMatch, outcome.etag)) {
     return { status: 304, headers: common, body: null };
@@ -370,7 +371,7 @@ export async function serveAsset(
     log.debug("asset.served", { githubId: repo.githubId, httpStatus: outcome.status, cached });
     return errorResponse(outcome.status, method);
   }
-  const response = imageResponse(method, request.headers.get("if-none-match"), outcome, repo);
+  const response = imageResponse(method, request.headers.get("if-none-match"), outcome);
   log.debug("asset.served", { githubId: repo.githubId, httpStatus: response.status, cached });
   return response;
 }

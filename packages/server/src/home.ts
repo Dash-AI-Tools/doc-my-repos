@@ -3,6 +3,7 @@ import "server-only";
 import { ConfigError } from "./config/errors";
 import { describeDbError, type DbSource } from "./db/client";
 import { listFolders, listRepos, type FolderSummary, type RepoSummary } from "./queries";
+import { MEMBER, filterFor, type Reader } from "./queries/visibility";
 import { logger, type LogFn } from "./log";
 
 /**
@@ -64,6 +65,11 @@ export interface HomeDeps {
   readonly now?: () => Date;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
   readonly log?: LogFn;
+  /**
+   * Who is reading. A signed-in user (the default) sees every allowed repository and every folder;
+   * an anonymous visitor sees only the public repositories and the public folders (public access).
+   */
+  readonly reader?: Reader;
 }
 
 const UNKNOWN_DB_ERROR = describeDbError(undefined);
@@ -130,8 +136,21 @@ export async function loadHome(deps: HomeDeps, folderId?: number): Promise<HomeD
   const db = deps.db;
   try {
     // Visibility is already applied by `listRepos`, so a blocked starred repo never gets here.
-    const all = await listRepos(await db());
-    const folders = await listFolders(await db());
+    const reader = deps.reader ?? MEMBER;
+    const visibility = filterFor(reader);
+    const listed = await listRepos(await db(), {}, { visibility });
+    if (reader.kind === "member") {
+      const folders = await listFolders(await db());
+      return { status: "ok", ...groupHome(listed, folders, folderId), loadedAt: now() };
+    }
+    // An anonymous visitor is told about public folders only. A public repository that sits in a
+    // folder that is not public is listed with the others, carrying no folder at all, so the
+    // folder's existence, name and description never reach the page.
+    const folders = await listFolders(await db(), { publicOnly: true });
+    const shown = new Set(folders.map((f) => f.id));
+    const all = listed.map((r) =>
+      r.folderId !== null && !shown.has(r.folderId) ? { ...r, folderId: null } : r,
+    );
     return { status: "ok", ...groupHome(all, folders, folderId), loadedAt: now() };
   } catch (error) {
     const kind = expectedFailureKind(error);

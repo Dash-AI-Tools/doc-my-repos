@@ -35,6 +35,7 @@ import { anchorId } from "./markdown/sanitize";
 import { getDocsTree, getDocumentByPath, getRepo, type DocumentDetail } from "./queries";
 import type { RepoDetail } from "./queries";
 import { isRepoRoute } from "./repo-page";
+import { MEMBER, filterFor, type Reader } from "./queries/visibility";
 import { loadToc } from "./toc-data";
 import { logger, type LogFn } from "./log";
 
@@ -125,6 +126,11 @@ export interface DocPageDeps {
   readonly now?: () => Date;
   /** Structured log (fixed event names, safe fields only). Default: `logger.error`. */
   readonly log?: LogFn;
+  /**
+   * Who is reading (public access). Default: a signed-in user, who sees every allowed repository.
+   * An anonymous visitor reads through the anonymous filter, so only public repositories exist.
+   */
+  readonly reader?: Reader;
   /** Default: `renderMarkdown`. Replaceable in tests to prove the failure fallback. */
   readonly render?: (
     source: string,
@@ -162,14 +168,15 @@ export async function loadDocPage(
   const render = deps.render ?? renderMarkdown;
   try {
     const handle = await db();
-    const repo = await getRepo(handle, owner, name);
+    const options = { visibility: filterFor(deps.reader ?? MEMBER) };
+    const repo = await getRepo(handle, owner, name, options);
     if (repo === null) return { status: "not_found" };
     const candidates = docPathCandidates(repo.docsPath, segments);
     if (candidates.length === 0) return { status: "not_found" };
 
     const [found, rows] = await Promise.all([
-      getDocumentByPath(handle, { id: repo.id }, candidates),
-      getDocsTree(handle, { id: repo.id }),
+      getDocumentByPath(handle, { id: repo.id }, candidates, options),
+      getDocsTree(handle, { id: repo.id }, options),
     ]);
     const tree = buildDocsTree(rows, repo.docsPath);
 
@@ -192,7 +199,7 @@ export async function loadDocPage(
       log,
     });
     const nav = repo.isOkf
-      ? await loadToc(handle, repo, rows, filters, found.path, view)
+      ? await loadToc(handle, repo, rows, filters, found.path, view, options)
       : { tree, toc: null, view: null };
     const around = adjacentInTree(nav.view === "tree" ? nav.tree : tree, found.path);
     return {

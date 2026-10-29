@@ -5,6 +5,10 @@ import {
   workspaceStatusLine,
   type WorkspaceStatusInput,
 } from "@docmyrepos/core/internal/workspace-status";
+import {
+  publicAccessStatusLine,
+  type PublicAccessStatusInput,
+} from "@docmyrepos/core/internal/public-access-status";
 import { repoUrl } from "@docmyrepos/core/internal/routes";
 import {
   formatDuration,
@@ -183,6 +187,31 @@ function AskStatus({ ask }: { readonly ask: AskStatusInput }) {
   );
 }
 
+function PublicAccessStatus({ publicAccess }: { readonly publicAccess: PublicAccessStatusInput }) {
+  const line = publicAccessStatusLine(publicAccess);
+  return (
+    <section aria-labelledby="status-public-heading" className="flex flex-col gap-3">
+      <h2 id="status-public-heading" className="text-xl font-semibold">
+        Public access
+      </h2>
+      <p data-testid="status-public" className="flex flex-wrap items-center gap-2 text-sm">
+        {line.tone === "neutral" ? (
+          <span
+            data-testid="status-public-state"
+            data-tone="neutral"
+            className={`${CHIP} bg-muted text-muted-foreground`}
+          >
+            {line.label}
+          </span>
+        ) : (
+          <Chip tone="success" label={line.label} testId="status-public-state" />
+        )}
+        <span data-testid="status-public-detail">{line.detail}</span>
+      </p>
+    </section>
+  );
+}
+
 function WorkspaceStatus({ workspace }: { readonly workspace: WorkspaceStatusInput }) {
   const line = workspaceStatusLine(workspace);
   return (
@@ -213,11 +242,13 @@ export function StatusView({
   data,
   ask,
   workspace,
+  publicAccess,
   now,
 }: {
   readonly data: StatusViewData;
   readonly ask?: AskStatusInput;
   readonly workspace?: WorkspaceStatusInput | null;
+  readonly publicAccess?: PublicAccessStatusInput | null;
   readonly now: Date;
 }) {
   const by = data.reposByStatus;
@@ -252,6 +283,8 @@ export function StatusView({
       {workspace ? <WorkspaceStatus workspace={workspace} /> : null}
 
       {ask ? <AskStatus ask={ask} /> : null}
+
+      {publicAccess ? <PublicAccessStatus publicAccess={publicAccess} /> : null}
 
       <section aria-labelledby="status-repos-heading" className="flex flex-col gap-3">
         <h2 id="status-repos-heading" className="text-xl font-semibold">

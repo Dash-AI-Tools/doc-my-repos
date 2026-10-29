@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 
 import { ChangeLog } from "../components/change-log";
@@ -32,7 +32,8 @@ import { loadDocPage, type DocPageOk } from "@docmyrepos/server/internal/doc-pag
 import { readNavView } from "@docmyrepos/server/internal/nav-view";
 import type { RequestContext } from "@docmyrepos/server";
 import type { AppProps } from "../bind-page";
-import { pageContext } from "../page-context";
+import type { Reader } from "@docmyrepos/server/internal/public-access/reader";
+import { deny, readerContext } from "../page-context";
 import { contextAccess } from "@docmyrepos/server/internal/auth/access";
 import { commentsEnabled } from "@docmyrepos/server/internal/workspace";
 
@@ -95,6 +96,7 @@ function decodeSegments(raw: readonly string[]): string[] | null {
 const load = cache(
   (
     ctx: RequestContext,
+    reader: Reader,
     owner: string,
     repo: string,
     key: string,
@@ -105,7 +107,7 @@ const load = cache(
       owner,
       repo,
       JSON.parse(key) as string[],
-      { db: ctx.db },
+      { db: ctx.db, reader },
       parseTocFilters(new URLSearchParams(filterQuery)),
       view,
     ),
@@ -118,11 +120,12 @@ const load = cache(
  */
 const loadFor = async (
   ctx: RequestContext,
+  reader: Reader,
   owner: string,
   repo: string,
   segments: readonly string[],
   filterQuery: string,
-) => load(ctx, owner, repo, JSON.stringify(segments), filterQuery, await readNavView());
+) => load(ctx, reader, owner, repo, JSON.stringify(segments), filterQuery, await readNavView());
 
 export async function generateMetadata({
   app,
@@ -134,8 +137,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { owner, repo, path } = await params;
   // The title comes from the stored document, never from the address as typed.
+  const { ctx, reader } = await readerContext(app, "content");
   const data = await loadFor(
-    await pageContext(app),
+    ctx,
+    reader,
     owner,
     repo,
     path,
@@ -175,13 +180,14 @@ export async function DocPage({
   params: Params;
   searchParams: SearchParams;
 }) {
-  const ctx = await pageContext(app);
+  const { ctx, reader } = await readerContext(app, "content");
   const { owner, repo: name, path: rawPath } = await params;
   const path = decodeSegments(rawPath);
-  if (path === null) notFound();
+  if (path === null) deny(reader);
   const filterQuery = buildFilterQuery(parseTocFilters(await searchParams));
-  const data = await loadFor(ctx, owner, name, path, filterQuery);
-  if (data.status === "not_found") notFound();
+  const data = await loadFor(ctx, reader, owner, name, path, filterQuery);
+  // A document that does not exist and one in a repository that is not public look the same.
+  if (data.status === "not_found") deny(reader);
   // A redirect to the canonical address keeps the filters of the sidebar.
   if (data.status === "redirect") redirect(withFilterQuery(data.to, filterQuery));
   if (data.status === "error") {
