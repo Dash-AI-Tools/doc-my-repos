@@ -25,7 +25,7 @@ interface Step {
   name?: string;
   id?: string;
   env?: Record<string, string>;
-  with?: Record<string, string>;
+  with?: Record<string, string | boolean>;
 }
 interface Job {
   if?: string;
@@ -42,6 +42,7 @@ const doc = parse(text) as {
 };
 const image = doc.jobs.image as Job;
 const packages = doc.jobs.packages as Job;
+const githubRelease = doc.jobs["github-release"] as Job;
 const steps = image.steps ?? [];
 const indexOf = (predicate: (s: Step) => boolean) => steps.findIndex(predicate);
 
@@ -59,6 +60,7 @@ describe("release workflow trigger and scope", () => {
     expect(doc.jobs.versions?.if).toBe(GUARD);
     expect(image.if).toBe(GUARD);
     expect(packages.if).toBe(GUARD);
+    expect(githubRelease.if).toBe(GUARD);
     expect(needs(doc.jobs.ci as Job)).toContain("versions");
   });
 
@@ -69,12 +71,15 @@ describe("release workflow trigger and scope", () => {
 });
 
 describe("release workflow permissions", () => {
-  it("is read-only by default; only the image job writes packages, only the npm job mints an OIDC token", () => {
+  it("is read-only by default; image writes packages, github-release writes contents, npm mints OIDC", () => {
     expect(doc.permissions).toEqual({ contents: "read" });
     expect(image.permissions).toEqual({ contents: "read", packages: "write" });
+    expect(githubRelease.permissions).toEqual({ contents: "write" });
     expect(packages.permissions).toEqual({ contents: "read", "id-token": "write" });
     for (const [name, job] of Object.entries(doc.jobs)) {
-      if (name !== "image" && name !== "packages") expect(job.permissions, name).toBeUndefined();
+      if (name !== "image" && name !== "packages" && name !== "github-release") {
+        expect(job.permissions, name).toBeUndefined();
+      }
     }
   });
 
@@ -103,6 +108,7 @@ describe("release workflow order", () => {
 
   it("is gated by the release environment", () => {
     expect(image.environment).toBe("release");
+    expect(githubRelease.environment).toBe("release");
   });
 
   it("logs in with the workflow token, then refuses an existing version, then builds", () => {
@@ -116,6 +122,24 @@ describe("release workflow order", () => {
     expect(steps[login]?.with?.password).toBe("${{ secrets.GITHUB_TOKEN }}");
     expect(steps[guard]?.run).toContain("imagetools inspect");
     expect(steps[guard]?.run).toContain("exit 1");
+  });
+});
+
+describe("release workflow GitHub Release", () => {
+  const releaseSteps = githubRelease.steps ?? [];
+
+  it("creates the Release after the image is published so the one-liner can pull it", () => {
+    expect(needs(githubRelease)).toEqual(expect.arrayContaining(["versions", "ci", "image"]));
+  });
+
+  it("attaches install.sh and fills the body from CHANGELOG.md", () => {
+    const notes = releaseSteps.find((s) => s.run?.includes("release-notes.sh"));
+    expect(notes?.run).toContain('scripts/release-notes.sh "$VERSION" --output release-notes.md');
+    const create = releaseSteps.find((s) => s.uses?.startsWith("softprops/action-gh-release@"));
+    expect(create?.with?.files).toBe("install.sh");
+    expect(create?.with?.body_path).toBe("release-notes.md");
+    expect(create?.with?.fail_on_unmatched_files).toBe(true);
+    expect(create?.with?.draft).toBe(false);
   });
 });
 

@@ -177,10 +177,12 @@ You need a **GitHub App** first. Register and install it by following the [GitHu
 
 ### With the install script (recommended)
 
-Requires Linux, macOS or WSL, `curl`, and Docker with Compose v2 running.
+Requires Linux, macOS or WSL, `curl`, and Docker with Compose v2 running. The URL is the
+`install.sh` asset on the [GitHub Release](https://github.com/Dash-AI-Tools/doc-my-repos/releases);
+it pulls `ghcr.io/dash-ai-tools/doc-my-repos:0.1.0`.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/v0.1.0/install.sh | sh
+curl -fsSL https://github.com/Dash-AI-Tools/doc-my-repos/releases/download/v0.1.0/install.sh | sh
 ```
 
 The script checks that Docker works, asks four questions in the terminal (install folder, port, first admin's email and password), generates every secret, writes a hardened `docker-compose.yml` and an owner-only `.env`, pulls the published image, starts the app and Postgres, and waits until the app is healthy. It never overwrites an existing installation and sends nothing anywhere except the image pull. Then:
@@ -192,9 +194,15 @@ The script checks that Docker works, asks four questions in the terminal (instal
 
 `--dry-run` shows the plan and writes nothing, `--yes` with flags and `DOCMYREPOS_*` variables runs it without questions (`curl ... | sh -s -- --dry-run`), and you can read the script before running it (`curl -fsSLO <url> && less install.sh`). Replace `v0.1.0` with the release you want. To upgrade later, run the newer release's script with `--upgrade --dir <folder>`: it backs up the database, changes only the image in `.env`, restarts and waits for health. All flags, the files it writes and how to restore a backup are in the [install script guide](docs/guides/install-script.md). **Back up the generated `.env` with your database**: it holds the key that decrypts your stored secrets.
 
+If the image pull fails with unauthorized or not found, the GHCR package may still be private: a
+maintainer must set **Package settings → Change visibility → Public** on
+`ghcr.io/dash-ai-tools/doc-my-repos` after the first publish.
+
 ### With Docker Compose
 
-Requires Docker with Compose. This is the path for working from a clone of the repository.
+Requires Docker with Compose. Use this path when you have a clone of the repository.
+
+**Build from source** (default for development and for trying unreleased commits):
 
 ```bash
 git clone https://github.com/Dash-AI-Tools/doc-my-repos.git
@@ -202,8 +210,21 @@ cd doc-my-repos
 cp .env.example .env
 # edit .env: set SETTINGS_ENCRYPTION_KEY (openssl rand -base64 32), SYNC_SECRET and
 # SESSION_SECRET, plus ADMIN_EMAIL and ADMIN_PASSWORD for the first admin login
-docker compose up -d --build --wait    # app + Postgres 17; the app applies the migrations on start
+docker compose up -d --build --wait    # builds the app, starts Postgres 17; migrations run on start
 ```
+
+**Use the published image** (no local build; same `.env` as above):
+
+```bash
+git clone https://github.com/Dash-AI-Tools/doc-my-repos.git
+cd doc-my-repos
+cp .env.example .env   # set the same secrets as above
+docker compose pull app && docker compose up -d --wait
+```
+
+`docker-compose.yml` defaults to `ghcr.io/dash-ai-tools/doc-my-repos:0.1.0`. Override with
+`DOCMYREPOS_IMAGE` (see `.env.example`). `--build` always rebuilds from the checkout and tags the
+result with that image name.
 
 Open <http://127.0.0.1:3000>. The portal is behind a login: sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`, which create the first admin the first time you log in while no users exist (then remove both from `.env`). Next, you are taken to **Admin > Workspace configuration**, where a pop-up lists the steps:
 
@@ -290,9 +311,16 @@ Never set `E2E_FIXTURES`: it turns the server into a database-less fixture serve
 
 ## Self-hosting
 
-The [`Dockerfile`](Dockerfile) builds a small production image (multi-stage, Node 24 on Alpine, runs as the non-root `node` user) and [`docker-compose.yml`](docker-compose.yml) runs it with Postgres 17. The image holds no secrets and no config: the environment holds the few startup settings and everything else is stored in the database. For a bare image:
+The [`Dockerfile`](Dockerfile) builds a small production image (multi-stage, Node 24 on Alpine, runs as the non-root `node` user) and [`docker-compose.yml`](docker-compose.yml) runs it with Postgres 17. Released tags are published to `ghcr.io/dash-ai-tools/doc-my-repos` (multi-arch). The image holds no secrets and no config: the environment holds the few startup settings and everything else is stored in the database. For a bare image:
 
 ```bash
+# published
+docker pull ghcr.io/dash-ai-tools/doc-my-repos:0.1.0
+docker run -d --init --name docmyrepos -p 127.0.0.1:3000:3000 --env-file .env \
+  -e DATABASE_URL=postgres://user:password@db.example.com:5432/docmyrepos \
+  ghcr.io/dash-ai-tools/doc-my-repos:0.1.0
+
+# or build locally
 docker build -t docmyrepos .
 docker run -d --init --name docmyrepos -p 127.0.0.1:3000:3000 --env-file .env \
   -e DATABASE_URL=postgres://user:password@db.example.com:5432/docmyrepos docmyrepos
@@ -333,7 +361,7 @@ location / {
 - **Scheduler:** it runs the startup and periodic full syncs (with ±10 % jitter, retrying failures sooner with backoff up to 15 minutes) and, every minute, any per-repository syncs left waiting by busy repositories or a restart. With several instances only one runs a scheduled full sync at a time. `SYNC_SCHEDULER=0` turns it off.
 - **Logs:** one JSON object per line, `debug` and `info` on stdout, `warn` and `error` on stderr (`docker compose logs app`). Event names are stable dotted names such as `sync.run.finished`, `webhook.received` and `sync.discovery.failed`. Keep `LOG_LEVEL` at `info` or above in production. Credentials, request bodies, error messages and stacks are never logged, and the logger redacts anything that looks like a secret.
 - **Backups:** documents and repositories are derived from GitHub, so a lost database is rebuilt by a full sync (the sync history is lost), but users, settings and [comments](#comments) are not and cannot be rebuilt. To keep them: `docker compose exec db pg_dump -U docmyrepos docmyrepos > backup.sql`.
-- **Upgrading:** `git pull && docker compose up -d --build`. The new container applies pending migrations before it serves. To roll back, redeploy the previous image; migrations are forward-only, so take a backup first.
+- **Upgrading:** from a clone, `git pull && docker compose up -d --build`. With the published image, set `DOCMYREPOS_IMAGE` to the new tag (or use the new release's `install.sh --upgrade`) then `docker compose pull app && docker compose up -d --wait`. The new container applies pending migrations before it serves. To roll back, redeploy the previous image; migrations are forward-only, so take a backup first.
 - **Several replicas:** point them all at one database. Migrations are serialized by the advisory lock (or set `SKIP_MIGRATIONS=1` on all but one, or migrate once with `docker compose run --rm --no-deps --entrypoint node app dist/db-migrate.mjs`). Repository syncs never overlap across replicas.
 - **Rotating secrets:** see the [setup guide](docs/github-app-setup.md#rotating).
 
@@ -530,12 +558,9 @@ openspec validate --all
 
 ## Project status and roadmap
 
-The MVP is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) in [`openspec/changes/archive/2026-10-14-docmyrepos-mvp/`](openspec/changes/archive/2026-10-14-docmyrepos-mvp/) (proposal, nine capability specs, design and the task list), and the application is implemented. What is still open before a first release:
+**v0.1.0** is the first public open-source release. See [CHANGELOG.md](CHANGELOG.md). The MVP is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) in [`openspec/changes/archive/`](openspec/changes/archive/) and implemented on `main`.
 
-- The [GitHub App setup guide](docs/github-app-setup.md) has not been walked through end to end on a real organization yet (its last section lists what to confirm).
-- CI has been validated locally but its first run on a pull request is pending, and the Docker image is only verified on arm64 locally (CI builds amd64).
-
-Out of scope for the MVP, and candidates for later: GitHub OAuth login and per-user access to private repositories, an in-app repository picker, multi-tenancy, and editing documents in the UI.
+Out of scope for v0.1.0, and candidates for later: GitHub OAuth login and per-user access to private repositories, an in-app repository picker, multi-tenancy, and editing documents in the UI.
 
 ## Contributing, conduct and license
 

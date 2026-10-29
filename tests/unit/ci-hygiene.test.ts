@@ -77,17 +77,19 @@ describe("workflow files", () => {
     }
   });
 
-  // The only write grants in the repository: the release workflow's image job pushes to GHCR with
-  // the workflow token. Nothing else, and nowhere else (tests/unit/release-workflow.test.ts).
+  // The only write grants in the repository: the release workflow's image job pushes to GHCR, its
+  // github-release job creates the Release, and the packages job mints an OIDC token. Nothing else
+  // (tests/unit/release-workflow.test.ts).
   const ALLOWED_WRITES: Record<string, string[]> = {
     "release.yml/image": ["packages"],
+    "release.yml/github-release": ["contents"],
     // npm trusted publishing: an OIDC token npm exchanges for a one-time publish token.
     "release.yml/packages": ["id-token"],
     // CodeQL uploads its results as code scanning alerts; it cannot do that without this scope.
     "security.yml/codeql": ["security-events"],
   };
 
-  it("never grant a job write permissions, except the release image push and npm publish", () => {
+  it("never grant a job write permissions, except the release image, GitHub Release and npm publish", () => {
     for (const { file, doc } of workflowTexts) {
       for (const [name, job] of Object.entries(doc.jobs)) {
         if (job.permissions === undefined) continue;
@@ -224,8 +226,16 @@ describe("ci.yml", () => {
     expect(setup).toMatch(/version: 11\.25\.0/);
     expect(read("Dockerfile")).toMatch(/ARG PNPM_VERSION=11\.25\.0/);
     for (const [name, job] of Object.entries(jobs)) {
-      // These need no Node or pnpm: Docker builds its own, OpenSpec uses npx, ShellCheck is installed.
-      if (name === "docker" || name === "openspec" || name === "shellcheck") continue;
+      // These need no Node or pnpm: Docker builds its own, OpenSpec uses npx, ShellCheck and the
+      // release-check script gates are plain shell.
+      if (
+        name === "docker" ||
+        name === "openspec" ||
+        name === "shellcheck" ||
+        name === "release-check"
+      ) {
+        continue;
+      }
       expect(usesValues(job), name).toContain("./.github/actions/setup");
     }
   });
@@ -290,11 +300,18 @@ describe("ci.yml", () => {
     for (const file of [
       "install.sh",
       "scripts/check-release-versions.sh",
+      "scripts/release-notes.sh",
       "scripts/install-e2e.sh",
     ]) {
       expect(runs).toContain(file);
     }
     expect(runs).toContain("shellcheck -s sh");
+  });
+
+  it("dry-runs the release version and notes gates on every pull request", () => {
+    const runs = allRuns(jobs["release-check"] as Job);
+    expect(runs).toContain("scripts/check-release-versions.sh");
+    expect(runs).toContain("scripts/release-notes.sh");
   });
 
   it("validates every OpenSpec spec and change with a pinned CLI version", () => {

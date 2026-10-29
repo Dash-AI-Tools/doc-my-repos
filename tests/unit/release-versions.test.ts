@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-/** scripts/check-release-versions.sh keeps the tag, package.json and install.sh in step. */
+/**
+ * scripts/check-release-versions.sh keeps the tag, package.json, install.sh, package versions,
+ * the compose default image tag and the CHANGELOG section in step.
+ */
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/check-release-versions.sh", import.meta.url));
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
@@ -16,10 +19,50 @@ afterEach(() => {
   for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
 });
 
+function writeFixture(
+  root: string,
+  options: {
+    package?: string;
+    installer?: string;
+    composeTag?: string;
+    changelogVersion?: string | null;
+    packages?: Record<string, string>;
+  },
+) {
+  const version = options.package ?? "1.2.3";
+  const installer = options.installer ?? "1.2.3";
+  const composeTag = options.composeTag ?? version;
+  writeFileSync(
+    join(root, "package.json"),
+    `{\n  "name": "x",\n  "version": "${version}",\n  "private": true\n}\n`,
+  );
+  writeFileSync(join(root, "install.sh"), `#!/bin/sh\nDOCMYREPOS_VERSION="${installer}"\n`);
+  writeFileSync(
+    join(root, "docker-compose.yml"),
+    `services:\n  app:\n    image: \${DOCMYREPOS_IMAGE:-ghcr.io/dash-ai-tools/doc-my-repos:${composeTag}}\n    build: .\n`,
+  );
+  if (options.changelogVersion !== null) {
+    const section = options.changelogVersion ?? version;
+    writeFileSync(
+      join(root, "CHANGELOG.md"),
+      `# Changelog\n\n## [${section}] - 2026-01-01\n\n- something\n`,
+    );
+  }
+  for (const [name, pkgVersion] of Object.entries(options.packages ?? {})) {
+    mkdirSync(join(root, "packages", name), { recursive: true });
+    writeFileSync(
+      join(root, "packages", name, "package.json"),
+      `{\n  "name": "@docmyrepos/${name}",\n  "version": "${pkgVersion}",\n  "type": "module"\n}\n`,
+    );
+  }
+}
+
 function check(options: {
   tag?: string;
   package?: string;
   installer?: string;
+  composeTag?: string;
+  changelogVersion?: string | null;
   packages?: Record<string, string>;
   root?: string;
 }) {
@@ -27,21 +70,7 @@ function check(options: {
   if (!root) {
     root = mkdtempSync(join(tmpdir(), "dmr-versions-"));
     roots.push(root);
-    writeFileSync(
-      join(root, "package.json"),
-      `{\n  "name": "x",\n  "version": "${options.package ?? "1.2.3"}",\n  "private": true\n}\n`,
-    );
-    writeFileSync(
-      join(root, "install.sh"),
-      `#!/bin/sh\nDOCMYREPOS_VERSION="${options.installer ?? "1.2.3"}"\n`,
-    );
-    for (const [name, version] of Object.entries(options.packages ?? {})) {
-      mkdirSync(join(root, "packages", name), { recursive: true });
-      writeFileSync(
-        join(root, "packages", name, "package.json"),
-        `{\n  "name": "@docmyrepos/${name}",\n  "version": "${version}",\n  "type": "module"\n}\n`,
-      );
-    }
+    writeFixture(root, options);
   }
   const result = spawnSync("sh", [SCRIPT, ...(options.tag ? [options.tag] : [])], {
     encoding: "utf8",
@@ -66,6 +95,24 @@ describe("check-release-versions.sh", () => {
 
   it("passes without a tag when package.json and install.sh agree", () => {
     expect(check({}).status).toBe(0);
+  });
+
+  it("fails when the compose default image tag differs", () => {
+    const r = check({ tag: "v1.2.3", composeTag: "9.9.9" });
+    expect(r.status).toBe(1);
+    expect(r.err).toContain("docker-compose.yml image tag='9.9.9'");
+  });
+
+  it("fails when CHANGELOG.md has no section for the version", () => {
+    const r = check({ tag: "v1.2.3", changelogVersion: "9.9.9" });
+    expect(r.status).toBe(1);
+    expect(r.err).toContain("CHANGELOG.md");
+  });
+
+  it("fails when CHANGELOG.md is missing", () => {
+    const r = check({ tag: "v1.2.3", changelogVersion: null });
+    expect(r.status).toBe(1);
+    expect(r.err).toContain("CHANGELOG.md is missing");
   });
 
   it.each([

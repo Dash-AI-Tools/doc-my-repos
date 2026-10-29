@@ -1,6 +1,7 @@
 // After `changeset version` bumps the packages (they share one version, `fixed`), gives the app's
-// root package.json and install.sh's DOCMYREPOS_VERSION the same version, so the installer of a
-// release installs the image of that release. `scripts/check-release-versions.sh` checks it.
+// root package.json, install.sh's DOCMYREPOS_VERSION and the default image tag in
+// docker-compose.yml the same version, so the installer of a release installs the image of that
+// release. `scripts/check-release-versions.sh` checks it.
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -24,4 +25,16 @@ const installer = read("install.sh").replace(
   `DOCMYREPOS_VERSION="${version}"`,
 );
 writeFileSync(join(ROOT, "install.sh"), installer);
-console.log(`sync-installer-version: package.json and install.sh are at ${version}`);
+const compose = read("docker-compose.yml").replace(
+  /(\$\{DOCMYREPOS_IMAGE:-ghcr\.io\/dash-ai-tools\/doc-my-repos:)[^}]+(\})/,
+  `$1${version}$2`,
+);
+if (!compose.includes(`ghcr.io/dash-ai-tools/doc-my-repos:${version}`)) {
+  throw new Error(
+    "docker-compose.yml has no ${DOCMYREPOS_IMAGE:-ghcr.io/dash-ai-tools/doc-my-repos:VERSION} default to update",
+  );
+}
+writeFileSync(join(ROOT, "docker-compose.yml"), compose);
+console.log(
+  `sync-installer-version: package.json, install.sh and docker-compose.yml are at ${version}`,
+);

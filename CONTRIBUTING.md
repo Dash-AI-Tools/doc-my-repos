@@ -103,7 +103,7 @@ The app is built from three packages, `@docmyrepos/core`, `@docmyrepos/server` a
 
 - A pull request that changes `packages/**` adds a changeset: run `pnpm changeset`, choose the bump (patch, minor or major, following semver for the public entrypoints; `./internal/*` is not covered) and write one line for the changelog. CI fails without one.
 - A change to a public entrypoint also updates `packages/*/api-report.json` (`pnpm api:report`); `pnpm api:check` fails on a public API that does not match it, naming each export.
-- To release, a maintainer runs `pnpm version-packages`. It applies the changesets to the three packages (`fixed` versioning), writes their changelogs, and sets the same version in the root `package.json` and `install.sh` (`scripts/sync-installer-version.ts`). Commit that, then tag `v<version>`: the release workflow checks the versions agree (`scripts/check-release-versions.sh`), publishes the image and the packages.
+- To release, a maintainer updates `CHANGELOG.md` for the new version, runs `pnpm version-packages` (applies the changesets to the three packages with `fixed` versioning, writes their changelogs, and sets the same version in the root `package.json`, `install.sh` and the compose default image via `scripts/sync-installer-version.ts`), commits that, then pushes tag `v<version>`. The release workflow checks the versions agree (`scripts/check-release-versions.sh`), publishes the multi-arch image to GHCR, creates a GitHub Release with notes from `CHANGELOG.md` and the `install.sh` asset (the README one-liner URL), and publishes the npm packages. After the first publish, set the GHCR package visibility to public.
 
 ## Changing CI or Docker
 
