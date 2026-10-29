@@ -49,13 +49,21 @@ The GitHub App itself is not configured here: you enter it in the app after sign
 
 ## 3. Start the stack
 
-Docker with Compose is the only requirement.
+Docker with Compose is the only requirement. From a clone you can build locally or pull the published image.
+
+**Build from this checkout:**
 
 ```bash
 docker compose up -d --build --wait
 ```
 
-This builds the image, starts the app and Postgres 17, and applies the database migrations on start. `--wait` waits for the health check, which answers `503` until the database and the startup settings are valid, so fill in `.env` first. The container log names any problem (`docker compose logs app`).
+**Use the published image** (default `ghcr.io/dash-ai-tools/doc-my-repos:0.1.0`):
+
+```bash
+docker compose pull app && docker compose up -d --wait
+```
+
+Both start the app and Postgres 17 and apply the database migrations on start. `--wait` waits for the health check, which answers `503` until the database and the startup settings are valid, so fill in `.env` first. The container log names any problem (`docker compose logs app`).
 
 ## 4. Enter the GitHub App and run the first sync
 

@@ -36,16 +36,27 @@ The image SHALL carry labels for its source repository, version, revision and li
 - **THEN** they give the repository URL, the version, the commit and the license
 
 ### Requirement: Installer and image versions match
-Each installer release SHALL install the image with the same version, unless an image reference is given explicitly. A check SHALL fail the release when any of these differ: the version in the installer, the repository's package version, the version of each published npm package (`@docmyrepos/core`, `@docmyrepos/server`, `@docmyrepos/ui`) and the tag. The image SHALL be built from the open-source app composed from those packages at that version.
+Each installer release SHALL install the image with the same version, unless an image reference is given explicitly. A check SHALL fail the release when any of these differ: the version in the installer, the repository's package version, the version of each published npm package (`@docmyrepos/core`, `@docmyrepos/server`, `@docmyrepos/ui`), the default image tag in the compose file, a `CHANGELOG.md` section for that version, and the tag. The image SHALL be built from the open-source app composed from those packages at that version.
 
 #### Scenario: Installer at a release tag
-- **WHEN** the installer fetched from tag `v1.2.3` runs with no image override
+- **WHEN** the installer fetched from the GitHub Release asset for tag `v1.2.3` runs with no image override
 - **THEN** it pulls the image tagged `1.2.3`
 
 #### Scenario: Version mismatch
-- **WHEN** the tag, the installer's version, the package version and the npm package versions are not all equal
+- **WHEN** the tag, the installer's version, the package version, the compose default image tag, the CHANGELOG section and the npm package versions are not all equal
 - **THEN** the release run fails before publishing
 
 #### Scenario: Image matches the packages
 - **WHEN** image `1.2.3` is inspected
 - **THEN** its server was built from `@docmyrepos/server` and `@docmyrepos/ui` 1.2.3 sources in the tagged commit
+
+### Requirement: Release tags create a GitHub Release with the installer
+When a version tag is pushed, after the image for that version is published, the system SHALL create a GitHub Release for the tag whose body is the matching section of `CHANGELOG.md` and whose assets include `install.sh`, so the documented one-liner download URL (`…/releases/download/vMAJOR.MINOR.PATCH/install.sh`) serves that file.
+
+#### Scenario: Tag pushed
+- **WHEN** the tag `v1.2.3` is pushed and the image job has published `1.2.3`
+- **THEN** a GitHub Release named for that tag exists, its notes come from the `1.2.3` CHANGELOG section, and `install.sh` is attached as a release asset
+
+#### Scenario: Image not published
+- **WHEN** the image job has not succeeded
+- **THEN** the GitHub Release is not created

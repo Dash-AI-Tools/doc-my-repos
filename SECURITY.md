@@ -4,7 +4,7 @@ DocMyRepos renders documentation from third-party repositories and holds GitHub 
 
 ## Supported versions
 
-DocMyRepos has no tagged releases yet. Until it does, only the latest commit on the `main` branch is supported: please check that a problem still exists there before you report it. Once releases exist, the latest minor release will receive security fixes.
+The latest minor release (currently 0.1.x) receives security fixes. Please check that a problem still exists on the latest release tag, or on `main` if you are testing unreleased work, before you report it.
 
 ## Reporting a vulnerability
 

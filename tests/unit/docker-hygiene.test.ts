@@ -157,8 +157,11 @@ describe("docker-compose.yml", () => {
     }
   });
 
-  it("builds the app and waits for a healthy database", () => {
+  it("builds the app, defaults to the published image, and waits for a healthy database", () => {
     expect(app.build).toBeDefined();
+    expect(app.image).toMatch(
+      /^\$\{DOCMYREPOS_IMAGE:-ghcr\.io\/dash-ai-tools\/doc-my-repos:\d+\.\d+\.\d+\}$/,
+    );
     expect(app.depends_on?.db?.condition).toBe("service_healthy");
   });
 

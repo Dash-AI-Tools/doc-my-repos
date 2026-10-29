@@ -933,20 +933,17 @@ describe("install.sh network and code safety", () => {
     for (const url of http) expect(url, url).toMatch(/^http:\/\/127\.0\.0\.1(?![0-9])/);
   });
 
-  it("names only the registry, the raw script URL and printed documentation links", () => {
+  it("names only the registry, the release download URL and printed documentation links", () => {
     const hosts = new Set(
       [...source.matchAll(/https:\/\/([a-z0-9.-]+)(\/[^\s"')]*)?/gi)].map(
         (m) =>
           `${m[1]}${m[1] === "github.com" ? (m[2] ?? "").split("/").slice(0, 3).join("/") : ""}`,
       ),
     );
-    const allowed = new Set([
-      "raw.githubusercontent.com",
-      "github.com/Dash-AI-Tools/doc-my-repos",
-      "docs.docker.com",
-    ]);
+    const allowed = new Set(["github.com/Dash-AI-Tools/doc-my-repos", "docs.docker.com"]);
     for (const host of hosts) expect(allowed.has(host), host).toBe(true);
     expect(source).toContain("ghcr.io/dash-ai-tools/doc-my-repos");
+    expect(source).toContain("releases/download/v");
   });
 
   it("never evaluates text as code", () => {
