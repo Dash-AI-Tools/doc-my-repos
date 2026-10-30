@@ -240,6 +240,33 @@ describe("the event catalogue", () => {
       ).status,
     ).toBe(200);
 
+    // Public access: a repository and a folder.
+    expect(
+      (
+        await routes.adminRepos.PATCH(
+          write("PATCH", "/api/admin/repos", admin, {
+            owner: "acme",
+            name: "handbook",
+            isPublic: true,
+            confirmPrivate: true,
+          }),
+        )
+      ).status,
+    ).toBe(200);
+    const folder = await routes.adminFolders.POST(
+      write("POST", "/api/admin/folders", admin, { name: "Open" }),
+    );
+    expect(folder.status).toBe(201);
+    const folderId = (await folder.json()).folder.id as number;
+    expect(
+      (
+        await routes.adminFolder.PATCH(
+          write("PATCH", `/api/admin/folders/${folderId}`, admin, { isPublic: true }),
+          { params: Promise.resolve({ id: String(folderId) }) },
+        )
+      ).status,
+    ).toBe(200);
+
     // Delivery is detached: let the queued events arrive.
     await vi.waitFor(() =>
       expect(new Set(events.map((e) => e.name))).toEqual(new Set(EVENT_NAMES)),

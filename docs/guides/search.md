@@ -10,6 +10,8 @@ sources:
   - packages/core/src/search-params.ts
   - packages/core/src/palette.ts
   - packages/server/src/search-api.ts
+  - packages/server/src/search-page.ts
+  - packages/server/src/public-access/reader.ts
 generated: 2026-10-10
 verified: 2026-10-10
 stale_after: 2999-01-01
@@ -75,6 +77,10 @@ Press `Ctrl+K` or `⌘K` on any page to open the palette. It shows live results 
 - `Esc` closes the palette and returns focus to where it was.
 
 The palette asks `GET /api/search` for 8 results (the API allows at most 10). See the [HTTP API reference](../reference/api.md#get-apisearch).
+
+## Who can search
+
+Signed-in users search every repository an admin has not blocked. When an admin marks repositories or folders public (see [Public access](configuration.md#public-access)), visitors who are not signed in can search too, unless the admin turns that off with **Allow search** on the Repository access tab. They get the same search bar, quick search, results page and `GET /api/search`, but over the public repositories only: results, snippets, filters and the counts next to them never include anything else. With **Allow search** off, or with nothing public, the search bar is not shown to them and `/search` and `/api/search` send them to sign in (`401` for the API).
 
 ## Under the hood
 

@@ -5,6 +5,29 @@ All notable changes to DocMyRepos are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-29
+
+### Added
+
+- Public access: an admin can make repositories, or whole repository folders, readable
+  without signing in. A visitor without a session sees the public repositories on the home
+  page, reads their documents, API references and images, and gets a Sign in button in the
+  header. Nothing is public until an admin marks it.
+- Anonymous search (on by default once something is public) and anonymous Ask (off by
+  default), configurable by admins. Anonymous Ask is limited by daily and ten-minute caps
+  shared by all anonymous visitors; no question, answer or visitor address is stored or
+  logged.
+- Public switches on repositories and folders with a confirmation for repositories that are
+  private on GitHub, and a Public access section in the workspace configuration.
+- Events `repo.public_changed` and `folder.public_changed` for host apps.
+
+### Changed
+
+- Every image served by the image proxy is now `Cache-Control: private, max-age=300`, so a
+  shared cache never keeps an image that depends on who asked.
+- Database migration 0015 is additive: `is_public` on repositories and folders, an
+  `anonymous` marker on Ask usage rows and a `public_access_settings` table.
+
 ## [0.1.0] - 2026-10-29
 
 First public open-source release. Self-host with Docker: one searchable portal for the

@@ -1,6 +1,6 @@
-import { eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 
-import { repos } from "../db/schema";
+import { repoFolders, repos } from "../db/schema";
 
 /**
  * THE visibility filter (design decision 5, spec repo-space "Private repository indication and
@@ -15,7 +15,7 @@ import { repos } from "../db/schema";
  *
  * In the MVP every synced repository is visible to every visitor: the active filter is
  * `allowAllRepos`. Queries take the filter as an option only so tests can swap it (for example
- * `publicReposOnly`) and prove that every read honours it (task 9.1). With access-control the
+ * `githubPublicReposOnly`) and prove that every read honours it (task 9.1). With access-control the
  * active filter is `allowedReposOnly`; admins read the full list by passing `allowAllRepos`
  * explicitly from trusted server code (after `requireAdmin`).
  *
@@ -30,8 +30,13 @@ export type RepoVisibilityFilter = (table: typeof repos) => SQL;
 /** MVP: everything synced is visible. Kept for tests and trusted admin reads. */
 export const allowAllRepos: RepoVisibilityFilter = () => sql`true`;
 
-/** Hides private repositories. Not used in production; tests use it to flip the filter. */
-export const publicReposOnly: RepoVisibilityFilter = (table) => eq(table.visibility, "public");
+/**
+ * Hides the repositories that are private on GitHub (`repos.visibility`). Not used in production;
+ * tests use it to flip the filter. Not the same as public access (`isPublic`), which is about who
+ * may read without signing in.
+ */
+export const githubPublicReposOnly: RepoVisibilityFilter = (table) =>
+  eq(table.visibility, "public");
 
 /**
  * Access-control: only admin-allowed repositories are visible. This is the filter every read
@@ -39,6 +44,38 @@ export const publicReposOnly: RepoVisibilityFilter = (table) => eq(table.visibil
  * from every query: grid, docs, search, facets, assets.
  */
 export const allowedReposOnly: RepoVisibilityFilter = (table) => eq(table.isAllowed, true);
+
+/**
+ * Public access (public-access): what a reader who is not signed in may see. A repository is
+ * visible when it is allowed and is public itself or sits in a public folder. A blocked repository
+ * is hidden from everyone, public or not. Signed-in users keep `allowedReposOnly`.
+ */
+export const anonymousReposOnly: RepoVisibilityFilter = (table) =>
+  and(
+    eq(table.isAllowed, true),
+    or(
+      eq(table.isPublic, true),
+      inArray(
+        table.folderId,
+        sql`(select ${repoFolders.id} from ${repoFolders} where ${repoFolders.isPublic} = true)`,
+      ),
+    ),
+  ) as SQL;
+
+/** Who is reading: a signed-in user (every allowed repository) or a visitor without a session. */
+export type Reader = { readonly kind: "member" } | { readonly kind: "anonymous" };
+
+export const MEMBER: Reader = Object.freeze({ kind: "member" });
+export const ANONYMOUS: Reader = Object.freeze({ kind: "anonymous" });
+
+/**
+ * The visibility filter for a reader. Code that can serve an anonymous reader builds the reader
+ * once per request and passes `{ visibility: filterFor(reader) }` to every shared query it calls;
+ * `enforcement.test.ts` checks that it does.
+ */
+export function filterFor(reader: Reader): RepoVisibilityFilter {
+  return reader.kind === "anonymous" ? anonymousReposOnly : activeRepoVisibility;
+}
 
 /** The filter every read uses unless a test passes another. */
 export const activeRepoVisibility: RepoVisibilityFilter = allowedReposOnly;

@@ -6,7 +6,7 @@ import { ConfigError } from "./config/errors";
 import type { Db } from "./db/client";
 import { documents, repos } from "./db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "./db/test-db";
-import { publicReposOnly } from "./queries/visibility";
+import { githubPublicReposOnly } from "./queries/visibility";
 import { handleSearchRequest, methodNotAllowed } from "./search-api";
 
 const url = (query: string) => `http://localhost/api/search${query}`;
@@ -354,12 +354,12 @@ describeDb("GET /api/search on a real database", () => {
 
   it("goes through the shared visibility filter (flipped, the private repo disappears)", async () => {
     const open = await call("?q=deployment");
-    const flipped = await call("?q=deployment", { options: { visibility: publicReposOnly } });
+    const flipped = await call("?q=deployment", { options: { visibility: githubPublicReposOnly } });
     expect(open.body.hits.some((h: { isPrivate: boolean }) => h.isPrivate)).toBe(true);
     expect(flipped.body.hits.some((h: { isPrivate: boolean }) => h.isPrivate)).toBe(false);
     expect(flipped.body.total).toBe(3);
     const only = await call("?q=deployment&repo=acme/secret", {
-      options: { visibility: publicReposOnly },
+      options: { visibility: githubPublicReposOnly },
     });
     expect(only.body).toMatchObject({ total: 0, hits: [] });
   });

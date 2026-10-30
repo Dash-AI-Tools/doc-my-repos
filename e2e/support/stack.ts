@@ -19,6 +19,9 @@ import { join, resolve } from "node:path";
  * | `agentoff`    | 3110 | `docmyrepos_e2e_<id>_agentoff`    | same, `mcp.enabled: false`       |
  * | `folders`     | 3111 | `docmyrepos_e2e_<id>_folders`     | `SEED_REPOS`, for specs that use |
  * |               |      |                                   | folders (create, assign, star)   |
+ * | `publicaccess`| 3113 | `docmyrepos_e2e_<id>_publicaccess`| `SEED_REPOS` + Ask data + two    |
+ * |               |      |                                   | users with real passwords, and   |
+ * |               |      |                                   | NO auth bypass: the real gate    |
  *
  * `playwright.config.ts` starts the servers and `global-setup.ts` creates and seeds the databases;
  * Playwright starts web servers BEFORE it runs the global setup, so nothing in a server needs its
@@ -46,6 +49,7 @@ export const STACKS = {
   agent: { port: 3109 },
   agentoff: { port: 3110 },
   folders: { port: 3111 },
+  publicaccess: { port: 3113 },
 } as const;
 
 /** The fake model provider the `ask` server talks to (see `e2e/support/fake-provider-server.ts`). */
@@ -78,7 +82,8 @@ export type DatabaseKind =
   | "settings"
   | "agent"
   | "agentoff"
-  | "folders";
+  | "folders"
+  | "publicaccess";
 
 export function stackUrl(name: StackName): string {
   return `http://127.0.0.1:${STACKS[name].port}`;
@@ -167,14 +172,17 @@ export function serverEnv(name: StackName): Record<string, string> {
     name === "settings" ||
     name === "agent" ||
     name === "agentoff" ||
-    name === "folders";
+    name === "folders" ||
+    name === "publicaccess";
   return {
     ...(name === "fixtures" ? { E2E_FIXTURES: "1" } : {}),
     DATABASE_URL: readsDatabase ? databaseUrl(name) : UNREACHABLE_DATABASE_URL,
     SETTINGS_ENCRYPTION_KEY: E2E_ENCRYPTION_KEY,
     SYNC_SECRET: "e2e-sync-secret-not-a-real-secret",
     SESSION_SECRET: "e2e-session-secret-not-a-real-secret",
-    E2E_AUTH_BYPASS: "1",
+    // `publicaccess` has no bypass: its specs sign in with a real session (or send no cookie at all),
+    // so the proxy and the page guards run exactly as in production.
+    ...(name === "publicaccess" ? {} : { E2E_AUTH_BYPASS: "1" }),
     SYNC_SCHEDULER: "0",
     ...(name === "settings"
       ? {

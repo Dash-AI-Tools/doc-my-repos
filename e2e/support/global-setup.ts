@@ -4,6 +4,7 @@ import { createDb } from "../../packages/server/src/db/client";
 import { runMigrations } from "../../packages/server/src/db/migrate";
 import { assertPostgresReachable, createDatabase } from "./db";
 import { seedAskData } from "./ask-seed";
+import { seedPublicAccessUsers } from "./public-access-seed";
 import { seedSettings } from "./settings-seed";
 import { seedAgentData } from "./agent-seed";
 import { seedCommentData } from "./comment-seed";
@@ -51,12 +52,14 @@ async function prepare(kind: DatabaseKind): Promise<void> {
       kind === "commentsoff" ||
       kind === "ask" ||
       kind === "agent" ||
-      kind === "agentoff"
+      kind === "agentoff" ||
+      kind === "publicaccess"
     ) {
       await seedCommentData(handle.db);
     }
     if (kind === "agent" || kind === "agentoff") await seedAgentData(handle.db);
-    if (kind === "ask") await seedAskData(handle.db);
+    if (kind === "ask" || kind === "publicaccess") await seedAskData(handle.db);
+    if (kind === "publicaccess") await seedPublicAccessUsers(handle.db);
   } finally {
     await handle.close();
   }
@@ -81,6 +84,7 @@ export default async function globalSetup(): Promise<void> {
     await prepare("agent");
     await prepare("agentoff");
     await prepare("folders");
+    await prepare("publicaccess");
   } catch (error) {
     await teardown();
     throw error;

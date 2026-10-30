@@ -10,7 +10,7 @@ import { documents, repos } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import { getDocsTree } from "./documents";
 import { getRepoFacets } from "./search";
-import { publicReposOnly } from "./visibility";
+import { githubPublicReposOnly } from "./visibility";
 
 /**
  * `getRepoFacets` (task 11.2 and 11.3) on a real database: the counts behind the type, tag and
@@ -234,7 +234,7 @@ describeDb("getRepoFacets on a real database", () => {
   it("hides a private repository when the visibility filter hides it", async () => {
     expect((await getRepoFacets(t.db, { id: s.secret })).total).toBe(1);
     expect(
-      await getRepoFacets(t.db, { id: s.secret }, {}, { visibility: publicReposOnly }),
+      await getRepoFacets(t.db, { id: s.secret }, {}, { visibility: githubPublicReposOnly }),
     ).toEqual({ total: 0, types: [], tags: [], statuses: [] });
   });
 

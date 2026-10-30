@@ -5,9 +5,11 @@ import { GithubSettingsForm, type SettingsView } from "../components/github-sett
 import { RepoAccessManager } from "../components/repo-access-manager";
 import { AskLimitsForm } from "../components/ask-limits-form";
 import { AskSettingsForm } from "../components/ask-settings-form";
+import { PublicAccessSettings } from "../components/public-access-settings";
 import { SetupGuide } from "../components/setup-guide";
 import { Tabs } from "../components/tabs";
 import { getAdminAskView } from "@docmyrepos/server/internal/admin/ask";
+import { getPublicAccessAdminView } from "@docmyrepos/server/internal/admin/public-access";
 import { getAdminFolders, getAdminRepos } from "@docmyrepos/server/internal/admin/service";
 import { getAdminSettingsView } from "@docmyrepos/server/internal/admin/settings";
 import type { AppProps } from "../bind-page";
@@ -23,9 +25,10 @@ export async function AdminWorkspacePage({
   readonly searchParams: Promise<{ setup?: string; tab?: string }>;
 }) {
   const ctx = await pageContext(app);
-  const [view, ask, repos, folders, pluginTabs] = await Promise.all([
+  const [view, ask, publicAccess, repos, folders, pluginTabs] = await Promise.all([
     getAdminSettingsView(tenantDeps(ctx)),
     getAdminAskView(tenantDeps(ctx)),
+    getPublicAccessAdminView(tenantDeps(ctx)),
     getAdminRepos(ctx.db, contextAccess(ctx)),
     getAdminFolders(ctx.db, contextAccess(ctx)),
     // The `admin.workspace.tabs` slot: the plugins' tabs, after the core's four below.
@@ -114,9 +117,11 @@ export async function AdminWorkspacePage({
               <>
                 <p className="max-w-prose text-muted-foreground">
                   Blocked repositories disappear for all viewers. Their content is kept, so
-                  re-allowing restores them without re-syncing.
+                  re-allowing restores them without re-syncing. Each repository has a Public switch,
+                  and the settings for visitors who are not signed in are at the end of this tab.
                 </p>
                 <RepoAccessManager initialRepos={repos} folders={folders} canSync={canSync} />
+                <PublicAccessSettings initial={publicAccess} />
               </>
             ),
           },

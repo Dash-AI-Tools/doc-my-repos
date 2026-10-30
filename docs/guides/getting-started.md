@@ -57,7 +57,7 @@ Docker with Compose is the only requirement. From a clone you can build locally 
 docker compose up -d --build --wait
 ```
 
-**Use the published image** (default `ghcr.io/dash-ai-tools/doc-my-repos:0.1.0`):
+**Use the published image** (default `ghcr.io/dash-ai-tools/doc-my-repos:0.2.0`):
 
 ```bash
 docker compose pull app && docker compose up -d --wait

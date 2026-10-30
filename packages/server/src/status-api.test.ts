@@ -4,7 +4,7 @@ import { ConfigError } from "./config/errors";
 import type { Db } from "./db/client";
 import { repos, syncRuns, type SyncRepoResult } from "./db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "./db/test-db";
-import { publicReposOnly } from "./queries/visibility";
+import { githubPublicReposOnly } from "./queries/visibility";
 import {
   handleStatusRequest,
   MAX_IN_FLIGHT,
@@ -282,7 +282,7 @@ describeDb("GET /api/status on a real database", () => {
   it("goes through the shared visibility filter", async () => {
     const res = await handleStatusRequest(get(), {
       db: () => t.db,
-      options: { visibility: publicReposOnly },
+      options: { visibility: githubPublicReposOnly },
     });
     const text = await res.text();
     expect(text).not.toContain("hidden-tools");

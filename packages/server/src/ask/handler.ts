@@ -21,11 +21,14 @@ import { type Db, type DbInput, resolveDb } from "../db/client";
 import { errorFields, logger, type Logger } from "../log";
 import { anchorId, SLUG_ID } from "../markdown/sanitize";
 import type { QueryOptions } from "../queries";
+import { readPublicAccessSettings, type PublicAccessSettings } from "../public-access/settings";
+import type { Reader } from "../queries/visibility";
 import { requireSameOrigin } from "../same-origin";
 import { getWorkspace } from "../workspace";
 import {
   askGate,
   checkWindows,
+  claimAnonymousQuestion,
   estimateTokens,
   finishUsage,
   startUsage,
@@ -116,6 +119,13 @@ export interface AskHandlerDeps {
   readonly access?: Access;
   readonly log?: Logger;
   readonly options?: QueryOptions;
+  /**
+   * Who is asking. Default: a signed-in user. An anonymous visitor (public access) needs the
+   * admin's anonymous Ask switch, is counted against the shared caps and is never identified.
+   */
+  readonly reader?: Reader;
+  /** The public access settings. Default: read from the database. Tests only. */
+  readonly publicAccess?: () => Promise<PublicAccessSettings>;
   readonly gate?: AskGate;
   /** Test seams for the provider adapters (fetch, sleep, Anthropic endpoint). */
   readonly providerDeps?: ProviderDeps;
@@ -255,16 +265,28 @@ export async function handleAsk(request: Request, deps: AskHandlerDeps): Promise
   const credentials = providerCredentials(workspace.providers, state.provider);
   if (credentials === null) return json(404, { error: MESSAGES.not_found, code: "not_found" });
 
-  // 2. Session.
+  // 2. Session, or the anonymous switch. A visitor without a session may ask only when public
+  // access allows it; they are not identified, so they stand in as a user with no row (id 0) that
+  // every later step treats as anonymous through `anonymous`.
+  const anonymous = deps.reader?.kind === "anonymous";
   let user: CurrentUser;
   let access: Access;
+  let publicSettings: PublicAccessSettings | null = null;
   try {
     const testUser = deps.user;
     access = deps.access ?? legacyAccess(db, testUser ? async () => testUser(db) : undefined);
-    user = await access.user();
-    // Like a disabled Ask: a user the `authorize` hook does not let ask finds no Ask here.
-    if (!(await access.can("ask.use"))) {
-      return json(404, { error: MESSAGES.not_found, code: "not_found" });
+    if (anonymous) {
+      publicSettings = await (deps.publicAccess ?? (() => readPublicAccessSettings(db)))();
+      if (!publicSettings.askEnabled) {
+        return json(401, { error: MESSAGES.unauthorized, code: "unauthorized" });
+      }
+      user = { id: 0, email: "", role: "user" };
+    } else {
+      user = await access.user();
+      // Like a disabled Ask: a user the `authorize` hook does not let ask finds no Ask here.
+      if (!(await access.can("ask.use"))) {
+        return json(404, { error: MESSAGES.not_found, code: "not_found" });
+      }
     }
   } catch (error) {
     return authStatus(error) === 401
@@ -292,20 +314,37 @@ export async function handleAsk(request: Request, deps: AskHandlerDeps): Promise
   }
   const body = parsed.data;
 
-  const limits: AskLimitsConfig = deps.limits ? deps.limits() : workspace.config.ask;
+  const baseLimits: AskLimitsConfig = deps.limits ? deps.limits() : workspace.config.ask;
+  // Anonymous visitors share the admin's anonymous caps instead of the per-user ones.
+  const limits: AskLimitsConfig = publicSettings
+    ? {
+        ...baseLimits,
+        questionsPerDay: publicSettings.askQuestionsPerDay,
+        questionsPerTenMinutes: publicSettings.askQuestionsPerTenMinutes,
+      }
+    : baseLimits;
 
-  // 5. Concurrency: one answer per user, a cap per process.
-  const slot = (deps.gate ?? askGate).tryEnter(user.id, limits.maxConcurrent, deps.tenantId);
+  // 5. Concurrency: one answer per user, a cap per process (anonymous: the cap only).
+  const gate = deps.gate ?? askGate;
+  const slot = anonymous
+    ? gate.tryEnterAnonymous(limits.maxConcurrent, deps.tenantId)
+    : gate.tryEnter(user.id, limits.maxConcurrent, deps.tenantId);
   if (!slot.ok) {
     return slot.reason === "user_busy"
       ? json(429, { error: MESSAGES.user_busy, code: "user_busy" }, { "Retry-After": "5" })
       : json(503, { error: MESSAGES.busy, code: "busy" }, { "Retry-After": "5" });
   }
 
-  // 6. Per-user day and ten-minute limits.
+  // 6. Per-user day and ten-minute limits; for an anonymous visitor the shared caps, which also
+  // record the question now (see `claimAnonymousQuestion`).
+  let claimedUsageId: number | null = null;
   try {
-    const decision =
-      user.id > 0 ? await checkWindows(db, user.id, limits) : ({ ok: true } as const);
+    const decision = anonymous
+      ? await claimAnonymousQuestion(db, state.provider, limits)
+      : user.id > 0
+        ? await checkWindows(db, user.id, limits)
+        : ({ ok: true } as const);
+    if (decision.ok && "id" in decision) claimedUsageId = decision.id as number;
     if (!decision.ok) {
       slot.release();
       return json(
@@ -347,6 +386,8 @@ export async function handleAsk(request: Request, deps: AskHandlerDeps): Promise
       void produceAnswer({
         db,
         user,
+        anonymous,
+        claimedUsageId,
         access,
         provider,
         providerName: state.provider,
@@ -397,6 +438,10 @@ export async function handleAsk(request: Request, deps: AskHandlerDeps): Promise
 interface AnswerRun {
   readonly db: Db;
   readonly user: CurrentUser;
+  /** An anonymous visitor: nothing identifies them, in the logs, the events or the usage row. */
+  readonly anonymous: boolean;
+  /** The usage row already recorded at acceptance (anonymous questions), else null. */
+  readonly claimedUsageId: number | null;
   /** Records `ask.answered` for the asking user. */
   readonly access: Access;
   readonly provider: ProviderAdapter;
@@ -415,6 +460,25 @@ interface AnswerRun {
 async function produceAnswer(run: AnswerRun): Promise<void> {
   const { db, user, provider, body, limits, signal, send, log } = run;
   const started = Date.now();
+  // What a log line says about who asked: an id for a user, nothing at all for an anonymous visitor.
+  const who = run.anonymous ? { anonymous: true } : { userId: user.id };
+  // An anonymous question's row exists already (it was counted on acceptance); close it with the
+  // outcome and the tokens spent, so every anonymous row ends as a count and an outcome word.
+  const closeClaimed = async (
+    outcome: Exclude<UsageOutcome, "started">,
+    tokens: TokenCounts | null,
+  ): Promise<void> => {
+    if (run.claimedUsageId === null) return;
+    try {
+      await finishUsage(db, run.claimedUsageId, {
+        outcome,
+        tokens: tokens ?? { inputTokens: 0, outputTokens: 0 },
+        estimated: false,
+      });
+    } catch (error) {
+      log.error("ask.usage.failed", { ...who, ...errorFields(error) });
+    }
+  };
   send({ event: "status", data: { state: "searching" } });
 
   let excerpts: readonly Excerpt[];
@@ -427,17 +491,28 @@ async function produceAnswer(run: AnswerRun): Promise<void> {
     excerpts = result.excerpts;
     queryTokens = result.usage;
   } catch (error) {
-    if (signal.aborted) return; // the reader left
-    log.error("ask.answer.failed", { stage: "retrieve", userId: user.id, ...errorFields(error) });
+    if (signal.aborted) {
+      await closeClaimed("stopped", null);
+      return; // the reader left
+    }
+    log.error("ask.answer.failed", { stage: "retrieve", ...who, ...errorFields(error) });
+    await closeClaimed(
+      error instanceof ProviderError ? `error_${error.kind}` : "error_unavailable",
+      null,
+    );
     send({ event: "error", data: { kind: userErrorKind(error) } });
     return;
   }
-  if (signal.aborted) return;
+  if (signal.aborted) {
+    await closeClaimed("stopped", queryTokens);
+    return;
+  }
 
   if (excerpts.length === 0) {
+    await closeClaimed("no_results", queryTokens);
     send({ event: "references", data: { references: [] } });
     send({ event: "done", data: { outcome: "no_results" } });
-    log.info("ask.answer.finished", { userId: user.id, outcome: "no_results", excerpts: 0 });
+    log.info("ask.answer.finished", { ...who, outcome: "no_results", excerpts: 0 });
     return;
   }
 
@@ -449,14 +524,16 @@ async function produceAnswer(run: AnswerRun): Promise<void> {
 
   let usageId: number;
   try {
-    usageId = await startUsage(db, {
-      userId: user.id > 0 ? user.id : null,
-      provider: run.providerName,
-      excerptCount: excerpts.length,
-      queryTokens,
-    });
+    usageId =
+      run.claimedUsageId ??
+      (await startUsage(db, {
+        userId: user.id > 0 ? user.id : null,
+        provider: run.providerName,
+        excerptCount: excerpts.length,
+        queryTokens,
+      }));
   } catch (error) {
-    log.error("ask.answer.failed", { stage: "usage", userId: user.id, ...errorFields(error) });
+    log.error("ask.answer.failed", { stage: "usage", ...who, ...errorFields(error) });
     send({ event: "error", data: { kind: "unavailable" } });
     return;
   }
@@ -490,7 +567,7 @@ async function produceAnswer(run: AnswerRun): Promise<void> {
     if (outcome !== "stopped") {
       log.error("ask.answer.failed", {
         stage: "answer",
-        userId: user.id,
+        ...who,
         provider: run.providerName,
         ...errorFields(error),
       });
@@ -511,16 +588,24 @@ async function produceAnswer(run: AnswerRun): Promise<void> {
         inputTokens: (queryTokens?.inputTokens ?? 0) + tokens.inputTokens,
         outputTokens: (queryTokens?.outputTokens ?? 0) + tokens.outputTokens,
       },
-      actorId: user.id,
+      actorId: run.anonymous ? null : user.id,
     });
   }
   try {
-    await finishUsage(db, usageId, { outcome, tokens, estimated: reported === null });
+    // A claimed (anonymous) row did not get the query call's tokens when it was recorded.
+    const spent =
+      run.claimedUsageId === null || queryTokens === null
+        ? tokens
+        : {
+            inputTokens: tokens.inputTokens + queryTokens.inputTokens,
+            outputTokens: tokens.outputTokens + queryTokens.outputTokens,
+          };
+    await finishUsage(db, usageId, { outcome, tokens: spent, estimated: reported === null });
   } catch (error) {
-    log.error("ask.usage.failed", { userId: user.id, ...errorFields(error) });
+    log.error("ask.usage.failed", { ...who, ...errorFields(error) });
   }
   log.info("ask.answer.finished", {
-    userId: user.id,
+    ...who,
     provider: run.providerName,
     outcome,
     excerpts: excerpts.length,

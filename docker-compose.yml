@@ -7,7 +7,7 @@
 # Published image (no local build; requires a released tag on GHCR):
 #   cp .env.example .env              # same secrets as above
 #   docker compose pull app && docker compose up -d --wait
-#   # or pin another tag / mirror: DOCMYREPOS_IMAGE=ghcr.io/dash-ai-tools/doc-my-repos:0.1.0
+#   # or pin another tag / mirror: DOCMYREPOS_IMAGE=ghcr.io/dash-ai-tools/doc-my-repos:0.2.0
 #
 # The app image runs the database migrations on start, then serves on http://127.0.0.1:3000.
 # `pnpm db:up` starts only the db service, for development with `pnpm dev`.
@@ -42,7 +42,7 @@ services:
   app:
     # Default: the published image for this release. `docker compose up --build` still builds from
     # this checkout and tags the result with the same name; set DOCMYREPOS_IMAGE to override.
-    image: ${DOCMYREPOS_IMAGE:-ghcr.io/dash-ai-tools/doc-my-repos:0.1.0}
+    image: ${DOCMYREPOS_IMAGE:-ghcr.io/dash-ai-tools/doc-my-repos:0.2.0}
     build: .
     # Without .env the app still starts; the container log names the missing settings, and the health
     # check and /api/status answer 503 until they are valid.

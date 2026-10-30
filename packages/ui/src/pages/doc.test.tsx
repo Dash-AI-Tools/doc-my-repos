@@ -15,6 +15,13 @@ import type { DocCommentsData } from "@docmyrepos/core/internal/comments-view";
 import type { NavView } from "@docmyrepos/core/internal/reading-prefs";
 import type { RepoDetail } from "@docmyrepos/server/internal/queries/index";
 
+const readers: string[] = [];
+const publicAccess = vi.hoisted(() => ({ content: true }));
+vi.mock("@docmyrepos/server/internal/public-access/reader", () => ({
+  ANONYMOUS: { kind: "anonymous" },
+  MEMBER: { kind: "member" },
+  anonymousMayUse: async () => publicAccess.content,
+}));
 const loadDocPage =
   vi.fn<
     (
@@ -32,11 +39,12 @@ vi.mock("@docmyrepos/server/internal/doc-page", () => ({
     owner: string,
     name: string,
     segments: readonly string[],
-    _deps: unknown,
+    deps: { reader?: { kind: string } },
     filters: TocFilterState,
     view: NavView,
   ) => {
     views.push(view);
+    readers.push(deps.reader?.kind ?? "none");
     return loadDocPage(owner, name, segments, filters);
   },
 }));
@@ -74,6 +82,7 @@ const repo: RepoDetail = {
   htmlUrl: "https://github.com/acme/api",
   visibility: "public",
   isAllowed: true,
+  isPublic: false,
   starPosition: null,
   isStarred: false,
   folderId: null,
@@ -163,11 +172,51 @@ async function html(
 }
 
 beforeEach(() => {
+  readers.length = 0;
+  publicAccess.content = true;
   views.length = 0;
   navView.current = "okf";
   loadDocPage.mockReset();
   loadDocComments.mockReset();
   loadDocComments.mockResolvedValue({ status: "disabled" });
+});
+
+describe("document page for a visitor without a session (public access)", () => {
+  const anonymousApp = testApp({}, { user: async () => null });
+  const anonymousHtml = async (): Promise<string> =>
+    renderToStaticMarkup(
+      await DocPage({
+        app: anonymousApp,
+        params: params(["guides", "setup"]),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+
+  it("reads through the anonymous reader", async () => {
+    loadDocPage.mockResolvedValue({ status: "not_found" });
+    await expect(anonymousHtml()).rejects.toMatchObject({
+      digest: expect.stringContaining("/login"),
+    });
+    expect(readers).toEqual(["anonymous"]);
+  });
+
+  it("sends the visitor to sign in, reading nothing, when nothing is public", async () => {
+    publicAccess.content = false;
+    await expect(anonymousHtml()).rejects.toMatchObject({
+      digest: expect.stringContaining("/login"),
+    });
+    expect(loadDocPage).not.toHaveBeenCalled();
+  });
+
+  it("sends a malformed address to sign in too, so it cannot be told from a missing document", async () => {
+    await expect(
+      DocPage({
+        app: anonymousApp,
+        params: params(["%E0%A4%A"]),
+        searchParams: Promise.resolve({}),
+      }),
+    ).rejects.toMatchObject({ digest: expect.stringContaining("/login") });
+  });
 });
 
 describe("document page", () => {

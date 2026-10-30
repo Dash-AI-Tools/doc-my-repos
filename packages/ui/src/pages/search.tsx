@@ -5,7 +5,8 @@ import { parseSearchParams, type RawSearchParams } from "@docmyrepos/core/intern
 import { askStateFor } from "@docmyrepos/server/internal/ask/settings";
 import { loadSearchPage } from "@docmyrepos/server/internal/search-page";
 import type { AppProps } from "../bind-page";
-import { pageContext } from "../page-context";
+import { anonymousMayUse } from "@docmyrepos/server/internal/public-access/reader";
+import { readerContext } from "../page-context";
 import { contextAccess } from "@docmyrepos/server/internal/auth/access";
 
 /**
@@ -44,12 +45,21 @@ export async function SearchPage({
   app,
   searchParams,
 }: AppProps & { searchParams: PageSearchParams }) {
-  const ctx = await pageContext(app);
+  // A visitor without a session searches public repositories only, and only when an admin
+  // allowed it (public access); otherwise they are sent to sign in.
+  const { ctx, reader } = await readerContext(app, "search");
   const state = parseSearchParams(await searchParams);
-  const view = await loadSearchPage(state, { db: ctx.db, emit: contextAccess(ctx).emit });
-  // "Ask instead" opens the Ask page with this query filled in; it is never sent from here.
+  const view = await loadSearchPage(state, {
+    db: ctx.db,
+    emit: contextAccess(ctx).emit,
+    reader,
+  });
+  // "Ask instead" opens the Ask page with this query filled in; it is never sent from here. For an
+  // anonymous visitor only when anonymous Ask is allowed.
   const askHref =
-    state.q !== "" && (await askStateFor(ctx)).state === "ready"
+    state.q !== "" &&
+    (await askStateFor(ctx)).state === "ready" &&
+    (reader.kind === "member" || (await anonymousMayUse(ctx, "ask")))
       ? `/ask?q=${encodeURIComponent(state.q)}`
       : null;
   return <SearchView view={view} askHref={askHref} />;

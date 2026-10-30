@@ -5,6 +5,7 @@ import {
   apiReferenceUrl,
   apiSpecPathFromSegments,
   isReservedOwner,
+  mayBePublicPath,
   repoUrl,
 } from "./routes";
 
@@ -57,5 +58,68 @@ describe("apiSpecPathFromSegments", () => {
     for (const segs of [[], [""], [".."], ["a/b"], ["a\\b"], ["a\u0000"]]) {
       expect(apiSpecPathFromSegments(segs), JSON.stringify(segs)).toBeNull();
     }
+  });
+});
+
+describe("mayBePublicPath", () => {
+  it("lets the readable pages through for reads only", () => {
+    for (const path of [
+      "/",
+      "/search",
+      "/ask",
+      "/acme/handbook",
+      "/acme/handbook/docs/guides/setup",
+    ]) {
+      expect(mayBePublicPath(path, "GET"), path).toBe(true);
+      expect(mayBePublicPath(path, "HEAD"), path).toBe(true);
+      expect(mayBePublicPath(path, "POST"), path).toBe(false);
+      expect(mayBePublicPath(path, "DELETE"), path).toBe(false);
+    }
+  });
+
+  it("lets the three public APIs through, each for its own method", () => {
+    expect(mayBePublicPath("/api/search", "GET")).toBe(true);
+    expect(mayBePublicPath("/api/search", "POST")).toBe(false);
+    expect(mayBePublicPath("/api/asset/acme/handbook/img.png", "GET")).toBe(true);
+    expect(mayBePublicPath("/api/asset/acme/handbook/img.png", "PUT")).toBe(false);
+    expect(mayBePublicPath("/api/ask", "POST")).toBe(true);
+    expect(mayBePublicPath("/api/ask", "GET")).toBe(false);
+  });
+
+  it("keeps the cookie gate on every other path", () => {
+    for (const path of [
+      "/admin",
+      "/admin/users",
+      "/admin/workspace",
+      "/account/agent-access",
+      "/status",
+      "/api/status",
+      "/api/comments",
+      "/api/admin/repos",
+      "/api/account/tokens",
+      "/api/plugins/billing/usage",
+      "/-/billing/account",
+      "/e2e/theme",
+      "/api/nothing",
+      "/login",
+      "/search/x",
+      "/_next/data/x",
+      "/acme",
+      "/acme/",
+    ]) {
+      expect(mayBePublicPath(path, "GET"), path).toBe(false);
+    }
+  });
+
+  it("treats the app's own first segments as pages, case-insensitively", () => {
+    for (const owner of ["admin", "ADMIN", "Account", "login", "api", "Status", "-"]) {
+      expect(mayBePublicPath(`/${owner}/something`, "GET"), owner).toBe(false);
+    }
+    expect(mayBePublicPath("/Acme/Handbook", "GET")).toBe(true);
+  });
+
+  it("is case-insensitive about the method and refuses a path that is not absolute", () => {
+    expect(mayBePublicPath("/", "get")).toBe(true);
+    expect(mayBePublicPath("acme/handbook", "GET")).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "@docmyrepos/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Contracts, extension types and shared pure code of DocMyRepos.",
   "license": "MIT",
   "type": "module",

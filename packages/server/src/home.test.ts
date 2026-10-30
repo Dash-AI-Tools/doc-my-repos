@@ -310,3 +310,104 @@ describe("groupHome", () => {
     expect(out.tabs).toEqual([{ id: 10, name: "zeta" }]);
   });
 });
+
+describeDb("loadHome for a visitor without a session (public access)", () => {
+  let t: TestDatabase;
+  const reader = { kind: "anonymous" } as const;
+  beforeAll(async () => {
+    t = await createTestDatabase();
+  }, 60_000);
+  afterAll(async () => {
+    await t?.drop();
+  });
+
+  const add = async (
+    githubId: number,
+    name: string,
+    over: Partial<typeof repos.$inferInsert> = {},
+  ) => {
+    const [row] = await t.db
+      .insert(repos)
+      .values({
+        githubId,
+        owner: "acme",
+        name,
+        defaultBranch: "main",
+        visibility: "private",
+        htmlUrl: `https://github.com/acme/${name}`,
+        ...over,
+      })
+      .returning({ id: repos.id });
+    return row!.id;
+  };
+  const home = async () => {
+    const data = await loadHome({ db: () => t.db, now: () => NOW, reader });
+    if (data.status !== "ok") throw new Error("expected ok");
+    return data;
+  };
+
+  it("lists nothing while nothing is public, and a signed-in user still sees everything", async () => {
+    await add(1, "plain");
+    const data = await home();
+    expect([data.starred, data.folders, data.repos, data.tabs]).toEqual([[], [], [], []]);
+    const member = await loadHome({ db: () => t.db, now: () => NOW });
+    if (member.status !== "ok") throw new Error("expected ok");
+    expect(member.repos.map((r) => r.name)).toEqual(["plain"]);
+  });
+
+  it("lists a public repository, in the admin's starred order, and no other", async () => {
+    await add(2, "open", { isPublic: true, starPosition: 0 });
+    const data = await home();
+    expect(data.starred.map((r) => r.name)).toEqual(["open"]);
+    expect(data.repos).toEqual([]);
+  });
+
+  it("shows a public folder with all of its repositories", async () => {
+    const [folder] = await t.db
+      .insert(repoFolders)
+      .values({ name: "Open source", description: "Public things", isPublic: true })
+      .returning();
+    await add(3, "oss-a", { folderId: folder!.id });
+    await add(4, "oss-b", { folderId: folder!.id });
+    const data = await home();
+    expect(data.folders.map((f) => [f.name, f.repos.map((r) => r.name)])).toEqual([
+      ["Open source", ["oss-a", "oss-b"]],
+    ]);
+  });
+
+  it("lists a public repository of a non-public folder without revealing the folder", async () => {
+    const [folder] = await t.db
+      .insert(repoFolders)
+      .values({ name: "Internal secrets", description: "Do not show", starPosition: 0 })
+      .returning();
+    await add(5, "leaky", { isPublic: true, folderId: folder!.id });
+    await add(6, "hidden-sibling", { folderId: folder!.id });
+    const data = await home();
+    expect(data.repos.map((r) => r.name)).toContain("leaky");
+    expect(data.repos.every((r) => r.folderId === null)).toBe(true);
+    expect(data.folders.map((f) => f.name)).not.toContain("Internal secrets");
+    expect(data.tabs).toEqual([]);
+    expect(JSON.stringify(data)).not.toContain("Internal secrets");
+    expect(JSON.stringify(data)).not.toContain("Do not show");
+    expect(JSON.stringify(data)).not.toContain("hidden-sibling");
+  });
+
+  it("hides a blocked repository even when it is public", async () => {
+    await add(7, "blocked-public", { isPublic: true, isAllowed: false });
+    const data = await home();
+    const names = [...data.starred, ...data.repos, ...data.folders.flatMap((f) => f.repos)].map(
+      (r) => r.name,
+    );
+    expect(names).not.toContain("blocked-public");
+  });
+
+  it("shows the tab of a starred public folder", async () => {
+    const [folder] = await t.db
+      .insert(repoFolders)
+      .values({ name: "Docs tab", isPublic: true, starPosition: 1 })
+      .returning();
+    await add(8, "in-tab", { folderId: folder!.id });
+    const data = await home();
+    expect(data.tabs.map((tab) => tab.name)).toContain("Docs tab");
+  });
+});

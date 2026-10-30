@@ -31,6 +31,8 @@ export interface EventPayloads {
   "settings.updated": { readonly version: number; readonly sections: readonly string[] };
   "branding.updated": { readonly logoChanged: boolean };
   "repo.access_changed": { readonly githubRepoId: number; readonly allowed: boolean };
+  "repo.public_changed": { readonly githubRepoId: number; readonly public: boolean };
+  "folder.public_changed": { readonly folderId: number; readonly public: boolean };
   "comment.created": {
     readonly commentId: number;
     readonly githubRepoId: number;
@@ -67,6 +69,8 @@ export const EVENT_NAMES = [
   "settings.updated",
   "branding.updated",
   "repo.access_changed",
+  "repo.public_changed",
+  "folder.public_changed",
   "comment.created",
   "comment.deleted",
   "search.performed",

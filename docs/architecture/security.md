@@ -14,6 +14,9 @@ sources:
   - packages/server/src/webhooks/verify.ts
   - packages/server/src/sync/auth.ts
   - packages/server/src/queries/visibility.ts
+  - packages/server/src/public-access/reader.ts
+  - packages/server/src/public-access/state.ts
+  - packages/ui/src/page-context.ts
   - packages/server/src/log.ts
 generated: 2026-10-10
 verified: 2026-10-10
@@ -22,7 +25,7 @@ stale_after: 2999-01-01
 
 # Security model
 
-DocMyRepos renders Markdown that comes from repositories you do not fully control: a contributor, a dependency's docs folder, or a compromised account can put anything in a `docs/` file. **Documents are untrusted input.** The portal is behind a login with admin and user roles, but any signed-in user can read every visible repository, so the security work goes into two places: keeping hostile content from running in a reader's browser, and keeping credentials away from readers.
+DocMyRepos renders Markdown that comes from repositories you do not fully control: a contributor, a dependency's docs folder, or a compromised account can put anything in a `docs/` file. **Documents are untrusted input.** The portal is behind a login with admin and user roles (except for what an admin marks public), and any signed-in user can read every visible repository, so the security work goes into two places: keeping hostile content from running in a reader's browser, and keeping credentials away from readers.
 
 ## Threats and controls
 
@@ -107,11 +110,22 @@ SVG is served with `Content-Security-Policy: default-src 'none'; style-src 'unsa
 
 ## Visibility filter
 
-`visibleRepos` in `packages/server/src/queries/visibility.ts` is the single filter. Every query for repositories, documents, search hits, facet counts and assets joins `repos` and applies it, and a static test fails when other code reads those tables. In the MVP the filter allows everything, because every synced repository is visible to every visitor. Per-viewer access later changes only that file.
+`visibleRepos` in `packages/server/src/queries/visibility.ts` is the single filter. Every query for repositories, documents, search hits, facet counts and assets joins `repos` and applies it, and a static test fails when other code reads those tables. A signed-in user gets `allowedReposOnly` (every repository an admin has not blocked); a visitor without a session gets `anonymousReposOnly`, described in [Public access](#public-access). Per-viewer access later changes only that file.
+
+## Public access
+
+Nothing is public by default. An admin can mark a repository, or a folder of repositories, **public**; only then can a visitor without a session read anything. The design keeps the rules in the existing places:
+
+- **One filter, two readers.** `anonymousReposOnly` is `is_allowed AND (is_public OR the repository's folder is public)`. Code that serves a visitor without a session builds the reader once per request (`readerContext` for pages, the `anonymous` marker on the three routes the proxy lets through) and passes `{ visibility: filterFor(reader) }` to every shared query. A static test checks that the page and route code does, and a leak matrix requests every page, API and image as an anonymous visitor against one public and one non-public repository.
+- **The proxy decides nothing it cannot know.** It has no database, so it lets only the paths that may be public content through without a cookie (the home page, search, Ask, a repository or document, `GET /api/search`, `GET /api/asset/...`, `POST /api/ask`); the page or route then reads the database and answers a login redirect or `401` when nothing is public. Every other path keeps the cookie gate, and any failure to read public access is "not public".
+- **Nothing reveals what exists.** A repository, document or image that does not exist and one that is not public answer the same: a redirect to `/login` for pages, `404` for images. A folder that is not public is never named to a visitor, even when one of its repositories is public.
+- **Anonymous Ask is bounded, not tracked.** The shared daily and ten-minute caps count rows of `ask_usage` marked `anonymous`, which hold the provider, token counts and an outcome, never a question, an answer or an address. Any client can spend the shared budget, which is why Ask is off by default for visitors and the caps are the admin's cost limit.
+- **Caches.** Pages are rendered per request, search and Ask answer `no-store`, and every image answers `private, max-age=300`, so a shared cache never keeps what depends on who asked. Anonymous requests reach GitHub only through the image proxy, after the visibility check.
+- **Making a GitHub-private repository public is deliberate.** The admin action needs a confirmation that names the count, and a public folder keeps a note while it holds private repositories.
 
 ## What is not covered
 
-- **No login.** Anyone who can reach the portal can read everything it has synced. For private repositories, deploy privately or put an authenticating proxy in front.
+- **No login for public content.** Anyone who can reach the portal can read what an admin marked public, and nothing else. Without any public repository the portal behaves as a login-only app; for private repositories, deploy privately or put an authenticating proxy in front.
 - **No rate limiting in the app.** It only caps concurrent work. Rate-limit `/api/search`, `/api/sync` and `/api/status` at the proxy.
 - **Shiki cannot be interrupted.** A pathological regular expression in a highlighted block could stall a render; blocks are capped at 100 KB, 200 per document.
 - **Third-party image hosts** learn the reader's IP address, as described above.

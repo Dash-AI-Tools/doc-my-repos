@@ -12,10 +12,29 @@ vi.mock("@docmyrepos/server/internal/onboarding", () => ({
   setupNeededFor: async () => setup.needed,
 }));
 
+const publicAccess = vi.hoisted(() => ({ search: true, asked: [] as string[], content: true }));
+vi.mock("@docmyrepos/server/internal/public-access/reader", () => ({
+  ANONYMOUS: { kind: "anonymous" },
+  MEMBER: { kind: "member" },
+  anonymousMayUse: async (_ctx: unknown, need: string) => {
+    publicAccess.asked.push(need);
+    return need === "search" ? publicAccess.search : publicAccess.content;
+  },
+}));
+vi.mock("next/navigation", () => ({
+  redirect: (to: string) => {
+    throw new Error(`redirect:${to}`);
+  },
+  notFound: () => {
+    throw new Error("notFound");
+  },
+}));
+
 import { HomePage } from "./home";
 import { testApp } from "./test-app";
 
 const TEST_APP = testApp();
+const ANONYMOUS_APP = testApp({}, { user: async () => null });
 
 const NOW = new Date("2026-10-10T12:00:00Z");
 
@@ -36,6 +55,7 @@ const repo = {
   htmlUrl: "https://github.com/acme/api",
   visibility: "public" as const,
   isAllowed: true,
+  isPublic: false,
   starPosition: null,
   isStarred: false,
   folderId: null,
@@ -50,6 +70,9 @@ const repo = {
 beforeEach(() => {
   loadHome.mockReset();
   setup.needed = false;
+  publicAccess.search = true;
+  publicAccess.content = true;
+  publicAccess.asked.length = 0;
 });
 
 describe("home page", () => {
@@ -245,7 +268,10 @@ describe("home page", () => {
         folder: payments,
       });
       const out = await html("5");
-      expect(loadHome).toHaveBeenLastCalledWith({ db: expect.any(Function) }, 5);
+      expect(loadHome).toHaveBeenLastCalledWith(
+        { db: expect.any(Function), reader: { kind: "member" } },
+        5,
+      );
       expect(out).toContain('href="/acme/pay-api"');
       expect(out).not.toContain('href="/acme/api"');
       expect(out).toMatch(/aria-current="page"[^>]*>Payments</);
@@ -262,8 +288,65 @@ describe("home page", () => {
           repos: [repo],
         });
         await html(value);
-        expect(loadHome).toHaveBeenLastCalledWith({ db: expect.any(Function) }, undefined);
+        expect(loadHome).toHaveBeenLastCalledWith(
+          { db: expect.any(Function), reader: { kind: "member" } },
+          undefined,
+        );
       },
     );
+  });
+});
+
+describe("home page for a visitor without a session (public access)", () => {
+  const anonymousHtml = async () =>
+    renderToStaticMarkup(await HomePage({ app: ANONYMOUS_APP, searchParams: Promise.resolve({}) }));
+
+  it("asks for the public repositories only, and never shows the setup banner", async () => {
+    setup.needed = true;
+    loadHome.mockResolvedValue({
+      ...none,
+      status: "ok",
+      starred: [],
+      repos: [repo],
+      loadedAt: NOW,
+    });
+    const out = await anonymousHtml();
+    expect(loadHome).toHaveBeenLastCalledWith(
+      { db: expect.any(Function), reader: { kind: "anonymous" } },
+      undefined,
+    );
+    expect(out).toContain("acme");
+    expect(out).not.toContain("setup-banner");
+  });
+
+  it("shows the search bar only when anonymous search is allowed", async () => {
+    loadHome.mockResolvedValue({
+      ...none,
+      status: "ok",
+      starred: [],
+      repos: [repo],
+      loadedAt: NOW,
+    });
+    expect(await anonymousHtml()).toContain("Search all documentation");
+    publicAccess.search = false;
+    expect(await anonymousHtml()).not.toContain("Search all documentation");
+  });
+
+  it("sends the visitor to sign in when nothing is public", async () => {
+    publicAccess.content = false;
+    await expect(anonymousHtml()).rejects.toThrow("redirect:/login");
+    expect(loadHome).not.toHaveBeenCalled();
+  });
+
+  it("shows a signed-in user the search bar without asking public access", async () => {
+    loadHome.mockResolvedValue({
+      ...none,
+      status: "ok",
+      starred: [],
+      repos: [repo],
+      loadedAt: NOW,
+    });
+    expect(await html()).toContain("Search all documentation");
+    expect(publicAccess.asked).toEqual([]);
   });
 });

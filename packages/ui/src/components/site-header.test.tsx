@@ -209,3 +209,34 @@ describe("site header Ask link", () => {
     expect(render()).not.toContain('href="/ask"'); // the default is off
   });
 });
+
+describe("site header for a visitor without a session", () => {
+  const anonymous = (props: { signIn?: boolean; search?: boolean }) =>
+    renderToStaticMarkup(inLayout(<SiteHeader user={null} branding={PLAIN} {...props} />));
+
+  it("shows a Sign in link to /login in the place of the account menu", () => {
+    const html = anonymous({ signIn: true });
+    expect(html).toMatch(/<a [^>]*href="\/login"[^>]*>Sign in<\/a>/);
+    expect(html).not.toContain("Sign out");
+  });
+
+  it("shows neither a Sign in link nor an account menu on the sign-in page", () => {
+    const html = anonymous({});
+    expect(html).not.toContain("Sign in");
+  });
+
+  it("leaves the search trigger out when search is not offered", () => {
+    expect(anonymous({ signIn: true, search: false })).not.toContain('href="/search"');
+    expect(anonymous({ signIn: true })).toContain('href="/search"');
+  });
+
+  it("shows the account menu, not Sign in, to a signed-in user", () => {
+    const html = renderToStaticMarkup(
+      inLayout(
+        <SiteHeader user={{ email: "a@example.com", admin: false }} branding={PLAIN} signIn />,
+      ),
+    );
+    expect(html).toContain("a@example.com");
+    expect(html).not.toContain(">Sign in<");
+  });
+});

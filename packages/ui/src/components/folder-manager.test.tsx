@@ -20,6 +20,7 @@ const folder = (over: Partial<FolderRow> & Pick<FolderRow, "id" | "name">): Fold
   description: null,
   starPosition: null,
   isStarred: false,
+  isPublic: false,
   ...over,
 });
 
@@ -36,6 +37,104 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   refresh.mockClear();
+});
+
+describe("FolderManager public access", () => {
+  const conflict = (privateRepos: number) => ({
+    ok: false,
+    status: 409,
+    json: async () => ({
+      error: `This folder holds ${privateRepos} repositories that are private on GitHub`,
+      code: "confirm_private",
+      privateRepos,
+    }),
+    clone() {
+      return this;
+    },
+  });
+
+  it("names the switch after the folder and reports its state", () => {
+    render(
+      <FolderManager
+        initialFolders={[alpha, folder({ id: 9, name: "Open", isPublic: true })]}
+        counts={{}}
+      />,
+    );
+    expect(
+      (screen.getByRole("switch", { name: "Public access for Alpha" }) as HTMLInputElement).checked,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("switch", { name: "Public access for Open" }) as HTMLInputElement).checked,
+    ).toBe(true);
+  });
+
+  it("turns a folder public and announces it", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(ok({ folder: { ...alpha, isPublic: true } }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<FolderManager initialFolders={[alpha]} counts={{}} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Public access for Alpha" }));
+    await waitFor(() => expect(screen.getByText(/Alpha is public/)).toBeTruthy());
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ isPublic: true });
+    expect(
+      (screen.getByRole("switch", { name: "Public access for Alpha" }) as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("asks before publishing GitHub-private repositories, and sends the confirmation", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(conflict(2))
+      .mockResolvedValueOnce(ok({ folder: { ...alpha, isPublic: true } }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<FolderManager initialFolders={[alpha]} counts={{}} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Public access for Alpha" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("2 repositories that are private on GitHub");
+    expect(
+      (screen.getByRole("switch", { name: "Public access for Alpha" }) as HTMLInputElement).checked,
+    ).toBe(false);
+    fireEvent.click(within(alert).getByRole("button", { name: "Confirm and make public" }));
+    await waitFor(() => expect(screen.getByText(/Alpha is public/)).toBeTruthy());
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({
+      isPublic: true,
+      confirmPrivate: true,
+    });
+  });
+
+  it("changes nothing when the confirmation is cancelled", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(conflict(1));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<FolderManager initialFolders={[alpha]} counts={{}} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Public access for Alpha" }));
+    const alert = await screen.findByRole("alert");
+    fireEvent.click(within(alert).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a standing note while a public folder holds GitHub-private repositories", () => {
+    render(
+      <FolderManager
+        initialFolders={[
+          folder({ id: 9, name: "Open", isPublic: true, privateRepoCount: 2 }),
+          folder({ id: 10, name: "Closed", privateRepoCount: 3 }),
+        ]}
+        counts={{}}
+      />,
+    );
+    expect(screen.getAllByText(/private on\s+GitHub, readable by anyone/)).toHaveLength(1);
+  });
+
+  it("shows a failure and keeps the folder as it was", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(fail(403, "Forbidden")));
+    render(<FolderManager initialFolders={[alpha]} counts={{}} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Public access for Alpha" }));
+    await waitFor(() => expect(screen.getByText("Forbidden")).toBeTruthy());
+    expect(
+      (screen.getByRole("switch", { name: "Public access for Alpha" }) as HTMLInputElement).checked,
+    ).toBe(false);
+  });
 });
 
 describe("FolderManager", () => {

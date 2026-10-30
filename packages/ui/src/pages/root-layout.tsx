@@ -9,11 +9,20 @@ import { ReadModeProvider } from "../components/read-mode-provider";
 import { ReadingControls } from "../components/reading-controls";
 import { ThemeProvider } from "../components/theme-provider";
 import { E2E_CRASH_HEADER, shouldCrashRootLayout } from "@docmyrepos/core/internal/e2e-fixtures";
-import { NONCE_HEADER, isValidNonce } from "@docmyrepos/core/internal/security-headers";
+import {
+  NONCE_HEADER,
+  PATHNAME_HEADER,
+  isValidNonce,
+} from "@docmyrepos/core/internal/security-headers";
 import { loadAskPage } from "@docmyrepos/server/internal/ask-page";
 import { askStateFor } from "@docmyrepos/server/internal/ask/settings";
 import { logger } from "@docmyrepos/server/internal/log";
 import { mcpEnabled } from "@docmyrepos/server/internal/workspace";
+import {
+  ANONYMOUS,
+  anonymousMayUse,
+  publicAccessOf,
+} from "@docmyrepos/server/internal/public-access/reader";
 import { NO_FEATURES, coreSlotItems } from "@docmyrepos/server/internal/plugins/slots";
 import type { SlotName } from "@docmyrepos/core";
 import { deriveBrandTokens } from "@docmyrepos/core/internal/branding/colors";
@@ -107,6 +116,13 @@ export async function RootLayout({ app, children }: AppProps & { children: React
   // Ask is shown to signed-in readers only when an admin turned it on and the provider is usable
   // (`getAskState` never throws: any failure reads as off). The account menu links to the AI agent
   // pages only while an admin has the MCP endpoint on. Neither is read for a signed-out visitor.
+  // A visitor without a session who is looking at a page (not the sign-in page itself) gets a
+  // Sign in link where the account menu would be, and the search bar and quick search only when
+  // the admin allowed anonymous search (public access). Without the proxy's pathname header (page
+  // tests) nothing changes. Public access is read only for such a visitor, and a failed read
+  // means search is not offered.
+  const pathname = requestHeaders.get(PATHNAME_HEADER);
+  const signIn = user === null && ctx !== null && pathname !== null && pathname !== "/login";
   const [askState, agentAccess] =
     user === null
       ? [null, false]
@@ -114,16 +130,29 @@ export async function RootLayout({ app, children }: AppProps & { children: React
           ctx === null ? null : askStateFor(ctx),
           mcpEnabled(ctx ?? undefined).catch(() => false),
         ]);
-  const askEnabled = askState?.state === "ready";
+  // Ask for a visitor without a session only when an admin allowed anonymous Ask and Ask itself is
+  // usable (public access); for a signed-in reader as before.
+  const anonymousAsk =
+    signIn &&
+    ctx !== null &&
+    (await anonymousMayUse(ctx, "ask")) &&
+    (await askStateFor(ctx)).state === "ready";
+  const askEnabled = askState?.state === "ready" || anonymousAsk;
+  const searchOffered =
+    !signIn || ctx === null || (await publicAccessOf(ctx)).settings.searchEnabled;
   // Admin links show to whoever the `authorize` hook lets administer the workspace.
   const isAdmin = user !== null && ctx !== null && (await ctx.can("admin.manage"));
   // The header, account menu, footer and banners: the core's items, then the plugins'. Without a
   // tenant there is no context and no plugin is asked.
   const state = { askEnabled, agentAccess };
+  // A visitor without a session on a page they may read gets the core's items only: no plugin
+  // contribution, and no link to the status page, which is for signed-in users.
   const slot = <S extends SlotName>(name: S) =>
     ctx === null
       ? Promise.resolve(coreSlotItems(name, NO_FEATURES))
-      : app.slots.resolve(name, ctx, state);
+      : signIn
+        ? Promise.resolve(coreSlotItems(name, { askEnabled: anonymousAsk, agentAccess: false }))
+        : app.slots.resolve(name, ctx, state);
   const [nav, accountItems, footerLinks, banners] = await Promise.all([
     slot("header.nav"),
     slot("account.menu"),
@@ -150,6 +179,7 @@ export async function RootLayout({ app, children }: AppProps & { children: React
       ? await loadAskPage(
           {},
           {
+            reader: signIn ? ANONYMOUS : undefined,
             db: ctx.db,
             state: () => askStateFor(ctx),
             providers: async () => (await ctx.workspace()).providers,
@@ -191,6 +221,8 @@ export async function RootLayout({ app, children }: AppProps & { children: React
           <ReadModeProvider initialShortcutEnabled={shortcutEnabled}>
             <SiteHeader
               user={user === null ? null : { email: user.email, admin: isAdmin }}
+              signIn={signIn}
+              search={searchOffered}
               nav={nav}
               accountItems={accountItems}
               branding={{
@@ -214,8 +246,10 @@ export async function RootLayout({ app, children }: AppProps & { children: React
             <main className="site-shell mx-auto w-full max-w-[88rem] flex-1 px-5 py-10 sm:px-8 lg:px-16 lg:py-14">
               {children}
             </main>
-            <SiteFooter links={footerLinks} />
-            <CommandPalette />
+            <SiteFooter
+              links={signIn ? footerLinks.filter((link) => link.href !== "/status") : footerLinks}
+            />
+            {searchOffered ? <CommandPalette /> : null}
             <ReadingControls />
             {ask?.status === "ready" ? (
               <AskLauncher

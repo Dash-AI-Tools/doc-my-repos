@@ -32,7 +32,7 @@ describe("createProxy", () => {
     expect((await proxy(request("/pricing/teams"))).status).toBe(200);
     expect((await proxy(request("/signup"))).status).toBe(200);
     expect((await proxy(request("/pricingx"))).status).toBe(307);
-    expect((await proxy(request("/api/search"))).status).toBe(401);
+    expect((await proxy(request("/api/status"))).status).toBe(401);
   });
 
   it("lets plugins' public routes and pages through, and gates the rest of each plugin", async () => {
@@ -51,14 +51,35 @@ describe("createProxy", () => {
     expect((await proxy(request("/-/billing"))).status).toBe(307);
   });
 
+  it("lets the paths that may be public content through without a session, and only those", async () => {
+    const proxy = createProxy();
+    const call = (path: string, method = "GET") =>
+      proxy(new NextRequest(new URL(path, "http://localhost"), { method }));
+    for (const path of ["/", "/search", "/ask", "/acme/handbook", "/acme/handbook/docs/a/b"]) {
+      expect((await call(path)).status, path).toBe(200);
+    }
+    expect((await call("/api/search")).status).toBe(200);
+    expect((await call("/api/asset/acme/handbook/x.png")).status).toBe(200);
+    expect((await call("/api/ask", "POST")).status).toBe(200);
+    // Writes, other APIs and the signed-in pages keep the gate.
+    expect((await call("/", "POST")).status).toBe(307);
+    expect((await call("/api/ask")).status).toBe(401);
+    for (const path of ["/admin/users", "/account/agent-access", "/status", "/login/x"]) {
+      expect((await call(path)).status, path).toBe(307);
+    }
+    for (const path of ["/api/status", "/api/comments", "/api/admin/repos", "/api/sync/x"]) {
+      expect((await call(path)).status, path).toBe(401);
+    }
+  });
+
   it("lets a host replace the session pre-check", async () => {
     const isSignedIn = vi.fn((req: NextRequest) => req.headers.get("x-host-session") === "yes");
     const proxy = createProxy({ isSignedIn });
-    const signedIn = new NextRequest(new URL("http://localhost/"), {
+    const signedIn = new NextRequest(new URL("http://localhost/admin/users"), {
       headers: { "x-host-session": "yes" },
     });
     expect((await proxy(signedIn)).status).toBe(200);
-    expect((await proxy(request("/"))).status).toBe(307);
+    expect((await proxy(request("/admin/users"))).status).toBe(307);
     expect(isSignedIn).toHaveBeenCalledTimes(2);
   });
 

@@ -8,10 +8,38 @@ import {
   DAY_SECONDS,
   TEN_MINUTES_SECONDS,
   checkWindows,
+  claimAnonymousQuestion,
   estimateTokens,
   finishUsage,
   startUsage,
 } from "./limits";
+
+describe("AskGate for anonymous visitors", () => {
+  it("has no one-at-a-time rule per person, only the process-wide cap", () => {
+    const gate = new AskGate();
+    const first = gate.tryEnterAnonymous(2);
+    const second = gate.tryEnterAnonymous(2);
+    expect([first.ok, second.ok]).toEqual([true, true]);
+    expect(gate.tryEnterAnonymous(2)).toEqual({ ok: false, reason: "server_busy" });
+    if (first.ok) first.release();
+    expect(gate.active).toBe(1);
+    expect(gate.tryEnterAnonymous(2).ok).toBe(true);
+  });
+
+  it("counts toward the same cap as signed-in users, per tenant key, and releases once", () => {
+    const gate = new AskGate();
+    const user = gate.tryEnter(1, 2);
+    const anon = gate.tryEnterAnonymous(2);
+    expect(gate.tryEnter(2, 2)).toEqual({ ok: false, reason: "server_busy" });
+    if (anon.ok) {
+      anon.release();
+      anon.release();
+    }
+    expect(gate.active).toBe(1);
+    if (user.ok) user.release();
+    expect(gate.active).toBe(0);
+  });
+});
 
 describe("AskGate", () => {
   it("allows one answer per user and refuses a second until the first is released", () => {
@@ -59,6 +87,45 @@ describe("estimateTokens", () => {
     expect(estimateTokens(8)).toBe(2);
     expect(estimateTokens(9)).toBe(3);
     expect(estimateTokens(-5)).toBe(0);
+  });
+});
+
+describeDb("anonymous questions in the database", () => {
+  let t: TestDatabase;
+  const limits = { questionsPerDay: 5, questionsPerTenMinutes: 2 };
+  beforeAll(async () => {
+    t = await createTestDatabase();
+  }, 60_000);
+  afterAll(async () => {
+    await t?.drop();
+  }, 60_000);
+
+  it("records an accepted question at once as a count, then refuses past the shared cap", async () => {
+    const first = await claimAnonymousQuestion(t.db, "openai-compatible", limits);
+    expect(first.ok).toBe(true);
+    const second = await claimAnonymousQuestion(t.db, "openai-compatible", limits);
+    expect(second.ok).toBe(true);
+    const third = await claimAnonymousQuestion(t.db, "openai-compatible", limits);
+    expect(third).toMatchObject({ ok: false, reason: "ten_minutes" });
+    if (!third.ok) expect(third.retryAfterSeconds).toBeGreaterThan(0);
+    const rows = await t.db.select().from(askUsage);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.anonymous && r.userId === null && r.outcome === "started")).toBe(
+      true,
+    );
+  });
+
+  it("does not count another user's rows, and users do not count its rows", async () => {
+    await t.db.delete(askUsage);
+    const [user] = await t.db
+      .insert(users)
+      .values({ email: "u@example.com", passwordHash: "x" })
+      .returning({ id: users.id });
+    await startUsage(t.db, { userId: user!.id, provider: "p", excerptCount: 1 });
+    await startUsage(t.db, { userId: user!.id, provider: "p", excerptCount: 1 });
+    expect((await claimAnonymousQuestion(t.db, "p", limits)).ok).toBe(true);
+    expect(await checkWindows(t.db, user!.id, limits)).toMatchObject({ ok: false });
+    expect(await checkWindows(t.db, "anonymous", limits)).toEqual({ ok: true });
   });
 });
 

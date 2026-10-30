@@ -10,13 +10,16 @@
  * Every route not marked `public` then requires a signed-in user, confirmed in the tenant's
  * database (`authenticate`), and answers 401 without one, as the proxy does for a missing
  * cookie, and 403 when the `authorize` hook does not let that user read the portal
- * (`content.read`). The public routes authenticate their callers themselves (login, the sync secret, the
+ * (`content.read`). A route marked `anonymous` also serves a visitor who is not signed in, but only
+ * when public access allows what the route does (`anonymousMayUse`): the route's own code then
+ * reads through the anonymous visibility filter. Unmarked routes never do. The public routes authenticate their callers themselves (login, the sync secret, the
  * webhook signature, MCP tokens) or serve nothing private (health, the logo). The route's handler
  * receives the request context as its third argument.
  */
 
 import type { StartupConfig } from "../app/config";
 import type { RequestContext } from "../app/types";
+import { anonymousMayUse, type PublicNeed } from "../public-access/reader";
 
 /** The second argument Next.js passes a route handler: the dynamic route parameters. */
 export interface RouteContext {
@@ -84,6 +87,11 @@ export const ROUTE_MODULES = {
   },
   /** `/api/admin/ask` */
   adminAsk: { methods: ["GET", "PUT"], load: () => import("./admin-ask") },
+  /** `/api/admin/public-access` */
+  adminPublicAccess: {
+    methods: ["GET", "PUT"],
+    load: () => import("./admin-public-access"),
+  },
   /** `/api/admin/ask/credentials` */
   adminAskCredentials: { methods: ["PUT"], load: () => import("./admin-ask-credentials") },
   /** `/api/admin/ask/test` */
@@ -138,9 +146,16 @@ export const ROUTE_MODULES = {
   /** `/api/admin/users` */
   adminUsers: { methods: ["GET", "POST"], load: () => import("./admin-users") },
   /** `/api/ask` */
-  ask: { methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"], load: () => import("./ask") },
+  ask: {
+    // Anonymous Ask over public repositories, when an admin allows it (public access).
+    anonymous: "ask",
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
+    load: () => import("./ask"),
+  },
   /** `/api/asset/[owner]/[repo]/[...path]` */
   asset: {
+    // Images of public repositories are shown to visitors without a session (public access).
+    anonymous: "content",
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
     load: () => import("./asset"),
   },
@@ -190,6 +205,8 @@ export const ROUTE_MODULES = {
   },
   /** `/api/search` */
   search: {
+    // Anonymous search over public repositories, when an admin allows it (public access).
+    anonymous: "search",
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
     load: () => import("./search"),
   },
@@ -210,6 +227,11 @@ export const ROUTE_MODULES = {
     methods: readonly string[];
     load: () => Promise<Module>;
     public?: true;
+    /**
+     * Also served to a visitor who is not signed in, while public access allows this need (public
+     * access design decision 3). The route's code must then read through the anonymous filter.
+     */
+    anonymous?: PublicNeed;
     /** `resolveTenant` receives a clone of the request, so it may read the body. */
     tenantFromBody?: true;
   }
@@ -239,8 +261,13 @@ function bind(
       const ctx = await contextFor("tenantFromBody" in route ? incoming.clone() : incoming);
       if (ctx === null) return unknownTenantResponse();
       if (!("public" in route)) {
-        if ((await ctx.user()) === null) return unauthorizedResponse();
-        if (!(await ctx.can("content.read"))) return forbiddenResponse();
+        if ((await ctx.user()) === null) {
+          // Public access: only a route marked `anonymous`, and only while what it does is allowed.
+          const need = "anonymous" in route ? (route.anonymous as PublicNeed) : null;
+          if (need === null || !(await anonymousMayUse(ctx, need))) return unauthorizedResponse();
+        } else if (!(await ctx.can("content.read"))) {
+          return forbiddenResponse();
+        }
       }
       const loaded: Module = await route.load();
       const handler = loaded[method] as ContextRouteHandler;

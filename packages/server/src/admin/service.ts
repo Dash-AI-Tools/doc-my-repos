@@ -23,6 +23,7 @@ import {
 } from "@docmyrepos/core/internal/branding/validate";
 import { allowAllRepos, type QueryOptions } from "../queries/visibility";
 import { listFolders } from "../queries/folders";
+import { countPrivateReposByFolder } from "./folders";
 import { listRepos } from "../queries/repos";
 
 /**
@@ -61,7 +62,35 @@ export async function getAdminRepos(db: DbInput, access?: Access) {
 /** Folder list for the admin panel (server component). Throws 401/403 errors on denial. */
 export async function getAdminFolders(db: DbInput, access?: Access) {
   await adminOf(db, access);
-  return listFolders(await resolveDb(db));
+  const handle = await resolveDb(db);
+  const [folders, privateRepos] = await Promise.all([
+    listFolders(handle),
+    countPrivateReposByFolder(handle),
+  ]);
+  // `privateRepoCount`: the allowed repositories in the folder that are private on GitHub, which a
+  // public folder would publish (the admin page shows a standing note for them).
+  return folders.map((folder) => ({
+    ...folder,
+    privateRepoCount: privateRepos.get(folder.id) ?? 0,
+  }));
+}
+
+/** A refused change as a response; a `confirm_private` refusal carries its code and count. */
+function failureResponse(failure: {
+  status: number;
+  error: string;
+  code?: string;
+  privateRepos?: number;
+}): Response {
+  return Response.json(
+    {
+      error: failure.error,
+      ...(failure.code === undefined
+        ? {}
+        : { code: failure.code, privateRepos: failure.privateRepos }),
+    },
+    { status: failure.status },
+  );
 }
 
 async function bodyOf(
@@ -159,7 +188,11 @@ export async function handleListRepos(db: DbInput, access?: Access): Promise<Res
   }
 }
 
-/** `PATCH /api/admin/repos`: `{owner, name}` plus `isAllowed` and/or `isStarred` (booleans) and/or `folderId` (id or null). */
+/**
+ * `PATCH /api/admin/repos`: `{owner, name}` plus `isAllowed`, `isStarred` and/or `isPublic` (booleans)
+ * and/or `folderId` (id or null). `isPublic: true` on a repository that is private on GitHub needs
+ * `confirmPrivate: true`, else 409 `{ code: "confirm_private", privateRepos: 1 }`.
+ */
 export async function handleUpdateRepo(
   request: Request,
   db: DbInput,
@@ -174,8 +207,16 @@ export async function handleUpdateRepo(
       isAllowed: parsed.body.isAllowed,
       isStarred: parsed.body.isStarred,
       folderId: parsed.body.folderId,
+      isPublic: parsed.body.isPublic,
+      confirmPrivate: parsed.body.confirmPrivate,
     });
-    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    if (!result.ok) return failureResponse(result);
+    if (result.isPublic !== result.wasPublic) {
+      access?.emit({
+        name: "repo.public_changed",
+        payload: { githubRepoId: result.githubId, public: result.isPublic },
+      });
+    }
     if (result.isAllowed !== result.wasAllowed) {
       access?.emit({
         name: "repo.access_changed",
@@ -183,7 +224,13 @@ export async function handleUpdateRepo(
       });
     }
     return Response.json({
-      repo: { ...result, ok: undefined, githubId: undefined, wasAllowed: undefined },
+      repo: {
+        ...result,
+        ok: undefined,
+        githubId: undefined,
+        wasAllowed: undefined,
+        wasPublic: undefined,
+      },
     });
   } catch {
     return Response.json({ error: "Internal error" }, { status: 500 });
@@ -237,7 +284,11 @@ export async function handleCreateFolder(
   }
 }
 
-/** `PATCH /api/admin/folders/:id` with any of `{name, description, isStarred}`. */
+/**
+ * `PATCH /api/admin/folders/:id` with any of `{name, description, isStarred, isPublic}`. Making a
+ * folder public that holds repositories private on GitHub needs `confirmPrivate: true`, else 409
+ * `{ code: "confirm_private", privateRepos: n }`.
+ */
 export async function handleUpdateFolder(
   id: number,
   request: Request,
@@ -254,8 +305,16 @@ export async function handleUpdateFolder(
       name: body.name,
       description: body.description,
       isStarred: body.isStarred,
+      isPublic: body.isPublic,
+      confirmPrivate: body.confirmPrivate,
     });
-    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+    if (!result.ok) return failureResponse(result);
+    if (result.publicChanged) {
+      access?.emit({
+        name: "folder.public_changed",
+        payload: { folderId: result.folder.id, public: result.folder.isPublic },
+      });
+    }
     return Response.json({ folder: result.folder });
   } catch {
     return Response.json({ error: "Internal error" }, { status: 500 });

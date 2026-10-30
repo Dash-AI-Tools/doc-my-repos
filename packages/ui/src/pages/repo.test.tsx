@@ -16,6 +16,14 @@ import type { RepoPageData } from "@docmyrepos/server/internal/repo-page";
 
 const loadRepoPage =
   vi.fn<(owner: string, name: string, filters: TocFilterState) => Promise<RepoPageData>>();
+const readers: string[] = [];
+const publicAccess = vi.hoisted(() => ({ content: true, ask: true }));
+vi.mock("@docmyrepos/server/internal/public-access/reader", () => ({
+  ANONYMOUS: { kind: "anonymous" },
+  MEMBER: { kind: "member" },
+  anonymousMayUse: async (_ctx: unknown, need: string) =>
+    need === "ask" ? publicAccess.ask : publicAccess.content,
+}));
 /** The navigation view each load received, and the one the cookie reader returns. */
 const views: NavView[] = [];
 const navView: { current: NavView } = { current: "okf" };
@@ -23,11 +31,12 @@ vi.mock("@docmyrepos/server/internal/repo-page", () => ({
   loadRepoPage: (
     owner: string,
     name: string,
-    _deps: unknown,
+    deps: { reader?: { kind: string } },
     filters: TocFilterState,
     view: NavView,
   ) => {
     views.push(view);
+    readers.push(deps.reader?.kind ?? "none");
     return loadRepoPage(owner, name, filters);
   },
 }));
@@ -55,6 +64,7 @@ const repo: RepoDetail = {
   htmlUrl: "https://github.com/acme/api",
   visibility: "public" as const,
   isAllowed: true,
+  isPublic: false,
   starPosition: null,
   isStarred: false,
   folderId: null,
@@ -124,6 +134,9 @@ async function html(
 beforeEach(() => {
   loadRepoPage.mockReset();
   views.length = 0;
+  readers.length = 0;
+  publicAccess.content = true;
+  publicAccess.ask = true;
   navView.current = "okf";
   askState.current = { state: "off" };
 });
@@ -301,6 +314,54 @@ describe("repository page", () => {
   it("lets an unexpected error reach the error boundary", async () => {
     loadRepoPage.mockRejectedValue(new TypeError("bug"));
     await expect(html()).rejects.toThrow("bug");
+  });
+});
+
+describe("repository page for a visitor without a session (public access)", () => {
+  const anonymousApp = testApp({}, { user: async () => null });
+  const anonymousHtml = async (): Promise<string> =>
+    renderToStaticMarkup(
+      await RepoPage({
+        app: anonymousApp,
+        params: Promise.resolve({ owner: "acme", repo: "api" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+
+  it("reads through the anonymous reader and shows the repository", async () => {
+    loadRepoPage.mockResolvedValue(ok());
+    expect(await anonymousHtml()).toContain("README");
+    expect(readers).toEqual(["anonymous"]);
+  });
+
+  it("sends the visitor to sign in for a repository that does not exist or is not public", async () => {
+    loadRepoPage.mockResolvedValue({ status: "not_found" });
+    await expect(anonymousHtml()).rejects.toMatchObject({
+      digest: expect.stringContaining("/login"),
+    });
+  });
+
+  it("sends the visitor to sign in when nothing is public, reading nothing", async () => {
+    publicAccess.content = false;
+    await expect(anonymousHtml()).rejects.toMatchObject({
+      digest: expect.stringContaining("/login"),
+    });
+    expect(loadRepoPage).not.toHaveBeenCalled();
+  });
+
+  it("links to Ask only when anonymous Ask is allowed", async () => {
+    askState.current = { state: "ready", provider: "anthropic", model: "m" } as never;
+    loadRepoPage.mockResolvedValue(ok());
+    publicAccess.ask = true;
+    expect(await anonymousHtml()).toContain("/ask?repo=");
+    publicAccess.ask = false;
+    expect(await anonymousHtml()).not.toContain("/ask?repo=");
+  });
+
+  it("keeps the member's own not-found page", async () => {
+    loadRepoPage.mockResolvedValue({ status: "not_found" });
+    await expect(html()).rejects.toMatchObject({ digest: expect.stringContaining("404") });
+    expect(readers).toEqual(["member"]);
   });
 });
 

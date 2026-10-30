@@ -29,11 +29,17 @@ const HOME_NAV: readonly LinkItem[] = [{ href: "/", label: "Repositories" }];
 
 export function SiteHeader({
   user,
+  signIn = false,
+  search = true,
   branding,
   nav = HOME_NAV,
   accountItems = [],
 }: {
   user: HeaderUser | null;
+  /** A visitor without a session on a page they may read: a Sign in link replaces the account menu. */
+  signIn?: boolean;
+  /** Whether the search trigger is shown (public access may turn anonymous search off). */
+  search?: boolean;
   branding: HeaderBranding;
   /** The main navigation: the `header.nav` slot (Repositories, Ask when it is on, plugins). */
   nav?: readonly LinkItem[];
@@ -91,8 +97,17 @@ export function SiteHeader({
         </nav>
         <div className="ml-auto flex min-h-16 max-w-full flex-wrap items-center justify-end gap-x-3 gap-y-2 py-2 sm:gap-x-5">
           <TextSizeMenu />
-          <PaletteTrigger />
-          {user ? <AccountMenu user={user} items={accountItems} /> : null}
+          {search ? <PaletteTrigger /> : null}
+          {user ? (
+            <AccountMenu user={user} items={accountItems} />
+          ) : signIn ? (
+            <Link
+              href="/login"
+              className="inline-flex min-h-6 items-center px-1 text-sm font-medium text-header-foreground no-underline hover:text-header-foreground hover:underline"
+            >
+              Sign in
+            </Link>
+          ) : null}
         </div>
       </div>
     </header>

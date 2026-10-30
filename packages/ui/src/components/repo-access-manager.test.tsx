@@ -13,6 +13,7 @@ const row = (over: Partial<RepoAccessRow> & Pick<RepoAccessRow, "id" | "name">):
   owner: "acme",
   visibility: "public",
   isAllowed: true,
+  isPublic: false,
   starPosition: null,
   isStarred: false,
   folderId: null,
@@ -52,6 +53,109 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   refresh.mockClear();
+});
+
+describe("RepoAccessManager public access", () => {
+  const conflict = {
+    ok: false,
+    status: 409,
+    json: async () => ({
+      error: "This repository is private on GitHub",
+      code: "confirm_private",
+      privateRepos: 1,
+    }),
+    clone() {
+      return this;
+    },
+  };
+
+  it("names the switch after the repository and reports its state", () => {
+    render(
+      <RepoAccessManager
+        initialRepos={[repos[0]!, row({ id: 3, name: "open", isPublic: true })]}
+      />,
+    );
+    expect(
+      (screen.getByRole("switch", { name: "Public access for acme/api" }) as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("switch", { name: "Public access for acme/open" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+  });
+
+  it("turns a repository public and announces it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        ok({ repo: { isAllowed: true, isPublic: true, starPosition: null, folderId: null } }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RepoAccessManager initialRepos={[repos[0]!]} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Public access for acme/api" }));
+    await waitFor(() => expect(screen.getByText(/acme\/api is public/)).toBeTruthy());
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({
+      owner: "acme",
+      name: "api",
+      isPublic: true,
+    });
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("asks before publishing a GitHub-private repository and sends the confirmation", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(conflict)
+      .mockResolvedValueOnce(
+        ok({ repo: { isAllowed: true, isPublic: true, starPosition: null, folderId: null } }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <RepoAccessManager initialRepos={[row({ id: 5, name: "secret", visibility: "private" })]} />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: "Public access for acme/secret" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("private on GitHub");
+    fireEvent.click(within(alert).getByRole("button", { name: "Confirm and make public" }));
+    await waitFor(() => expect(screen.getByText(/acme\/secret is public/)).toBeTruthy());
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({
+      owner: "acme",
+      name: "secret",
+      isPublic: true,
+      confirmPrivate: true,
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("changes nothing when the confirmation is cancelled", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(conflict);
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <RepoAccessManager initialRepos={[row({ id: 5, name: "secret", visibility: "private" })]} />,
+    );
+    fireEvent.click(screen.getByRole("switch", { name: "Public access for acme/secret" }));
+    fireEvent.click(
+      within(await screen.findByRole("alert")).getByRole("button", { name: "Cancel" }),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      (screen.getByRole("switch", { name: "Public access for acme/secret" }) as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+  });
+
+  it("shows a failure and keeps the switch off", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(fail(403, "Forbidden")));
+    render(<RepoAccessManager initialRepos={[repos[0]!]} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Public access for acme/api" }));
+    await waitFor(() => expect(screen.getByText("Forbidden")).toBeTruthy());
+    expect(
+      (screen.getByRole("switch", { name: "Public access for acme/api" }) as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+  });
 });
 
 describe("RepoAccessManager", () => {

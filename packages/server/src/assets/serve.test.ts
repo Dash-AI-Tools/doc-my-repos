@@ -4,7 +4,7 @@ import { repos } from "../db/schema";
 import { createTestDatabase, describeDb, type TestDatabase } from "../db/test-db";
 import { createGitHubClient, GitHubError, type GitHubClient } from "../github/client";
 import { findAssetRepo, type AssetRepo } from "../queries/assets";
-import { publicReposOnly } from "../queries/visibility";
+import { githubPublicReposOnly } from "../queries/visibility";
 import { FakeGitHub } from "../../../../tests/support/fake-github";
 import {
   captureOutput,
@@ -166,10 +166,12 @@ describe("serveAsset: images", () => {
     });
   });
 
-  it("serves a public repo image with shared caching, from its default branch", async () => {
+  it("serves a repo image from its default branch, never storable by a shared cache", async () => {
+    // Even a repository that is public on GitHub: whether a visitor may have the image depends on
+    // who they are (public access), so only the browser may keep it.
     const res = await s.serve("acme/site/logo.png");
     expect(res.status).toBe(200);
-    expect(res.headers["cache-control"]).toBe("public, max-age=300, stale-while-revalidate=600");
+    expect(res.headers["cache-control"]).toBe("private, max-age=300");
     expect(contentRequests(s.fake)[0]?.query).toBe("ref=trunk");
   });
 
@@ -1011,7 +1013,8 @@ describeDb("serveAsset with the real repository lookup", () => {
 
   it("hides private repository assets when the visibility filter hides private repos", async () => {
     const s = setup({
-      findRepo: (owner, name) => findAssetRepo(t.db, owner, name, { visibility: publicReposOnly }),
+      findRepo: (owner, name) =>
+        findAssetRepo(t.db, owner, name, { visibility: githubPublicReposOnly }),
     });
     expect((await s.serve("acme/handbook/docs/img/arch.png")).status).toBe(404);
     expect((await s.serve("acme/site/logo.png")).status).toBe(200);

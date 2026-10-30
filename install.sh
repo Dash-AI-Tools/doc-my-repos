@@ -1,7 +1,7 @@
 #!/bin/sh
 # DocMyRepos installer. Sets up a complete installation with Docker in a new folder:
 #
-#   curl -fsSL https://github.com/Dash-AI-Tools/doc-my-repos/releases/download/v0.1.0/install.sh | sh
+#   curl -fsSL https://github.com/Dash-AI-Tools/doc-my-repos/releases/download/v0.2.0/install.sh | sh
 #   curl -fsSL .../install.sh | sh -s -- --dry-run     # flags go after `sh -s --`
 #   curl -fsSL <newer release>/install.sh | sh -s -- --upgrade --dir ./docmyrepos
 #
@@ -15,7 +15,7 @@
 set -eu
 
 # Kept equal to package.json and the release tag by scripts/check-release-versions.sh.
-DOCMYREPOS_VERSION="0.1.0"
+DOCMYREPOS_VERSION="0.2.0"
 DEFAULT_IMAGE="ghcr.io/dash-ai-tools/doc-my-repos:${DOCMYREPOS_VERSION}"
 
 NL='

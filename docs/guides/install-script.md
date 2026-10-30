@@ -25,19 +25,19 @@ The other way to install is the clone-and-compose path in [Getting started](./ge
 You need Linux, macOS or WSL, `curl`, and Docker with Compose v2 running.
 
 ```bash
-curl -fsSL https://github.com/Dash-AI-Tools/doc-my-repos/releases/download/v0.1.0/install.sh | sh
+curl -fsSL https://github.com/Dash-AI-Tools/doc-my-repos/releases/download/v0.2.0/install.sh | sh
 ```
 
-The URL is the `install.sh` asset on the GitHub Release for that tag. Replace `v0.1.0` with the release you want; the script installs the container image of its own version (`ghcr.io/dash-ai-tools/doc-my-repos:0.1.0`). To pass flags to a piped script, put them after `sh -s --`:
+The URL is the `install.sh` asset on the GitHub Release for that tag. Replace `v0.2.0` with the release you want; the script installs the container image of its own version (`ghcr.io/dash-ai-tools/doc-my-repos:0.2.0`). To pass flags to a piped script, put them after `sh -s --`:
 
 ```bash
-curl -fsSL https://github.com/Dash-AI-Tools/doc-my-repos/releases/download/v0.1.0/install.sh | sh -s -- --dry-run
+curl -fsSL https://github.com/Dash-AI-Tools/doc-my-repos/releases/download/v0.2.0/install.sh | sh -s -- --dry-run
 ```
 
 **Read it first.** It is one file of about 700 lines. Fetch it, read it, then run it from disk:
 
 ```bash
-curl -fsSLO https://github.com/Dash-AI-Tools/doc-my-repos/releases/download/v0.1.0/install.sh
+curl -fsSLO https://github.com/Dash-AI-Tools/doc-my-repos/releases/download/v0.2.0/install.sh
 less install.sh
 sh install.sh
 ```
