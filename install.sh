@@ -1,7 +1,7 @@
 #!/bin/sh
 # DocMyRepos installer. Sets up a complete installation with Docker in a new folder:
 #
-#   curl -fsSL https://raw.githubusercontent.com/Dash-AI-Tools/doc-my-repos/main/install.sh | sh
+#   curl -fsSL https://github.com/Dash-AI-Tools/doc-my-repos/releases/download/v0.2.0/install.sh | sh
 #   curl -fsSL .../install.sh | sh -s -- --dry-run     # flags go after `sh -s --`
 #   curl -fsSL <newer release>/install.sh | sh -s -- --upgrade --dir ./docmyrepos
 #

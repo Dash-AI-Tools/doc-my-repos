@@ -1,14 +1,18 @@
-# Release: on a version tag, check that the tag, package.json, install.sh and the packages agree,
-# run the whole CI set on the tagged commit, then build and push the container image to GHCR for
-# amd64 and arm64 with build provenance and an SBOM, and publish the npm packages with provenance.
+# Release: on a version tag, check that the tag, package.json, install.sh, compose default image
+# tag, CHANGELOG section and the packages agree, run the whole CI set on the tagged commit, then
+# build and push the container image to GHCR for amd64 and arm64 with build provenance and an SBOM,
+# create a GitHub Release with notes from CHANGELOG.md and the install.sh asset (the URL the
+# README one-liner downloads), and publish the npm packages with provenance.
 #
 # - Runs only in Dash-AI-Tools/doc-my-repos: a fork that pushes a tag publishes nothing.
 # - No long-lived credential: the image job uses the workflow's GITHUB_TOKEN (`packages: write`),
-#   the packages job npm trusted publishing (`id-token: write`, an OIDC token npm exchanges for a
-#   one-time publish token; each package's trusted publisher is registered on npmjs.com).
+#   the github-release job uses it for `contents: write`, the packages job npm trusted publishing
+#   (`id-token: write`, an OIDC token npm exchanges for a one-time publish token; each package's
+#   trusted publisher is registered on npmjs.com).
 # - A version that is already published is never overwritten: each job fails first.
-# - The `release` environment can require a reviewer before the image job runs (repository
+# - The `release` environment can require a reviewer before the publish jobs run (repository
 #   settings > Environments). Actions are pinned to commit SHAs (the comment names the release).
+# - Pull requests exercise the same version check and a build-only (no push) image job via ci.yml.
 name: Release
 
 on:
@@ -35,7 +39,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: The tag, package.json and install.sh carry one version
+      - name: The tag, package.json, install.sh, compose and CHANGELOG carry one version
         env:
           TAG: ${{ github.ref_name }}
         run: scripts/check-release-versions.sh "$TAG"
@@ -96,6 +100,39 @@ jobs:
           sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  github-release:
+    # After the image is on GHCR so the README one-liner can pull it as soon as the Release exists.
+    name: Create the GitHub Release
+    needs: [versions, ci, image]
+    if: github.repository == 'Dash-AI-Tools/doc-my-repos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Version from the tag
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: echo "number=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.version.outputs.number }}
+        run: scripts/release-notes.sh "$VERSION" --output release-notes.md
+      - name: Create the Release with install.sh
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          name: v${{ steps.version.outputs.number }}
+          body_path: release-notes.md
+          files: install.sh
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
 
   packages:
     name: Publish the packages

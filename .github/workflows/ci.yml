@@ -200,6 +200,25 @@ jobs:
           DOCMYREPOS_IMAGE: docmyrepos:ci
         run: scripts/install-e2e.sh
 
+  release-check:
+    # Dry-run of the release gates that do not need a tag or registry write: versions agree, the
+    # CHANGELOG section for the current version can be turned into release notes, and the
+    # production image builds (the existing docker job). Publishing stays on the tag workflow.
+    name: Release readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Versions and CHANGELOG agree
+        run: scripts/check-release-versions.sh
+      - name: Release notes extract for the current version
+        run: |
+          version=$(sed -n 's/^  "version": "\([^"]*\)",$/\1/p' package.json | head -n 1)
+          scripts/release-notes.sh "$version" --output "$RUNNER_TEMP/release-notes.md"
+          test -s "$RUNNER_TEMP/release-notes.md"
+
   shellcheck:
     # The installer is piped into a shell on other people's machines: keep it ShellCheck-clean.
     name: ShellCheck
@@ -209,7 +228,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: shellcheck -s sh -S style install.sh scripts/check-release-versions.sh scripts/install-e2e.sh
+      - run: shellcheck -s sh -S style install.sh scripts/check-release-versions.sh scripts/release-notes.sh scripts/install-e2e.sh
 
   openspec:
     # The specs and changes under openspec/ are the source of truth; one that no longer validates fails
