@@ -58,6 +58,8 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 ## Features
 
 - **Public access (optional)**: an admin can make chosen repositories, or whole folders of repositories, readable without signing in, with anonymous search and Ask as separate switches. Off by default: nothing is public until an admin marks it (see [Public access](#public-access)).
+- **Folders and starred repositories**: admins group repositories into named folders shown as sections on the home page, and star the ones to feature first, in an order they set. Both are optional; without them nothing changes.
+- **Reading aids**: a text size slider, a distraction-free read mode and the theme switch live in one reading options button (see [Reading aids](#reading-aids)).
 - **Per-repository space**: the main README, the code owners from `CODEOWNERS`, and a tree of the docs folder.
 - **Good-looking Markdown**: GitHub-flavored Markdown, syntax highlighting with Shiki, and [Mermaid](https://mermaid.js.org) diagrams. Documents are untrusted: output is sanitized and `.mdx` is never executed.
 - **Search**: full-text search across every synced repository (Postgres full-text search, weighted by title, headings, description and body), with highlighted snippets, facets and a `Ctrl/Cmd+K` palette.
@@ -69,6 +71,7 @@ DocMyRepos syncs the `docs/` folder of each repository you choose from your GitH
 - **Your branding**: admins set the organization name, page title, colors and logo from `/admin/branding` (see [Branding](#branding)).
 - **Light and dark themes**: light, dark, or follow the system, including code blocks and diagrams, without a flash on load.
 - **Fresh content**: GitHub webhooks re-sync a repository when its default branch changes, and a scheduled full sync catches missed deliveries. Syncs are incremental (tree SHA, then blob SHA), idempotent and serialized per repository; a failed sync keeps the previous content.
+- **Extensible**: the app is built from the published packages `@docmyrepos/core`, `@docmyrepos/server` and `@docmyrepos/ui`, so another application can add hooks, adapters and plugins without forking (see the [extension API](docs/reference/extension-api.md)).
 - **Self-hostable**: one Next.js app plus Postgres, with a Docker image and Compose file. Behind a login with admin and user roles (see [Security](#security)).
 
 ## Screenshots
@@ -570,9 +573,9 @@ openspec validate --all
 
 ## Project status and roadmap
 
-**v0.2.0** is the first public open-source release. See [CHANGELOG.md](CHANGELOG.md). The MVP is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) in [`openspec/changes/archive/`](openspec/changes/archive/) and implemented on `main`.
+**v0.2.0** adds public access for repositories and folders, with optional anonymous search and Ask, on top of the first public release (v0.1.0). See [CHANGELOG.md](CHANGELOG.md). The MVP is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) in [`openspec/changes/archive/`](openspec/changes/archive/) and implemented on `main`.
 
-Out of scope for v0.2.0, and candidates for later: GitHub OAuth login and per-user access to private repositories, an in-app repository picker, multi-tenancy, and editing documents in the UI.
+Out of scope for now, and candidates for later: GitHub OAuth login and per-user access to private repositories, an in-app repository picker, multi-tenancy, and editing documents in the UI.
 
 ## Contributing, conduct and license
 
